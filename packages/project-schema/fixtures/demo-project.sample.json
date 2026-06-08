@@ -1,0 +1,129 @@
+{
+  "schemaVersion": "0.1.0",
+  "id": "demo_project_sample",
+  "title": "Sample Product Demo",
+  "duration": 45,
+  "fps": 30,
+  "aspectRatio": "16:9",
+  "createdAt": "2026-06-08T00:00:00.000Z",
+  "updatedAt": "2026-06-08T00:00:00.000Z",
+  "assets": [
+    {
+      "id": "asset_capture_001",
+      "type": "video",
+      "uri": "assets/capture-001.mp4",
+      "source": "captured",
+      "name": "Primary browser capture",
+      "mimeType": "video/mp4",
+      "duration": 45,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": "asset_narration_001",
+      "type": "audio",
+      "uri": "assets/narration.wav",
+      "source": "generated",
+      "name": "Narration",
+      "mimeType": "audio/wav",
+      "duration": 45
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track_video_main",
+      "type": "video",
+      "name": "Main capture",
+      "clips": [
+        {
+          "id": "clip_capture_001",
+          "assetId": "asset_capture_001",
+          "start": 0,
+          "end": 45,
+          "sourceStart": 0,
+          "sourceEnd": 45,
+          "name": "Browser flow"
+        }
+      ]
+    },
+    {
+      "id": "track_audio_narration",
+      "type": "audio",
+      "name": "Narration",
+      "clips": [
+        {
+          "id": "clip_narration_001",
+          "assetId": "asset_narration_001",
+          "start": 0,
+          "end": 45,
+          "sourceStart": 0,
+          "sourceEnd": 45,
+          "name": "Voiceover"
+        }
+      ]
+    }
+  ],
+  "captions": [
+    {
+      "id": "caption_001",
+      "start": 2,
+      "end": 5,
+      "text": "Turn product flows into polished demo videos."
+    }
+  ],
+  "zooms": [
+    {
+      "id": "zoom_001",
+      "start": 12,
+      "end": 18,
+      "target": { "x": 620, "y": 260, "width": 620, "height": 380 },
+      "easing": "easeInOut"
+    }
+  ],
+  "cursorEvents": [
+    { "time": 11.7, "type": "move", "x": 740, "y": 420 },
+    { "time": 12.1, "type": "click", "x": 740, "y": 420, "label": "Open analytics" }
+  ],
+  "callouts": [
+    {
+      "id": "callout_001",
+      "start": 13,
+      "end": 18,
+      "text": "Real-time analytics",
+      "position": "top-right",
+      "target": { "x": 620, "y": 260, "width": 620, "height": 380 }
+    }
+  ],
+  "aiEditHistory": [
+    {
+      "id": "ai_edit_001",
+      "createdAt": "2026-06-08T00:00:00.000Z",
+      "prompt": "Zoom into the analytics chart and add a callout.",
+      "targetRange": { "start": 12, "end": 18 },
+      "status": "accepted",
+      "operations": [
+        {
+          "type": "add_zoom",
+          "start": 12,
+          "end": 18,
+          "target": { "x": 620, "y": 260, "width": 620, "height": 380 },
+          "easing": "easeInOut"
+        },
+        {
+          "type": "add_callout",
+          "start": 13,
+          "end": 18,
+          "text": "Real-time analytics",
+          "position": "top-right",
+          "target": { "x": 620, "y": 260, "width": 620, "height": 380 }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "sourceRepoUrl": "https://github.com/example/product",
+    "productUrl": "https://example.com",
+    "prompt": "Make a 45-second launch demo showing onboarding, dashboard, and analytics.",
+    "notes": ["Sample project used to validate schema v0."]
+  }
+}

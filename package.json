@@ -1,0 +1,14 @@
+{
+  "name": "tinker",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "validate:schema": "pnpm --filter @tinker/project-schema validate:sample"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
