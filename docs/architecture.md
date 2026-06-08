@@ -360,9 +360,9 @@ Product input -> ProductAnalysis -> Storyboard -> CapturePlan -> CaptureResult -
 Owned areas:
 
 ```text
-/packages/product-ingestion
-/packages/ai-generator
-/packages/capture
+/packages/product-analysis
+/packages/demo-assembly
+/packages/browser-capture
 ```
 
 Responsibilities:
@@ -463,19 +463,19 @@ tinker/
         generationJob.ts
         generationResult.ts
 
-    product-ingestion/
+    product-analysis/
       src/
         analyzeRepo.ts
         analyzeWebsite.ts
         extractBrand.ts
 
-    ai-generator/
+    demo-assembly/
       src/
         generateStoryboard.ts
         generateNarration.ts
         compileProject.ts
 
-    capture/
+    browser-capture/
       src/
         playwrightCapture.ts
         captureEvents.ts
