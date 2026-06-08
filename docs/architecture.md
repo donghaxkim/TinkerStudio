@@ -8,7 +8,9 @@ This document defines the product shape, system boundaries, ownership split, and
 
 ## Product Shape
 
-The product is **Screen Studio for agents**: a desktop/local app that can turn a software product into an editable, polished demo video.
+The product is **Screen Studio for agents**: a local-first app that can turn a software product into an editable, polished demo video.
+
+The earliest prototype should be a local web app plus local API/CLI worker. Electron is a good packaging target later, once the core generation, editing, and export loop is proven.
 
 The user flow should feel like:
 
@@ -117,6 +119,8 @@ User provides:
 - target aspect ratio/platform
 - optional voice/narration style
 
+For V1, the safest path is to analyze repositories as source material and automate already-running web apps through URLs. Automatically installing dependencies or executing arbitrary cloned repositories should remain future scope behind an explicit sandbox/security design.
+
 ### 2. ProductAnalysis
 
 The system analyzes the product and extracts:
@@ -217,6 +221,27 @@ The compiler turns analysis, storyboard, capture output, narration, captions, an
 
 The editor consumes this project directly. AI edits also operate on this same model.
 
+### Asset Contract
+
+Assets are central to the project model, so the first schema pass should define them concretely:
+
+```ts
+type Asset = {
+  id: string;
+  type: "video" | "audio" | "image" | "svg" | "json" | "trace";
+  uri: string;
+  source: "local" | "remote" | "generated" | "captured";
+  mimeType?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  sizeBytes?: number;
+  metadata?: Record<string, unknown>;
+};
+```
+
+The editor, renderer, and capture pipeline should reference assets by `id`, not by duplicating paths throughout the project.
+
 ## AI Editing Contract
 
 AI editing should work like Cursor for a selected timeline range.
@@ -284,7 +309,45 @@ This package defines:
 - `AIEditOperation`
 - validators and versioning
 
+It should also include shared fixtures:
+
+```text
+/packages/project-schema/fixtures/demo-project.sample.json
+/packages/project-schema/fixtures/storyboard.sample.json
+/packages/project-schema/fixtures/capture-result.sample.json
+```
+
+Fixtures let Person A generate toward known examples while Person B builds the editor against stable project files.
+
 Any schema change should be a small isolated PR reviewed by both people.
+
+### Shared Boundary: Generation Contract
+
+Create a thin shared package for the request/response boundary between the app shell and the generation pipeline:
+
+```text
+/packages/generation-contract
+```
+
+This package defines:
+
+- `CreateDemoRequest`
+- `GenerationJob`
+- `GenerationStatus`
+- `GenerationResult`
+- errors and progress events
+
+The desktop/web app should call this contract instead of importing Person A's internal generation modules directly.
+
+### Shared Boundary: API/Worker Integration
+
+The local API should stay thin and contract-driven:
+
+```text
+/apps/api
+```
+
+It may expose routes, job status, and worker entrypoints, but core generation logic should live in Person A's packages and editor/export logic should live in Person B's packages. This keeps `apps/api` from becoming an ownership bottleneck.
 
 ### Person A: AI Demo Generation Pipeline
 
@@ -325,6 +388,7 @@ DemoProject -> editor -> manual edits -> AI edit operations -> export
 Owned areas:
 
 ```text
+/apps/web
 /apps/desktop
 /packages/editor
 /packages/ai-edit-ui
@@ -333,7 +397,9 @@ Owned areas:
 
 Responsibilities:
 
-- desktop/local app shell
+- local web app shell for the earliest prototype
+- UI integration with generation jobs through `generation-contract`
+- eventual desktop/local app shell
 - Create Demo UI
 - generation progress UI
 - project loading/saving
@@ -357,6 +423,19 @@ tinker/
     prd.md
 
   apps/
+    web/
+      src/
+        screens/
+          CreateDemo/
+          Editor/
+          Settings/
+
+    api/
+      src/
+        jobs/
+        routes/
+        workers/
+
     desktop/
       src/
         screens/
@@ -369,10 +448,20 @@ tinker/
 
   packages/
     project-schema/
+      fixtures/
+        demo-project.sample.json
+        storyboard.sample.json
+        capture-result.sample.json
       src/
         types.ts
         validators.ts
         version.ts
+
+    generation-contract/
+      src/
+        createDemoRequest.ts
+        generationJob.ts
+        generationResult.ts
 
     product-ingestion/
       src/
@@ -420,7 +509,8 @@ tinker/
 - **Capture:** Webreel-inspired capture layer or Playwright video first
 - **Video composition:** HyperFrames and/or ffmpeg for early output
 - **Editor:** custom demo-specific React editor
-- **Desktop shell:** Electron eventually; local web app/CLI is acceptable for earliest prototype
+- **First app shell:** local web app plus API/CLI worker
+- **Desktop shell:** Electron eventually, after the core loop works
 - **Schema:** TypeScript types plus runtime validators
 
 ### Commercial-Safe OSS Policy
@@ -447,7 +537,7 @@ Use as inspiration only unless license is clarified:
 
 ### Milestone 1: Manual Project to Editor Export
 
-Input: hand-written `demo-project.json`.
+Input: hand-written `demo-project.json` fixture.
 
 Output: editor loads timeline, previews video, supports one or two manual edits, exports MP4.
 
@@ -483,7 +573,7 @@ Use separate feature branches:
 
 ```text
 person-a/generation-pipeline
-person-b/desktop-editor
+person-b/web-editor
 schema/demo-project-v1
 ```
 
