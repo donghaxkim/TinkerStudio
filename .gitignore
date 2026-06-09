@@ -1,6 +1,7 @@
 node_modules/
 dist/
 generated/
+docs/superpowers/plans/
 .DS_Store
 .env
 .env.*
