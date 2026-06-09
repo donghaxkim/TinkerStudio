@@ -10,6 +10,8 @@ describe("App", () => {
     expect(screen.getByLabelText("Project metadata")).toHaveTextContent("45s");
     expect(screen.getByText("Main capture")).toBeInTheDocument();
     expect(screen.getByText("Browser flow")).toBeInTheDocument();
+    expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save project" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Jump to caption (3s)" }));
     expect(screen.getByTestId("active-caption")).toHaveTextContent("Turn product flows into polished demo videos.");

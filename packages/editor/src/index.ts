@@ -12,6 +12,17 @@ export { Preview } from "./preview/Preview.js";
 export type { PreviewProps } from "./preview/Preview.js";
 export { getAssetById, getPrimaryClip, isBrowserRenderableMedia } from "./project/assetResolver.js";
 export type {
+  DeserializeDemoProjectJsonResult,
+  ProjectPersistenceError,
+  ProjectValidationIssue,
+  SerializeDemoProjectResult,
+} from "./project/projectPersistence.js";
+export {
+  deserializeDemoProjectJson,
+  formatProjectValidationIssues,
+  serializeDemoProject,
+} from "./project/projectPersistence.js";
+export type {
   AIEditProposal,
   ApplyEditOperationsError,
   ApplyEditOperationsMode,

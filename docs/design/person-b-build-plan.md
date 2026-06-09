@@ -366,9 +366,11 @@ type GenerationResult = {
 
 ### Design
 
+See `docs/design/project-persistence.md` for the branch-specific persistence design.
+
 Persist the full `DemoProject` JSON and reload through the same validator path used for sample/generated projects.
 
-V1 can start with browser local storage or file import/export, but should keep a clean interface so a local API/file-system backend can replace it later.
+V1 uses browser local storage for a temporary local prototype snapshot plus explicit JSON file import/download. A local API/file-system backend can replace this later behind the same small interface.
 
 ### Main files
 

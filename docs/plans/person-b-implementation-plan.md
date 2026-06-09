@@ -417,6 +417,8 @@ pnpm typecheck
 
 **Branch:** `person-b/project-persistence`
 
+**Design doc:** `docs/design/project-persistence.md`
+
 **Objective:** Save/load full `DemoProject` JSON through a validated persistence interface.
 
 **Files:**

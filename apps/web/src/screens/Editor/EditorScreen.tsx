@@ -13,6 +13,7 @@ import {
 import type { DemoProject } from "@tinker/project-schema";
 import { loadSampleProject } from "../../fixtures/loadSampleProject.js";
 import { ProjectLoadPanel } from "./ProjectLoadPanel.js";
+import { ProjectSaveLoadControls } from "./ProjectSaveLoadControls.js";
 
 function formatRange(range: SelectedRange | undefined) {
   if (!range) return "No range selected";
@@ -95,6 +96,16 @@ export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
       </header>
 
       <ProjectLoadPanel result={{ ok: true, project }} />
+      <ProjectSaveLoadControls
+        project={project}
+        onProjectLoaded={(loadedProject) => {
+          setProject(loadedProject);
+          setPreviewProject(undefined);
+          setHistory(createEditorHistory());
+          setCurrentTime(0);
+          setSelectedRange({ start: 0, end: Math.min(loadedProject.duration, 6) });
+        }}
+      />
 
       <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 22rem", gap: 20, alignItems: "start" }}>
         <Preview project={displayProject} currentTime={currentTime} />
