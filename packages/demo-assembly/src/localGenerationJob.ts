@@ -14,14 +14,23 @@ import {
   type GenerationResult,
   type GenerationStatus,
 } from "@tinker/generation-contract";
+import {
+  runAiUrlDemo,
+  type AiUrlDemoPhase,
+  type RunAiUrlDemoInput,
+  type RunAiUrlDemoResult,
+} from "./runAiUrlDemo.js";
 import { runManualDemo, type RunManualDemoInput, type RunManualDemoResult } from "./runManualDemo.js";
 
 export type ManualDemoRunner = (input: RunManualDemoInput) => Promise<RunManualDemoResult>;
+export type AiUrlDemoRunner = (input: RunAiUrlDemoInput) => Promise<RunAiUrlDemoResult>;
+export type LocalDemoResult = RunManualDemoResult | RunAiUrlDemoResult;
 
 export type RunLocalGenerationJobOptions = {
   now?: () => string;
   onProgress?: (event: GenerationProgressEvent) => void;
   runManualDemo?: ManualDemoRunner;
+  runAiUrlDemo?: AiUrlDemoRunner;
 };
 
 const repoRoot = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
@@ -80,12 +89,25 @@ function createFailure(jobId: string | undefined, stage: GenerationFailureStage,
   });
 }
 
+function statusForPhase(phase: GenerationFailureStage): GenerationStatus {
+  if (phase === "capture") {
+    return "capturing";
+  }
+
+  if (phase === "assembly") {
+    return "assembling";
+  }
+
+  return "running";
+}
+
 export async function runLocalGenerationJob(
   rawRequest: unknown,
   options: RunLocalGenerationJobOptions = {},
 ): Promise<GenerationResult> {
   const now = options.now ?? (() => new Date().toISOString());
   const manualRunner = options.runManualDemo ?? runManualDemo;
+  const aiUrlRunner = options.runAiUrlDemo ?? runAiUrlDemo;
   const initialTime = now();
   const jobId = extractJobId(rawRequest, initialTime);
 
@@ -119,12 +141,6 @@ export async function runLocalGenerationJob(
 
   const request: CreateDemoRequest = parsedRequest.data;
 
-  if (request.mode !== "manual-fixture") {
-    const failure = createFailure(jobId, "validation", `Unsupported local generation mode: ${request.mode}`);
-    emit("failed", failure.message);
-    throw new LocalGenerationJobError(failure);
-  }
-
   let outputDirectory: string;
 
   try {
@@ -149,25 +165,43 @@ export async function runLocalGenerationJob(
   let activeStage: GenerationFailureStage = "unknown";
 
   try {
-    const manualResult = await manualRunner({
-      outputRoot: outputDirectory,
-      projectId: jobId,
-      createdAt: initialTime,
-      ...(request.repoUrl === undefined ? {} : { sourceRepoUrl: request.repoUrl }),
-      ...(request.productUrl === undefined ? {} : { productUrl: request.productUrl }),
-      ...(request.prompt === undefined ? {} : { prompt: request.prompt }),
-      onPhase: (phase) => {
-        activeStage = phase;
-        emit(phase === "capture" ? "capturing" : "assembling", `Manual fixture ${phase} started`);
-      },
-    });
+    let demoResult: LocalDemoResult;
+
+    if (request.mode === "manual-fixture") {
+      demoResult = await manualRunner({
+        outputRoot: outputDirectory,
+        projectId: jobId,
+        createdAt: initialTime,
+        ...(request.repoUrl === undefined ? {} : { sourceRepoUrl: request.repoUrl }),
+        ...(request.productUrl === undefined ? {} : { productUrl: request.productUrl }),
+        ...(request.prompt === undefined ? {} : { prompt: request.prompt }),
+        onPhase: (phase) => {
+          activeStage = phase;
+          emit(statusForPhase(phase), `Manual fixture ${phase} started`);
+        },
+      });
+    } else {
+      demoResult = await aiUrlRunner({
+        outputRoot: outputDirectory,
+        projectId: jobId,
+        createdAt: initialTime,
+        productUrl: request.productUrl,
+        prompt: request.prompt ?? "Make a short demo of the main value prop.",
+        durationCapSeconds: request.durationCapSeconds,
+        aspectRatio: request.aspectRatio,
+        onPhase: (phase: AiUrlDemoPhase) => {
+          activeStage = phase;
+          emit(statusForPhase(phase), `AI URL ${phase} started`);
+        },
+      });
+    }
 
     const result = GenerationResultSchema.parse({
       jobId,
       status: "completed",
-      projectPath: manualResult.projectPath,
+      projectPath: demoResult.projectPath,
       outputDirectory,
-      artifactPaths: manualResult.artifactPaths,
+      artifactPaths: demoResult.artifactPaths,
     });
 
     emit("completed", "Generation job completed", result.projectPath);

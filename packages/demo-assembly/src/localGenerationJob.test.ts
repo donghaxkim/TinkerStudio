@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import type { GenerationProgressEvent } from "@tinker/generation-contract";
 import { LocalGenerationJobError, runLocalGenerationJob, type ManualDemoRunner } from "./localGenerationJob.js";
+import type { RunAiUrlDemoInput, RunAiUrlDemoResult } from "./runAiUrlDemo.js";
+
+type AiUrlDemoRunner = (input: RunAiUrlDemoInput) => Promise<RunAiUrlDemoResult>;
 
 const times = [
   "2026-06-09T00:00:00.000Z",
@@ -37,6 +40,37 @@ const successfulManualRunner: ManualDemoRunner = async (input) => {
   };
 };
 
+const successfulAiUrlRunner: AiUrlDemoRunner = async (input) => {
+  assert.equal(input.projectId, "ai-url-job");
+  assert.ok(input.outputRoot.endsWith("generated/local-job/ai-url-job"));
+  assert.equal(input.productUrl, "http://127.0.0.1:3000/");
+  assert.equal(input.prompt, "Show the AI URL path.");
+
+  const phases = ["analysis", "planning", "verification", "capture", "assembly"] as const;
+  for (const phase of phases) {
+    input.onPhase?.(phase);
+  }
+
+  return {
+    projectPath: `${input.outputRoot}/demo-project.json`,
+    captureResultPath: `${input.outputRoot}/capture-result.json`,
+    outputRoot: input.outputRoot,
+    artifactPaths: [
+      `${input.outputRoot}/product-analysis.json`,
+      `${input.outputRoot}/storyboard.json`,
+      `${input.outputRoot}/capture-plan.json`,
+      `${input.outputRoot}/capture-result.json`,
+      `${input.outputRoot}/demo-project.json`,
+    ],
+    captureCounts: {
+      clips: 1,
+      screenshots: 1,
+      events: 3,
+      checkpoints: 2,
+    },
+  };
+};
+
 const events: GenerationProgressEvent[] = [];
 
 const result = await runLocalGenerationJob(
@@ -64,6 +98,57 @@ assert.deepEqual(events.map((event) => event.status), [
   "capturing",
   "assembling",
   "completed",
+]);
+
+const aiUrlEvents: GenerationProgressEvent[] = [];
+
+const aiUrlResult = await runLocalGenerationJob(
+  {
+    id: "ai-url-job",
+    durationCapSeconds: 10,
+    aspectRatio: "16:9",
+    mode: "ai-url-planning",
+    productUrl: "http://127.0.0.1:3000/",
+    prompt: "Show the AI URL path.",
+    outputDirectory: "generated/local-job/ai-url-job",
+  },
+  {
+    now: nextTime,
+    onProgress: (event) => aiUrlEvents.push(event),
+    runManualDemo: successfulManualRunner,
+    runAiUrlDemo: successfulAiUrlRunner,
+  },
+);
+
+assert.equal(aiUrlResult.jobId, "ai-url-job");
+assert.equal(aiUrlResult.status, "completed");
+assert.ok(aiUrlResult.projectPath.endsWith("generated/local-job/ai-url-job/demo-project.json"));
+assert.deepEqual(aiUrlResult.artifactPaths.map((artifactPath) => artifactPath.split("/").at(-1)), [
+  "product-analysis.json",
+  "storyboard.json",
+  "capture-plan.json",
+  "capture-result.json",
+  "demo-project.json",
+]);
+assert.deepEqual(aiUrlEvents.map((event) => event.status), [
+  "queued",
+  "running",
+  "running",
+  "running",
+  "running",
+  "capturing",
+  "assembling",
+  "completed",
+]);
+assert.deepEqual(aiUrlEvents.map((event) => event.message), [
+  "Generation job queued",
+  "Generation job running",
+  "AI URL analysis started",
+  "AI URL planning started",
+  "AI URL verification started",
+  "AI URL capture started",
+  "AI URL assembly started",
+  "Generation job completed",
 ]);
 
 const invalidEvents: GenerationProgressEvent[] = [];
@@ -116,8 +201,7 @@ await assert.rejects(
 
 assert.deepEqual(unsafeEvents.map((event) => event.status), ["failed"]);
 
-const unsupportedModeEvents: GenerationProgressEvent[] = [];
-let unsupportedModeRunnerCalled = false;
+const planningFailureEvents: GenerationProgressEvent[] = [];
 
 await assert.rejects(
   () =>
@@ -133,33 +217,21 @@ await assert.rejects(
       },
       {
         now: () => "2026-06-09T00:00:12.000Z",
-        onProgress: (event) => unsupportedModeEvents.push(event),
-        runManualDemo: async (input) => {
-          unsupportedModeRunnerCalled = true;
-
-          return {
-            projectPath: `${input.outputRoot}/demo-project.json`,
-            captureResultPath: `${input.outputRoot}/capture-result.json`,
-            outputRoot: input.outputRoot,
-            artifactPaths: [`${input.outputRoot}/capture-result.json`],
-            captureCounts: {
-              clips: 1,
-              screenshots: 0,
-              events: 0,
-              checkpoints: 0,
-            },
-          };
+        onProgress: (event) => planningFailureEvents.push(event),
+        runAiUrlDemo: async (input) => {
+          input.onPhase?.("analysis");
+          input.onPhase?.("planning");
+          throw new Error("Planner returned malformed storyboard JSON");
         },
       },
     ),
   (error: unknown) => {
     assert.ok(error instanceof LocalGenerationJobError);
-    assert.equal(error.generationError.stage, "validation");
+    assert.equal(error.generationError.stage, "planning");
     return true;
   },
 );
 
-assert.equal(unsupportedModeRunnerCalled, false);
-assert.deepEqual(unsupportedModeEvents.map((event) => event.status), ["failed"]);
+assert.equal(planningFailureEvents.at(-1)?.status, "failed");
 
 console.log("local generation job tests passed");
