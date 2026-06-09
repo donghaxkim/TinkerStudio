@@ -47,6 +47,23 @@ try {
   );
   assert.equal(browserClosed, true);
 
+  let nonHttpLaunchCount = 0;
+  await assert.rejects(
+    () =>
+      analyzeWebsiteWithBrowserLauncher("file:///tmp/product.html", {}, async () => {
+        nonHttpLaunchCount += 1;
+
+        return {
+          newPage: async () => {
+            throw new Error("browser should not launch for non-http URLs");
+          },
+          close: async () => undefined,
+        };
+      }),
+    /Website URL must be an http or https URL/,
+  );
+  assert.equal(nonHttpLaunchCount, 0);
+
   const analysis = await analyzeWebsite(server.url, {
     outputDirectory,
     screenshotFileName: "analysis.png",

@@ -1,10 +1,17 @@
 import { z } from "zod";
 
-const OptionalUrlSchema = z.string().url();
+const PublicUrlSchema = z.string().url().refine((value) => {
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "URL must use http or https");
 
 const BaseCreateDemoRequestSchema = z.object({
   id: z.string().min(1).optional(),
-  repoUrl: OptionalUrlSchema.optional(),
+  repoUrl: PublicUrlSchema.optional(),
   prompt: z.string().min(1).optional(),
   durationCapSeconds: z.number().positive(),
   aspectRatio: z.enum(["16:9", "9:16", "1:1"]),
@@ -17,12 +24,12 @@ const BaseCreateDemoRequestSchema = z.object({
 
 const ManualFixtureRequestSchema = BaseCreateDemoRequestSchema.extend({
   mode: z.literal("manual-fixture"),
-  productUrl: OptionalUrlSchema.optional(),
+  productUrl: PublicUrlSchema.optional(),
 });
 
 const AiUrlPlanningRequestSchema = BaseCreateDemoRequestSchema.extend({
   mode: z.literal("ai-url-planning"),
-  productUrl: OptionalUrlSchema,
+  productUrl: PublicUrlSchema,
 });
 
 export const CreateDemoRequestSchema = z.discriminatedUnion("mode", [

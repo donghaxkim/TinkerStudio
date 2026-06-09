@@ -164,6 +164,30 @@ assert.throws(
     ),
   /Capture plan is invalid/,
 );
+assert.throws(
+  () =>
+    parseCapturePlanJson(
+      JSON.stringify({
+        ...capturePlanFixture,
+        steps: Array.from({ length: 51 }, () => ({ type: "pause", ms: 0 })),
+      }),
+    ),
+  /Capture plan is invalid/,
+);
+assert.throws(
+  () =>
+    parseCapturePlanJson(
+      JSON.stringify({
+        ...capturePlanFixture,
+        expectedCheckpoints: Array.from({ length: 21 }, (_, index) => ({
+          id: `checkpoint-${index}`,
+          label: `Checkpoint ${index}`,
+          selector: "body",
+        })),
+      }),
+    ),
+  /Capture plan is invalid/,
+);
 
 const fixturePlanner = createFixtureAiUrlPlanner();
 const fixtureResult = await fixturePlanner({

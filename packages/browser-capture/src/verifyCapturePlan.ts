@@ -2,6 +2,8 @@ import { CaptureError, type CapturePlan, type CaptureStep, type VerifyCapturePla
 
 export const MAX_SELECTOR_TIMEOUT_MS = 10_000;
 export const MAX_PAUSE_MS = 5_000;
+export const MAX_CAPTURE_STEPS = 50;
+export const MAX_CAPTURE_CHECKPOINTS = 20;
 
 function isPositiveNumber(value: number) {
   return Number.isFinite(value) && value > 0;
@@ -123,9 +125,21 @@ export function verifyCapturePlan(plan: CapturePlan): VerifyCapturePlanResult {
     addIssue(issues, "steps", "at least one capture step is required");
   }
 
-  plan.steps.forEach((step, index) => verifyStep(step, index, issues));
+  if (plan.steps.length > MAX_CAPTURE_STEPS) {
+    addIssue(issues, "steps", `capture plan must have at most ${MAX_CAPTURE_STEPS} steps`);
+  }
 
-  plan.expectedCheckpoints.forEach((checkpoint, index) => {
+  if (plan.expectedCheckpoints.length > MAX_CAPTURE_CHECKPOINTS) {
+    addIssue(
+      issues,
+      "expectedCheckpoints",
+      `capture plan must have at most ${MAX_CAPTURE_CHECKPOINTS} expected checkpoints`,
+    );
+  }
+
+  plan.steps.slice(0, MAX_CAPTURE_STEPS).forEach((step, index) => verifyStep(step, index, issues));
+
+  plan.expectedCheckpoints.slice(0, MAX_CAPTURE_CHECKPOINTS).forEach((checkpoint, index) => {
     const path = `expectedCheckpoints.${index}`;
     if (!hasText(checkpoint.id)) {
       addIssue(issues, `${path}.id`, "checkpoint id is required");

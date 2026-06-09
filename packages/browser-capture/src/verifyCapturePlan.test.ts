@@ -107,4 +107,21 @@ assert.deepEqual(oversizedTimingResult.issues, [
   { path: "steps.1.ms", message: "pause ms must be at most 5000" },
 ]);
 
+const oversizedPlan: CapturePlan = {
+  ...validPlan,
+  steps: Array.from({ length: 51 }, () => ({ type: "pause", ms: 0 })),
+  expectedCheckpoints: Array.from({ length: 21 }, (_, index) => ({
+    id: `checkpoint-${index}`,
+    label: `Checkpoint ${index}`,
+    selector: "body",
+  })),
+};
+
+const oversizedPlanResult = verifyCapturePlan(oversizedPlan);
+assert.equal(oversizedPlanResult.valid, false);
+assert.deepEqual(oversizedPlanResult.issues.slice(0, 2), [
+  { path: "steps", message: "capture plan must have at most 50 steps" },
+  { path: "expectedCheckpoints", message: "capture plan must have at most 20 expected checkpoints" },
+]);
+
 console.log("verifyCapturePlan tests passed");

@@ -8,6 +8,19 @@ const maxItems = 12;
 
 export type BrowserLauncher = (options: LaunchOptions) => Promise<Pick<Browser, "newPage" | "close">>;
 
+function assertHttpUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return;
+    }
+  } catch {
+    // Fall through to a consistent product-analysis validation error.
+  }
+
+  throw new Error("Website URL must be an http or https URL");
+}
+
 function cleanText(value: string | null | undefined) {
   return (value ?? "").replace(/\s+/g, " ").trim();
 }
@@ -125,6 +138,8 @@ export async function analyzeWebsiteWithBrowserLauncher(
   options: AnalyzeWebsiteOptions,
   launchBrowser: BrowserLauncher,
 ): Promise<ProductAnalysis> {
+  assertHttpUrl(url);
+
   const browser = await launchBrowser({ headless: options.headless ?? true });
   let page: Page | undefined;
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;

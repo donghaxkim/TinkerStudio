@@ -1,13 +1,17 @@
-import type { CapturePlan } from "@tinker/browser-capture";
-import { assertValidCapturePlan } from "@tinker/browser-capture";
+import {
+  MAX_CAPTURE_CHECKPOINTS,
+  MAX_CAPTURE_STEPS,
+  MAX_PAUSE_MS,
+  MAX_SELECTOR_TIMEOUT_MS,
+  assertValidCapturePlan,
+  type CapturePlan,
+} from "@tinker/browser-capture";
 import type { ProductAnalysis } from "@tinker/product-analysis";
 import { z } from "zod";
 import type { AspectRatio, ManualStoryboard } from "./types.js";
 
 const MISSING_ENV_MESSAGE =
   "TINKER_AI_URL_PLANNER_ENDPOINT, TINKER_AI_URL_PLANNER_API_KEY, and TINKER_AI_URL_PLANNER_MODEL are required";
-const MAX_SELECTOR_TIMEOUT_MS = 10_000;
-const MAX_PAUSE_MS = 5_000;
 const MAX_PLANNER_ERROR_BODY_LENGTH = 200;
 
 export type AiUrlPlannerInput = {
@@ -129,7 +133,8 @@ const capturePlanSchema = z
           pauseStepSchema,
         ]),
       )
-      .min(1),
+      .min(1)
+      .max(MAX_CAPTURE_STEPS),
     expectedCheckpoints: z.array(
       z
         .object({ id: nonEmptyString, label: nonEmptyString, selector: optionalNonEmptyString, text: optionalNonEmptyString })
@@ -138,7 +143,7 @@ const capturePlanSchema = z
           (checkpoint) => checkpoint.selector !== undefined || checkpoint.text !== undefined,
           "checkpoint requires selector or text",
         ),
-    ),
+    ).max(MAX_CAPTURE_CHECKPOINTS),
   })
   .strict();
 

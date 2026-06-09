@@ -94,6 +94,29 @@ assert.equal(
   false,
 );
 
+for (const productUrl of ["file:///tmp/product.html", "data:text/html,<h1>Product</h1>"]) {
+  assert.equal(
+    CreateDemoRequestSchema.safeParse({
+      durationCapSeconds: 12,
+      aspectRatio: "16:9",
+      mode: "ai-url-planning",
+      productUrl,
+      prompt: "Non-public URL schemes should fail.",
+    }).success,
+    false,
+  );
+}
+
+assert.equal(
+  CreateDemoRequestSchema.safeParse({
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    mode: "manual-fixture",
+    repoUrl: "file:///tmp/repo",
+  }).success,
+  false,
+);
+
 assert.equal(
   CreateDemoRequestSchema.safeParse({
     durationCapSeconds: 12,
