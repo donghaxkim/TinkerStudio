@@ -60,6 +60,22 @@ importers:
         specifier: ^4.21.0
         version: 4.22.4
 
+  packages/product-analysis:
+    dependencies:
+      '@tinker/browser-capture':
+        specifier: workspace:*
+        version: link:../browser-capture
+      playwright:
+        specifier: ^1.58.2
+        version: 1.60.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.19.3
+        version: 22.19.20
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.4
+
   packages/project-schema:
     dependencies:
       zod:
