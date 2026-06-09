@@ -4,6 +4,17 @@ Source of truth: `docs/vision.md`, `docs/architecture.md`, `docs/prd.md`, `docs/
 
 Status: planning branch document for Person B. Do not treat this as a replacement for `docs/architecture.md`; it is the execution design for Person B's side of that architecture.
 
+## v0.2 Simplified Editor Update
+
+Dongha's current MVP direction supersedes older caption/callout/narration items in this document.
+
+Build a Screen Studio + Cursor-inspired web UI:
+
+- Screen Studio side: preview, timeline, cursor-following auto zoom, manual zoom, trim, speed, and basic clip edits.
+- Cursor side: full-height AI chat with selected time range and current frame attachments.
+- Out of scope: captions, callouts, narration, separate audio tracks, text overlays, and a permanent inspector.
+- All operation times are project timeline seconds using `[start, end)` ranges with `0 <= start < end <= project.duration`.
+
 ## Non-negotiable architecture rules
 
 - V1 is web apps only. Electron/desktop shell waits until the local web loop works.
@@ -26,6 +37,7 @@ Status: planning branch document for Person B. Do not treat this as a replacemen
   - `packages/capture`
 - Schema changes are isolated and reviewed by both people.
 - Keep the editor demo-specific. Do not build a general CapCut clone.
+- For MVP, do not build captions, callouts, narration, or separate audio editing.
 
 ## Branch/worktree policy
 
@@ -56,10 +68,10 @@ apps/web
   -> validate with DemoProjectSchema
   -> render project metadata
   -> render timeline rows
-  -> render preview overlays
+  -> render zoom overlays
 ```
 
-This task proves the editable project model. It does not implement Create Demo, AI chat, manual edit controls, persistence, export, or Electron.
+This task proves the editable project model. It includes the simplified full-height chat shell and mock proposals for zoom, trim, and speed. It does not implement Create Demo, persistence, export, or Electron.
 
 ### Package boundaries
 
@@ -127,7 +139,7 @@ type EditorUiState = {
 ```ts
 type TimelineItem = {
   id: string;
-  kind: "clip" | "caption" | "zoom" | "callout";
+  kind: "clip" | "zoom";
   label: string;
   start: number;
   end: number;
@@ -136,7 +148,7 @@ type TimelineItem = {
 
 type TimelineRow = {
   id: string;
-  kind: "track" | "captions" | "zooms" | "callouts";
+  kind: "track" | "zooms";
   label: string;
   items: TimelineItem[];
 };
@@ -152,10 +164,9 @@ function getActivePreviewOverlays(project: DemoProject, time: number): ActivePre
 - App opens locally and loads the sample fixture.
 - Invalid projects produce readable validation errors.
 - Metadata displays title, duration, fps, aspect ratio, asset count, and track count.
-- Timeline displays video/audio tracks plus captions/zooms/callouts rows.
+- Timeline displays video tracks plus zoom rows.
 - Click-to-seek updates current time.
-- Active caption is visible at `3s`.
-- Active zoom/callout are visible at `14s`.
+- Active manual or auto zoom is visible in preview.
 - Missing sample assets show placeholders, not crashes.
 - `pnpm validate:schema`, package tests, typecheck, and web build pass.
 
@@ -210,12 +221,14 @@ packages/ai-edit-ui/src/index.ts
 
 ### Operation semantics
 
-Supported V1 operations already exist in schema:
+Supported V1 operations:
 
+- `auto_zoom`
 - `add_zoom`
-- `add_callout`
-- `add_caption`
-- `remove_entity`
+- `trim`
+- `speed`
+- `remove_zoom`
+- `remove_clip`
 
 Rules:
 
@@ -223,7 +236,7 @@ Rules:
 - Validate proposal and each operation.
 - Enforce operation ranges within project duration.
 - Enforce operations within selected `targetRange` by default.
-- `remove_entity` must reference an existing entity.
+- Remove operations must reference an existing zoom or clip.
 - Removing clips removes timeline references only; it does not delete assets.
 - Validate the resulting project with `DemoProjectSchema`.
 - Return typed errors instead of producing invalid projects.

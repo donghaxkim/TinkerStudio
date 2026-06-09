@@ -6,6 +6,18 @@ Draft architecture for the first version of the product.
 
 This document defines the product shape, system boundaries, ownership split, and core data contract. It is intentionally not an implementation task list.
 
+## v0.2 MVP Simplification
+
+Dongha's current MVP editor direction is narrower than the older broad demo-editor references below.
+
+The editor should be a **Screen Studio + Cursor-inspired web UI**:
+
+- left side: preview, playback, timeline, auto zoom, manual zoom, trim, speed
+- right side: full-height AI chat with selected range and current frame attachments
+- excluded for MVP: captions, callouts, narration, separate audio tracks, text overlays, and permanent object inspectors
+
+All editor operations use project timeline seconds and start-inclusive, end-exclusive ranges: `[start, end)`.
+
 ## Product Shape
 
 The product is **Screen Studio for agents**: a local-first app that can turn a software product into an editable, polished demo video.

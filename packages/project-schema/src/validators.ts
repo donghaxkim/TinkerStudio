@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROJECT_SCHEMA_VERSION = "0.1.0" as const;
+export const PROJECT_SCHEMA_VERSION = "0.2.0" as const;
 
 type IssuePath = Array<string | number>;
 type TimeRange = { start: number; end: number };
@@ -9,18 +9,20 @@ function addCustomIssue(ctx: z.RefinementCtx, path: IssuePath, message: string) 
   ctx.addIssue({ code: "custom", path, message });
 }
 
-function validateOrderedRange(ctx: z.RefinementCtx, range: TimeRange, path: IssuePath = []) {
-  if (range.end <= range.start) {
-    addCustomIssue(ctx, [...path, "end"], "end must be greater than start");
-  }
-}
-
-function validateRangeWithinDuration(
+function validateTimelineRange(
   ctx: z.RefinementCtx,
   range: TimeRange,
   duration: number,
   path: IssuePath = [],
 ) {
+  if (range.start < 0) {
+    addCustomIssue(ctx, [...path, "start"], "start must be greater than or equal to 0");
+  }
+
+  if (range.end <= range.start) {
+    addCustomIssue(ctx, [...path, "end"], "end must be greater than start");
+  }
+
   if (range.end > duration) {
     addCustomIssue(ctx, [...path, "end"], "end must be within project duration");
   }
@@ -61,193 +63,221 @@ function validateUniqueIdsWithPaths<T extends { id: string }>(
 
 export const AspectRatioSchema = z.enum(["16:9", "9:16", "1:1"]);
 
-export const AssetTypeSchema = z.enum([
-  "video",
-  "audio",
-  "image",
-  "svg",
-  "json",
-  "trace",
-]);
+export const AssetTypeSchema = z.enum(["video", "image", "svg", "json", "trace"]);
 
 export const AssetSourceSchema = z.enum(["local", "remote", "generated", "captured"]);
 
-export const AssetSchema = z.object({
-  id: z.string().min(1),
-  type: AssetTypeSchema,
-  uri: z.string().min(1),
-  source: AssetSourceSchema,
-  name: z.string().min(1).optional(),
-  mimeType: z.string().min(1).optional(),
-  duration: z.number().nonnegative().optional(),
-  width: z.number().positive().optional(),
-  height: z.number().positive().optional(),
-  sizeBytes: z.number().nonnegative().optional(),
-  metadata: z.record(z.string(), z.unknown()).default({}),
-});
+export const AssetSchema = z
+  .object({
+    id: z.string().min(1),
+    type: AssetTypeSchema,
+    uri: z.string().min(1),
+    source: AssetSourceSchema,
+    name: z.string().min(1).optional(),
+    mimeType: z.string().min(1).optional(),
+    duration: z.number().nonnegative().optional(),
+    width: z.number().positive().optional(),
+    height: z.number().positive().optional(),
+    sizeBytes: z.number().nonnegative().optional(),
+    metadata: z.record(z.string(), z.unknown()).default({}),
+  })
+  .strict();
 
-export const ClipSchema = z.object({
-  id: z.string().min(1),
-  assetId: z.string().min(1),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  sourceStart: z.number().nonnegative().default(0),
-  sourceEnd: z.number().positive().optional(),
-  name: z.string().min(1).optional(),
-  muted: z.boolean().default(false),
-  opacity: z.number().min(0).max(1).default(1),
-  transform: z
-    .object({
-      x: z.number().default(0),
-      y: z.number().default(0),
-      scale: z.number().positive().default(1),
-      rotation: z.number().default(0),
-    })
-    .default({ x: 0, y: 0, scale: 1, rotation: 0 }),
-});
+export const ClipSchema = z
+  .object({
+    id: z.string().min(1),
+    assetId: z.string().min(1),
+    start: z.number().nonnegative(),
+    end: z.number().positive(),
+    sourceStart: z.number().nonnegative().default(0),
+    sourceEnd: z.number().positive().optional(),
+    playbackRate: z.number().positive().default(1),
+    name: z.string().min(1).optional(),
+    muted: z.boolean().default(false),
+    opacity: z.number().min(0).max(1).default(1),
+    transform: z
+      .object({
+        x: z.number().default(0),
+        y: z.number().default(0),
+        scale: z.number().positive().default(1),
+        rotation: z.number().default(0),
+      })
+      .strict()
+      .default({ x: 0, y: 0, scale: 1, rotation: 0 }),
+  })
+  .strict();
 
-export const TrackTypeSchema = z.enum(["video", "audio", "overlay"]);
+export const TrackTypeSchema = z.enum(["video"]);
 
-export const TrackSchema = z.object({
-  id: z.string().min(1),
-  type: TrackTypeSchema,
-  name: z.string().min(1),
-  locked: z.boolean().default(false),
-  hidden: z.boolean().default(false),
-  clips: z.array(ClipSchema).default([]),
-});
+export const TrackSchema = z
+  .object({
+    id: z.string().min(1),
+    type: TrackTypeSchema,
+    name: z.string().min(1),
+    locked: z.boolean().default(false),
+    hidden: z.boolean().default(false),
+    clips: z.array(ClipSchema).default([]),
+  })
+  .strict();
 
-export const CaptionSchema = z.object({
-  id: z.string().min(1),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  text: z.string().min(1),
-  style: z
-    .object({
-      position: z.enum(["bottom", "center", "top"]).default("bottom"),
-      fontSize: z.number().positive().optional(),
-      color: z.string().optional(),
-      backgroundColor: z.string().optional(),
-    })
-    .default({ position: "bottom" }),
-});
+export const RectSchema = z
+  .object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number().positive(),
+    height: z.number().positive(),
+  })
+  .strict();
 
-export const RectSchema = z.object({
-  x: z.number(),
-  y: z.number(),
-  width: z.number().positive(),
-  height: z.number().positive(),
-});
+export const ZoomKeyframePointSchema = z
+  .object({
+    time: z.number().nonnegative(),
+    target: RectSchema,
+  })
+  .strict();
 
-export const ZoomKeyframeSchema = z.object({
-  id: z.string().min(1),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  target: RectSchema,
-  scale: z.number().positive().optional(),
-  easing: z.enum(["linear", "easeIn", "easeOut", "easeInOut"]).default("easeInOut"),
-});
+export const ManualZoomSchema = z
+  .object({
+    id: z.string().min(1),
+    mode: z.literal("manual").default("manual"),
+    start: z.number().nonnegative(),
+    end: z.number().positive(),
+    target: RectSchema,
+    scale: z.number().positive(),
+    easing: z.enum(["linear", "easeIn", "easeOut", "easeInOut"]).default("easeInOut"),
+  })
+  .strict();
+
+export const AutoZoomSchema = z
+  .object({
+    id: z.string().min(1),
+    mode: z.literal("auto"),
+    start: z.number().nonnegative(),
+    end: z.number().positive(),
+    scale: z.number().positive(),
+    keyframes: z.array(ZoomKeyframePointSchema).min(1),
+    easing: z.enum(["linear", "easeIn", "easeOut", "easeInOut"]).default("easeInOut"),
+  })
+  .strict();
+
+export const ZoomRegionSchema = z.discriminatedUnion("mode", [ManualZoomSchema, AutoZoomSchema]);
 
 export const CursorEventSchema = z.discriminatedUnion("type", [
-  z.object({
-    id: z.string().min(1).optional(),
-    time: z.number().nonnegative(),
-    type: z.literal("move"),
-    x: z.number(),
-    y: z.number(),
-  }),
-  z.object({
-    id: z.string().min(1).optional(),
-    time: z.number().nonnegative(),
-    type: z.literal("click"),
-    x: z.number(),
-    y: z.number(),
-    label: z.string().optional(),
-  }),
-  z.object({
-    id: z.string().min(1).optional(),
-    time: z.number().nonnegative(),
-    type: z.literal("scroll"),
-    x: z.number(),
-    y: z.number(),
-    deltaX: z.number().default(0),
-    deltaY: z.number().default(0),
-  }),
-]);
-
-export const CalloutPositionSchema = z.enum([
-  "top-left",
-  "top-right",
-  "bottom-left",
-  "bottom-right",
-  "center",
-]);
-
-export const CalloutSchema = z.object({
-  id: z.string().min(1),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  text: z.string().min(1),
-  position: CalloutPositionSchema.default("top-right"),
-  target: RectSchema.optional(),
-  style: z
+  z
     .object({
-      variant: z.enum(["label", "arrow", "spotlight"]).default("label"),
-      color: z.string().optional(),
+      id: z.string().min(1).optional(),
+      time: z.number().nonnegative(),
+      type: z.literal("move"),
+      x: z.number(),
+      y: z.number(),
     })
-    .default({ variant: "label" }),
-});
+    .strict(),
+  z
+    .object({
+      id: z.string().min(1).optional(),
+      time: z.number().nonnegative(),
+      type: z.literal("click"),
+      x: z.number(),
+      y: z.number(),
+      label: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      id: z.string().min(1).optional(),
+      time: z.number().nonnegative(),
+      type: z.literal("scroll"),
+      x: z.number(),
+      y: z.number(),
+      deltaX: z.number().default(0),
+      deltaY: z.number().default(0),
+    })
+    .strict(),
+]);
 
-export const AddZoomOperationSchema = z.object({
-  type: z.literal("add_zoom"),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  target: RectSchema,
-  easing: z.enum(["linear", "easeIn", "easeOut", "easeInOut"]).default("easeInOut"),
-});
+export const AutoZoomOperationSchema = z
+  .object({
+    type: z.literal("auto_zoom"),
+    start: z.number().nonnegative(),
+    end: z.number().positive(),
+    scale: z.number().positive(),
+  })
+  .strict();
 
-export const AddCalloutOperationSchema = z.object({
-  type: z.literal("add_callout"),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  text: z.string().min(1),
-  position: CalloutPositionSchema.default("top-right"),
-  target: RectSchema.optional(),
-});
+export const AddZoomOperationSchema = z
+  .object({
+    type: z.literal("add_zoom"),
+    start: z.number().nonnegative(),
+    end: z.number().positive(),
+    target: RectSchema,
+    scale: z.number().positive(),
+    easing: z.enum(["linear", "easeIn", "easeOut", "easeInOut"]).default("easeInOut"),
+  })
+  .strict();
 
-export const AddCaptionOperationSchema = z.object({
-  type: z.literal("add_caption"),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  text: z.string().min(1),
-});
+export const TrimOperationSchema = z
+  .object({
+    type: z.literal("trim"),
+    start: z.number().nonnegative(),
+    end: z.number().positive(),
+  })
+  .strict();
 
-export const RemoveEntityOperationSchema = z.object({
-  type: z.literal("remove_entity"),
-  entityType: z.enum(["caption", "zoom", "callout", "clip"]),
-  id: z.string().min(1),
-});
+export const SpeedValueSchema = z.union([
+  z.literal(0.5),
+  z.literal(1),
+  z.literal(2),
+  z.literal(4),
+]);
+
+export const SpeedOperationSchema = z
+  .object({
+    type: z.literal("speed"),
+    start: z.number().nonnegative(),
+    end: z.number().positive(),
+    speed: SpeedValueSchema,
+  })
+  .strict();
+
+export const RemoveZoomOperationSchema = z
+  .object({
+    type: z.literal("remove_zoom"),
+    id: z.string().min(1),
+  })
+  .strict();
+
+export const RemoveClipOperationSchema = z
+  .object({
+    type: z.literal("remove_clip"),
+    id: z.string().min(1),
+  })
+  .strict();
 
 export const AIEditOperationSchema = z.discriminatedUnion("type", [
+  AutoZoomOperationSchema,
   AddZoomOperationSchema,
-  AddCalloutOperationSchema,
-  AddCaptionOperationSchema,
-  RemoveEntityOperationSchema,
+  TrimOperationSchema,
+  SpeedOperationSchema,
+  RemoveZoomOperationSchema,
+  RemoveClipOperationSchema,
 ]);
 
-export const AIEditSchema = z.object({
-  id: z.string().min(1),
-  createdAt: z.string().datetime(),
-  prompt: z.string().min(1),
-  targetRange: z
-    .object({
-      start: z.number().nonnegative(),
-      end: z.number().positive(),
-    })
-    .optional(),
-  operations: z.array(AIEditOperationSchema),
-  status: z.enum(["proposed", "accepted", "rejected"]).default("proposed"),
-});
+export const AIEditSchema = z
+  .object({
+    id: z.string().min(1),
+    createdAt: z.string().datetime(),
+    prompt: z.string().min(1),
+    targetRange: z
+      .object({
+        start: z.number().nonnegative(),
+        end: z.number().positive(),
+      })
+      .strict()
+      .optional(),
+    operations: z.array(AIEditOperationSchema),
+    status: z.enum(["proposed", "accepted", "rejected"]).default("proposed"),
+  })
+  .strict();
 
 export const DemoProjectSchema = z
   .object({
@@ -261,10 +291,8 @@ export const DemoProjectSchema = z
     updatedAt: z.string().datetime(),
     assets: z.array(AssetSchema),
     tracks: z.array(TrackSchema),
-    captions: z.array(CaptionSchema).default([]),
-    zooms: z.array(ZoomKeyframeSchema).default([]),
+    zooms: z.array(ZoomRegionSchema).default([]),
     cursorEvents: z.array(CursorEventSchema).default([]),
-    callouts: z.array(CalloutSchema).default([]),
     aiEditHistory: z.array(AIEditSchema).default([]),
     metadata: z
       .object({
@@ -273,21 +301,22 @@ export const DemoProjectSchema = z
         prompt: z.string().optional(),
         notes: z.array(z.string()).default([]),
       })
+      .strict()
       .default({ notes: [] }),
   })
+  .strict()
   .superRefine((project, ctx) => {
     const assetIds = new Set(project.assets.map((asset) => asset.id));
 
     validateUniqueIds(ctx, project.assets, ["assets"]);
     validateUniqueIds(ctx, project.tracks, ["tracks"]);
-    validateUniqueIds(ctx, project.captions, ["captions"]);
     validateUniqueIds(ctx, project.zooms, ["zooms"]);
-    validateUniqueIds(ctx, project.callouts, ["callouts"]);
     validateUniqueIds(ctx, project.aiEditHistory, ["aiEditHistory"]);
 
     const clips = project.tracks.flatMap((track, trackIndex) =>
       track.clips.map((clip, clipIndex) => ({ clip, trackIndex, clipIndex })),
     );
+
     validateUniqueIdsWithPaths(
       ctx,
       clips.map(({ clip, trackIndex, clipIndex }) => ({
@@ -299,8 +328,7 @@ export const DemoProjectSchema = z
     clips.forEach(({ clip, trackIndex, clipIndex }) => {
       const path = ["tracks", trackIndex, "clips", clipIndex];
 
-      validateOrderedRange(ctx, clip, path);
-      validateRangeWithinDuration(ctx, clip, project.duration, path);
+      validateTimelineRange(ctx, clip, project.duration, path);
 
       if (clip.sourceEnd !== undefined && clip.sourceEnd <= clip.sourceStart) {
         addCustomIssue(ctx, [...path, "sourceEnd"], "sourceEnd must be greater than sourceStart");
@@ -311,22 +339,21 @@ export const DemoProjectSchema = z
       }
     });
 
-    project.captions.forEach((caption, index) => {
-      const path = ["captions", index];
-      validateOrderedRange(ctx, caption, path);
-      validateRangeWithinDuration(ctx, caption, project.duration, path);
-    });
-
     project.zooms.forEach((zoom, index) => {
       const path = ["zooms", index];
-      validateOrderedRange(ctx, zoom, path);
-      validateRangeWithinDuration(ctx, zoom, project.duration, path);
-    });
+      validateTimelineRange(ctx, zoom, project.duration, path);
 
-    project.callouts.forEach((callout, index) => {
-      const path = ["callouts", index];
-      validateOrderedRange(ctx, callout, path);
-      validateRangeWithinDuration(ctx, callout, project.duration, path);
+      if (zoom.mode === "auto") {
+        zoom.keyframes.forEach((keyframe, keyframeIndex) => {
+          if (keyframe.time < zoom.start || keyframe.time >= zoom.end) {
+            addCustomIssue(
+              ctx,
+              [...path, "keyframes", keyframeIndex, "time"],
+              "auto zoom keyframe time must be within [start, end)",
+            );
+          }
+        });
+      }
     });
 
     project.cursorEvents.forEach((event, index) => {
@@ -338,18 +365,16 @@ export const DemoProjectSchema = z
     project.aiEditHistory.forEach((edit, editIndex) => {
       if (edit.targetRange) {
         const path = ["aiEditHistory", editIndex, "targetRange"];
-        validateOrderedRange(ctx, edit.targetRange, path);
-        validateRangeWithinDuration(ctx, edit.targetRange, project.duration, path);
+        validateTimelineRange(ctx, edit.targetRange, project.duration, path);
       }
 
       edit.operations.forEach((operation, operationIndex) => {
-        if (operation.type === "remove_entity") {
+        if (operation.type === "remove_zoom" || operation.type === "remove_clip") {
           return;
         }
 
         const path = ["aiEditHistory", editIndex, "operations", operationIndex];
-        validateOrderedRange(ctx, operation, path);
-        validateRangeWithinDuration(ctx, operation, project.duration, path);
+        validateTimelineRange(ctx, operation, project.duration, path);
       });
     });
   });

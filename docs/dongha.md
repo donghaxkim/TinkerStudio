@@ -2,6 +2,38 @@
 
 Person B checklist for building the editor, AI edit UX, and export side of **Tinker / Screen Studio for agents**.
 
+## v0.2 MVP Update
+
+Dongha's current direction is a **Screen Studio + Cursor-inspired web UI**.
+
+Build only:
+
+- video preview
+- video timeline
+- cursor-following auto zoom
+- Screen Studio-style manual zoom
+- trim
+- speed
+- selected range/current frame attachments
+- full-height AI chat with mock zoom/trim/speed proposals
+
+Do not build for MVP:
+
+- captions
+- callouts
+- narration
+- separate audio tracks
+- text overlays
+- a permanent inspector
+
+All operation ranges use project timeline seconds and `[start, end)` semantics:
+
+```text
+0 <= start < end <= project.duration
+```
+
+Older checklist items mentioning captions, callouts, narration, or separate audio are obsolete for the MVP.
+
 ## Role
 
 You are **Person B**.
