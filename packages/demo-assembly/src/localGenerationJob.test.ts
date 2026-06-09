@@ -116,4 +116,50 @@ await assert.rejects(
 
 assert.deepEqual(unsafeEvents.map((event) => event.status), ["failed"]);
 
+const unsupportedModeEvents: GenerationProgressEvent[] = [];
+let unsupportedModeRunnerCalled = false;
+
+await assert.rejects(
+  () =>
+    runLocalGenerationJob(
+      {
+        id: "ai-url-job",
+        durationCapSeconds: 10,
+        aspectRatio: "16:9",
+        mode: "ai-url-planning",
+        productUrl: "http://127.0.0.1:3000/",
+        prompt: "Make a short demo of the main value prop.",
+        outputDirectory: "generated/local-job/ai-url-job",
+      },
+      {
+        now: () => "2026-06-09T00:00:12.000Z",
+        onProgress: (event) => unsupportedModeEvents.push(event),
+        runManualDemo: async (input) => {
+          unsupportedModeRunnerCalled = true;
+
+          return {
+            projectPath: `${input.outputRoot}/demo-project.json`,
+            captureResultPath: `${input.outputRoot}/capture-result.json`,
+            outputRoot: input.outputRoot,
+            artifactPaths: [`${input.outputRoot}/capture-result.json`],
+            captureCounts: {
+              clips: 1,
+              screenshots: 0,
+              events: 0,
+              checkpoints: 0,
+            },
+          };
+        },
+      },
+    ),
+  (error: unknown) => {
+    assert.ok(error instanceof LocalGenerationJobError);
+    assert.equal(error.generationError.stage, "validation");
+    return true;
+  },
+);
+
+assert.equal(unsupportedModeRunnerCalled, false);
+assert.deepEqual(unsupportedModeEvents.map((event) => event.status), ["failed"]);
+
 console.log("local generation job tests passed");

@@ -118,6 +118,13 @@ export async function runLocalGenerationJob(
   }
 
   const request: CreateDemoRequest = parsedRequest.data;
+
+  if (request.mode !== "manual-fixture") {
+    const failure = createFailure(jobId, "validation", `Unsupported local generation mode: ${request.mode}`);
+    emit("failed", failure.message);
+    throw new LocalGenerationJobError(failure);
+  }
+
   let outputDirectory: string;
 
   try {
