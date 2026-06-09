@@ -14,12 +14,14 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsc -p tsconfig.json --noEmit",
-    "test": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx src/compileProject.test.ts",
-    "generate:manual-demo": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx scripts/generateManualDemo.ts"
+    "typecheck": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx src/compileProject.test.ts && tsx src/localGenerationJob.test.ts",
+    "generate:manual-demo": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx scripts/generateManualDemo.ts",
+    "generate:local-job": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx scripts/generateLocalJob.ts"
   },
   "dependencies": {
     "@tinker/browser-capture": "workspace:*",
+    "@tinker/generation-contract": "workspace:*",
     "@tinker/project-schema": "workspace:*",
     "zod": "^4.2.1"
   },
