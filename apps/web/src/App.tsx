@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import {
   ArrowLeft,
@@ -39,9 +39,30 @@ type Proposal = {
 };
 
 type SidePanelTab = "cursor" | "zoom" | "chat" | "background";
+type BackgroundMode = "wallpaper" | "gradient" | "color";
+type BackgroundState = {
+  blur: number;
+  mode: BackgroundMode;
+  padding: number;
+  wallpaperIndex: number;
+};
 
 const DEFAULT_RANGE: SelectedRange = { start: 12, end: 18 };
 const DEFAULT_MANUAL_TARGET = { x: 620, y: 260, width: 620, height: 380 };
+const DEFAULT_BACKGROUND: BackgroundState = {
+  blur: 18,
+  mode: "wallpaper",
+  padding: 28,
+  wallpaperIndex: 0,
+};
+const WALLPAPERS = [
+  "linear-gradient(135deg, rgba(218, 236, 255, 0.92) 0%, rgba(76, 178, 235, 0.78) 27%, rgba(22, 71, 199, 0.92) 54%, rgba(6, 15, 48, 0.95) 78%, rgba(184, 216, 255, 0.76) 100%)",
+  "linear-gradient(135deg, #1f2248 0%, #2446d8 38%, #7a5cff 72%, #130f2c 100%)",
+  "linear-gradient(135deg, #111827 0%, #f36b45 42%, #f0bd51 72%, #21130b 100%)",
+  "linear-gradient(135deg, #071b20 0%, #36d1b6 48%, #2458ff 100%)",
+  "linear-gradient(135deg, #201328 0%, #7c5cff 46%, #ff7a5c 100%)",
+  "linear-gradient(135deg, #09131d 0%, #78d4ff 35%, #244dd9 76%, #02040a 100%)",
+];
 
 export function App() {
   const [project, setProject] = useState<DemoProject>(() => parseDemoProject(sampleProject));
@@ -53,6 +74,7 @@ export function App() {
   const [error, setError] = useState<string | undefined>();
   const [activePanel, setActivePanel] = useState<SidePanelTab>("chat");
   const [selectedZoomId, setSelectedZoomId] = useState<string | undefined>();
+  const [background, setBackground] = useState<BackgroundState>(DEFAULT_BACKGROUND);
 
   const activeZoom = useMemo(
     () => project.zooms.find((zoom) => currentTime >= zoom.start && currentTime < zoom.end),
@@ -223,6 +245,7 @@ export function App() {
         <div className="studio-workspace">
           <Preview
             activeZoom={activeZoom}
+            background={background}
             currentCursor={currentCursor}
             currentTime={currentTime}
             onAddFrame={addFrameAttachment}
@@ -290,6 +313,8 @@ export function App() {
           onProposalChange={setProposal}
           onSendComposer={sendComposer}
           onTabChange={setActivePanel}
+          background={background}
+          onBackgroundChange={setBackground}
           proposal={proposal}
           selectedZoom={selectedZoom}
         />
@@ -333,8 +358,10 @@ function SideTabs({
 function PanelContent({
   activePanel,
   attachments,
+  background,
   composer,
   error,
+  onBackgroundChange,
   onAddRangeAttachment,
   onApplyOperations,
   onComposerChange,
@@ -346,8 +373,10 @@ function PanelContent({
 }: {
   activePanel: SidePanelTab;
   attachments: ChatAttachment[];
+  background: BackgroundState;
   composer: string;
   error?: string;
+  onBackgroundChange: React.Dispatch<React.SetStateAction<BackgroundState>>;
   onAddRangeAttachment: () => void;
   onApplyOperations: (operations: AIEditOperation[], prompt: string) => void;
   onComposerChange: (value: string) => void;
@@ -384,20 +413,74 @@ function PanelContent({
       <div className="panel-scroll">
         <PanelSection title="Background">
           <div className="segmented-control" role="group" aria-label="Background type">
-            <button className="active" type="button">
+            <button
+              className={background.mode === "wallpaper" ? "active" : undefined}
+              type="button"
+              onClick={() => onBackgroundChange((current) => ({ ...current, mode: "wallpaper" }))}
+            >
               Wallpaper
             </button>
-            <button type="button">Color</button>
-            <button type="button">Blur</button>
+            <button
+              className={background.mode === "gradient" ? "active" : undefined}
+              type="button"
+              onClick={() => onBackgroundChange((current) => ({ ...current, mode: "gradient" }))}
+            >
+              Gradient
+            </button>
+            <button
+              className={background.mode === "color" ? "active" : undefined}
+              type="button"
+              onClick={() => onBackgroundChange((current) => ({ ...current, mode: "color" }))}
+            >
+              Color
+            </button>
           </div>
           <div className="wallpaper-grid" aria-label="Wallpaper presets">
-            {Array.from({ length: 10 }).map((_, index) => (
-              <button key={index} type="button" aria-label={`Wallpaper ${index + 1}`} />
+            {WALLPAPERS.map((wallpaper, index) => (
+              <button
+                className={background.wallpaperIndex === index ? "active" : undefined}
+                key={wallpaper}
+                type="button"
+                aria-label={`Wallpaper ${index + 1}`}
+                style={{ backgroundImage: wallpaper }}
+                onClick={() =>
+                  onBackgroundChange((current) => ({
+                    ...current,
+                    mode: "wallpaper",
+                    wallpaperIndex: index,
+                  }))
+                }
+              />
             ))}
           </div>
           <label className="control-row">
             Background blur
-            <input max={100} min={0} type="range" defaultValue={18} />
+            <input
+              aria-label="Background blur"
+              max={48}
+              min={0}
+              type="range"
+              value={background.blur}
+              onChange={(event) =>
+                onBackgroundChange((current) => ({ ...current, blur: Number(event.target.value) }))
+              }
+            />
+          </label>
+          <label className="control-row">
+            Padding
+            <input
+              aria-label="Padding"
+              max={72}
+              min={8}
+              type="range"
+              value={background.padding}
+              onChange={(event) =>
+                onBackgroundChange((current) => ({
+                  ...current,
+                  padding: Number(event.target.value),
+                }))
+              }
+            />
           </label>
         </PanelSection>
       </div>
@@ -493,6 +576,18 @@ function ZoomEditor({
   onClose: () => void;
   selectedZoom?: ZoomRegion;
 }) {
+  const [disabled, setDisabled] = useState(false);
+  const [instantAnimation, setInstantAnimation] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(selectedZoom?.scale ?? 2);
+  const [zoomMode, setZoomMode] = useState<ZoomRegion["mode"]>(selectedZoom?.mode ?? "auto");
+
+  useEffect(() => {
+    setDisabled(false);
+    setInstantAnimation(false);
+    setZoomLevel(selectedZoom?.scale ?? 2);
+    setZoomMode(selectedZoom?.mode ?? "auto");
+  }, [selectedZoom?.id, selectedZoom?.mode, selectedZoom?.scale]);
+
   return (
     <div className="panel-scroll zoom-editor">
       <button className="panel-back-button" type="button" onClick={onClose}>
@@ -505,8 +600,18 @@ function ZoomEditor({
           <PanelSection title="Zoom level">
             <p className="panel-copy">How close to zoom during this phase.</p>
             <div className="slider-row">
-              <input max={3} min={1} step={0.1} type="range" defaultValue={selectedZoom.scale} />
-              <button type="button">Reset</button>
+              <input
+                aria-label="Zoom level"
+                max={3}
+                min={1}
+                onChange={(event) => setZoomLevel(Number(event.target.value))}
+                step={0.1}
+                type="range"
+                value={zoomLevel}
+              />
+              <button type="button" onClick={() => setZoomLevel(selectedZoom.scale)}>
+                Reset
+              </button>
             </div>
             <button className="wide-control" type="button">
               <Plus size={17} />
@@ -516,20 +621,25 @@ function ZoomEditor({
 
           <PanelSection title="Zoom mode">
             <div className="segmented-control" role="group" aria-label="Zoom mode">
-              <button className={selectedZoom.mode === "auto" ? "active" : undefined} type="button">
+              <button
+                className={zoomMode === "auto" ? "active" : undefined}
+                type="button"
+                onClick={() => setZoomMode("auto")}
+              >
                 <WandSparkles size={17} />
                 Auto
               </button>
               <button
-                className={selectedZoom.mode === "manual" ? "active" : undefined}
+                className={zoomMode === "manual" ? "active" : undefined}
                 type="button"
+                onClick={() => setZoomMode("manual")}
               >
                 <Crosshair size={17} />
                 Manual
               </button>
             </div>
             <p className="panel-copy">
-              {selectedZoom.mode === "auto"
+              {zoomMode === "auto"
                 ? "Zoomed camera keeps the mouse cursor visible."
                 : "Manual zoom uses an explicit target region."}
             </p>
@@ -542,18 +652,26 @@ function ZoomEditor({
               <span>End</span>
               <strong>{formatTime(selectedZoom.end)}</strong>
               <span>Scale</span>
-              <strong>{selectedZoom.scale.toFixed(1)}x</strong>
+              <strong>{zoomLevel.toFixed(1)}x</strong>
             </div>
           </PanelSection>
 
           <PanelSection title="Animation">
             <label className="toggle-row">
               Instant animation
-              <input type="checkbox" />
+              <input
+                checked={instantAnimation}
+                onChange={(event) => setInstantAnimation(event.target.checked)}
+                type="checkbox"
+              />
             </label>
             <label className="toggle-row">
               Disable zoom
-              <input type="checkbox" />
+              <input
+                checked={disabled}
+                onChange={(event) => setDisabled(event.target.checked)}
+                type="checkbox"
+              />
             </label>
           </PanelSection>
         </>
@@ -579,17 +697,24 @@ function PanelSection({ children, title }: { children: React.ReactNode; title: s
 
 function Preview({
   activeZoom,
+  background,
   currentCursor,
   currentTime,
   onAddFrame,
 }: {
   activeZoom?: ZoomRegion;
+  background: BackgroundState;
   currentCursor?: DemoProject["cursorEvents"][number];
   currentTime: number;
   onAddFrame: () => void;
 }) {
   const zoomTarget =
     activeZoom?.mode === "manual" ? activeZoom.target : activeZoom?.keyframes.at(-1)?.target;
+  const previewStyle = {
+    "--preview-background": previewBackground(background),
+    "--preview-blur": `${background.blur}px`,
+    "--preview-padding": `${background.padding}px`,
+  } as React.CSSProperties;
 
   return (
     <section className="preview-shell" aria-label="Preview">
@@ -600,7 +725,8 @@ function Preview({
           Add frame
         </button>
       </div>
-      <div className="preview-frame">
+      <div className="preview-frame" style={previewStyle}>
+        <div className="preview-wallpaper" />
         <div className="preview-window">
           <div className="browser-bar">
             <span />
@@ -667,12 +793,13 @@ function Timeline({
   selectedRange: SelectedRange;
 }) {
   const [hoverZoomTime, setHoverZoomTime] = useState<number | undefined>();
+  const [hoverTimelineTime, setHoverTimelineTime] = useState<number | undefined>();
 
   function percent(time: number) {
     return `${(time / project.duration) * 100}%`;
   }
 
-  function timeFromEvent(event: React.MouseEvent<HTMLDivElement>) {
+  function timeFromEvent(event: React.MouseEvent<HTMLElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
     const rawTime = ((event.clientX - rect.left) / rect.width) * project.duration;
     const time = Math.max(0, Math.min(project.duration, rawTime));
@@ -680,17 +807,51 @@ function Timeline({
     return Number(time.toFixed(1));
   }
 
-  function handleClick(event: React.MouseEvent<HTMLDivElement>) {
+  function handleClick(event: React.MouseEvent<HTMLElement>) {
     onSeek(timeFromEvent(event));
   }
 
-  function handleZoomHover(event: React.MouseEvent<HTMLDivElement>) {
-    setHoverZoomTime(timeFromEvent(event));
+  function handleTimelineHover(event: React.MouseEvent<HTMLElement>) {
+    setHoverTimelineTime(timeFromEvent(event));
+  }
+
+  function handleZoomHover(event: React.MouseEvent<HTMLElement>) {
+    const time = timeFromEvent(event);
+
+    setHoverTimelineTime(time);
+    setHoverZoomTime(time);
   }
 
   return (
-    <section className="timeline-shell" aria-label="Timeline">
-      <div className="timeline-ruler" onClick={handleClick}>
+    <section
+      className="timeline-shell"
+      aria-label="Timeline"
+      onMouseLeave={() => {
+        setHoverTimelineTime(undefined);
+        setHoverZoomTime(undefined);
+      }}
+    >
+      {hoverTimelineTime !== undefined ? (
+        <div
+          aria-label={`Frame preview ${formatTime(hoverTimelineTime)}`}
+          className="timeline-hover-preview"
+          style={{ left: percent(hoverTimelineTime) }}
+        >
+          <div className="hover-frame">
+            <div className="hover-browser-bar">
+              <span />
+              <span />
+              <span />
+            </div>
+            <div className="hover-frame-screen">
+              <span className="hover-cursor-dot" style={mockCursorStyle(hoverTimelineTime)} />
+            </div>
+          </div>
+          <strong>{formatTime(hoverTimelineTime)}</strong>
+        </div>
+      ) : null}
+
+      <div className="timeline-ruler" onClick={handleClick} onMouseMove={handleTimelineHover}>
         <div className="playhead" style={{ left: percent(currentTime) }} />
         <div
           className="selected-range"
@@ -706,7 +867,7 @@ function Timeline({
         ))}
       </div>
 
-      <TimelineRow className="video-row" label="Video">
+      <TimelineRow className="video-row" label="Video" onClick={handleClick} onMouseMove={handleTimelineHover}>
         {project.tracks.flatMap((track) =>
           track.clips.map((clip) => (
             <div
@@ -728,9 +889,11 @@ function Timeline({
         <div
           className="timeline-track zoom-track"
           onClick={handleClick}
-          onMouseLeave={() => setHoverZoomTime(undefined)}
           onMouseMove={handleZoomHover}
         >
+          {project.zooms.length === 0 && hoverZoomTime === undefined ? (
+            <span className="zoom-lane-hint">Hover to add zoom on cursor</span>
+          ) : null}
           {hoverZoomTime !== undefined ? (
             <button
               className="zoom-add-button"
@@ -803,15 +966,21 @@ function TimelineRow({
   children,
   className,
   label,
+  onClick,
+  onMouseMove,
 }: {
   children: React.ReactNode;
   className?: string;
   label: string;
+  onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  onMouseMove?: (event: React.MouseEvent<HTMLDivElement>) => void;
 }) {
   return (
     <div className={`timeline-row ${className ?? ""}`}>
       <span>{label}</span>
-      <div className="timeline-track">{children}</div>
+      <div className="timeline-track" onClick={onClick} onMouseMove={onMouseMove}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -851,6 +1020,25 @@ function clampRange(range: SelectedRange, duration: number): SelectedRange {
   const start = Math.max(0, end - length);
 
   return { start, end };
+}
+
+function mockCursorStyle(time: number) {
+  return {
+    left: `${50 + Math.sin(time * 0.7) * 26}%`,
+    top: `${50 + Math.cos(time * 0.55) * 22}%`,
+  };
+}
+
+function previewBackground(background: BackgroundState) {
+  if (background.mode === "color") {
+    return "#151515";
+  }
+
+  if (background.mode === "gradient") {
+    return "linear-gradient(135deg, #0d0d0f 0%, #272a3f 28%, #7c5cff 58%, #6fd6c0 100%)";
+  }
+
+  return WALLPAPERS[background.wallpaperIndex] ?? WALLPAPERS[0];
 }
 
 function formatTime(time: number) {

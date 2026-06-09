@@ -9,6 +9,12 @@ describe("App", () => {
     expect(screen.getByLabelText("Tinker editor")).toBeInTheDocument();
     expect(screen.getByLabelText("Editor side panel")).toBeInTheDocument();
     expect(screen.queryByText("Screen Studio + Cursor inspired web UI")).not.toBeInTheDocument();
+    const sideTabs = within(screen.getByLabelText("Side panel tabs"));
+
+    expect(sideTabs.getByRole("button", { name: /Cursor/i })).toBeInTheDocument();
+    expect(sideTabs.getByRole("button", { name: /Zoom/i })).toBeInTheDocument();
+    expect(sideTabs.getByRole("button", { name: /Chat/i })).toBeInTheDocument();
+    expect(sideTabs.getByRole("button", { name: /Background/i })).toBeInTheDocument();
 
     const actions = within(screen.getByLabelText("Editor actions"));
 
@@ -34,6 +40,20 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Attach selected range/i }));
     expect(screen.getByText("Selected range")).toBeInTheDocument();
+  });
+
+  it("shows functional background controls", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Background/i }));
+
+    expect(screen.getByRole("group", { name: /Background type/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Wallpaper 1/i })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: /Background blur/i })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: /^Padding$/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Gradient$/i }));
+    expect(screen.getByRole("button", { name: /^Gradient$/i })).toHaveAttribute("class", "active");
   });
 
   it("reviews and applies a mock auto zoom proposal", () => {
@@ -76,5 +96,23 @@ describe("App", () => {
 
     expect(screen.getByText("Close Zoom editor")).toBeInTheDocument();
     expect(screen.getByText("Zoom mode")).toBeInTheDocument();
+  });
+
+  it("shows a timeline frame preview while hovering the timeline", () => {
+    render(<App />);
+
+    const timeline = screen.getByLabelText("Timeline");
+    const ruler = timeline.querySelector(".timeline-ruler");
+
+    expect(ruler).toBeTruthy();
+
+    Object.defineProperty(ruler, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, width: 450 }),
+    });
+
+    fireEvent.mouseMove(ruler!, { clientX: 225 });
+
+    expect(screen.getByLabelText(/Frame preview 00:22.5/i)).toBeInTheDocument();
   });
 });

@@ -207,18 +207,28 @@ h3 {
 
 .preview-frame {
   align-items: center;
-  background:
-    linear-gradient(135deg, rgba(218, 236, 255, 0.88) 0%, rgba(76, 178, 235, 0.76) 26%, rgba(22, 71, 199, 0.9) 52%, rgba(6, 15, 48, 0.94) 76%, rgba(184, 216, 255, 0.78) 100%),
-    #0b0f18;
+  background: #0b0f18;
   display: flex;
   justify-content: center;
   min-height: 0;
   overflow: hidden;
-  padding: 18px 24px 24px;
+  padding: var(--preview-padding, 28px);
+  position: relative;
+}
+
+.preview-wallpaper {
+  background: var(--preview-background);
+  filter: blur(var(--preview-blur, 18px));
+  inset: -20px;
+  position: absolute;
+  transform: scale(1.04);
 }
 
 .preview-window {
   aspect-ratio: 16 / 9;
+  box-shadow:
+    0 32px 60px rgba(0, 0, 0, 0.44),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
   display: grid;
   grid-template-rows: 34px minmax(0, 1fr);
   height: 100%;
@@ -226,6 +236,7 @@ h3 {
   max-width: 100%;
   position: relative;
   width: auto;
+  z-index: 1;
 }
 
 .browser-bar {
@@ -340,6 +351,7 @@ h3 {
   border-radius: 0;
   box-shadow: none;
   padding: 8px 0 4px;
+  position: relative;
 }
 
 .timeline-ruler {
@@ -365,12 +377,13 @@ h3 {
 }
 
 .playhead {
-  background: var(--ink);
+  background: #ffffff;
   bottom: -126px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.52), 0 0 18px rgba(124, 92, 255, 0.42);
   position: absolute;
   top: 20px;
-  width: 1px;
-  z-index: 4;
+  width: 2px;
+  z-index: 8;
 }
 
 .selected-range {
@@ -388,7 +401,7 @@ h3 {
   display: grid;
   gap: 12px;
   grid-template-columns: 54px minmax(0, 1fr);
-  min-height: 52px;
+  min-height: 60px;
 }
 
 .timeline-row > span {
@@ -400,8 +413,8 @@ h3 {
 .timeline-track {
   background: #191919;
   border: 1px solid #303030;
-  border-radius: 10px;
-  height: 38px;
+  border-radius: 11px;
+  height: 44px;
   overflow: hidden;
   position: relative;
 }
@@ -433,7 +446,77 @@ button.zoom-bar {
 }
 
 .zoom-track {
+  background: #151126;
+  border-color: #211b36;
   overflow: visible;
+}
+
+.timeline-hover-preview {
+  background: #171717;
+  border: 1px solid #2e2e36;
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  pointer-events: none;
+  position: absolute;
+  top: -116px;
+  transform: translateX(-50%);
+  width: 156px;
+  z-index: 10;
+}
+
+.timeline-hover-preview strong {
+  color: #eeeeee;
+  font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  font-weight: 400;
+  text-align: center;
+}
+
+.hover-frame {
+  aspect-ratio: 16 / 9;
+  background: #111111;
+  border: 1px solid #303030;
+  border-radius: 7px;
+  display: grid;
+  grid-template-rows: 13px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.hover-browser-bar {
+  align-items: center;
+  background: #191919;
+  display: flex;
+  gap: 3px;
+  padding: 0 6px;
+}
+
+.hover-browser-bar span {
+  background: #6f6f76;
+  border-radius: 50%;
+  height: 4px;
+  width: 4px;
+}
+
+.hover-frame-screen {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(135deg, #1b1f22, #0f1114);
+  background-size: 26px 26px, 26px 26px, auto;
+  position: relative;
+}
+
+.hover-cursor-dot {
+  background: #ffffff;
+  border: 2px solid #050505;
+  border-radius: 50%;
+  height: 10px;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 10px;
 }
 
 .zoom-add-button {
@@ -450,6 +533,17 @@ button.zoom-bar {
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 6;
+}
+
+.zoom-lane-hint {
+  align-items: center;
+  color: #777486;
+  display: flex;
+  font-size: 0.82rem;
+  inset: 0;
+  justify-content: center;
+  pointer-events: none;
+  position: absolute;
 }
 
 .zoom-add-button span {
@@ -677,12 +771,9 @@ button.zoom-bar {
   padding: 0;
 }
 
-.wallpaper-grid button:nth-child(2n) {
-  background: linear-gradient(135deg, #7c5cff, #2b58ff);
-}
-
-.wallpaper-grid button:nth-child(3n) {
-  background: linear-gradient(135deg, #f36b45, #f0bd51);
+.wallpaper-grid button.active {
+  border-color: #9383ff;
+  box-shadow: 0 0 0 2px rgba(124, 92, 255, 0.34);
 }
 
 .message,
