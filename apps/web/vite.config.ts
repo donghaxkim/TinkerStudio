@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@tinker/editor": fileURLToPath(new URL("../../packages/editor/src/index.ts", import.meta.url)),
+      "@tinker/ai-edit-ui": fileURLToPath(new URL("../../packages/ai-edit-ui/src/index.ts", import.meta.url)),
       "@tinker/project-schema": fileURLToPath(new URL("../../packages/project-schema/src/index.ts", import.meta.url)),
     },
   },

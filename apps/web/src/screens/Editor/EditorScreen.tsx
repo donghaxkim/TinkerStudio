@@ -1,5 +1,16 @@
 import { useMemo, useState } from "react";
-import { Preview, Timeline, type SelectedRange } from "@tinker/editor";
+import { AIEditPanel } from "@tinker/ai-edit-ui";
+import {
+  Preview,
+  Timeline,
+  createEditorHistory,
+  pushEditorCommand,
+  redoEditorCommand,
+  undoEditorCommand,
+  type EditorHistory,
+  type SelectedRange,
+} from "@tinker/editor";
+import type { DemoProject } from "@tinker/project-schema";
 import { loadSampleProject } from "../../fixtures/loadSampleProject.js";
 import { ProjectLoadPanel } from "./ProjectLoadPanel.js";
 
@@ -10,6 +21,9 @@ function formatRange(range: SelectedRange | undefined) {
 
 export function EditorScreen() {
   const loadResult = useMemo(() => loadSampleProject(), []);
+  const [project, setProject] = useState<DemoProject | undefined>(loadResult.ok ? loadResult.project : undefined);
+  const [previewProject, setPreviewProject] = useState<DemoProject | undefined>();
+  const [history, setHistory] = useState<EditorHistory>(() => createEditorHistory());
   const [currentTime, setCurrentTime] = useState(0);
   const [selectedRange, setSelectedRange] = useState<SelectedRange>({ start: 12, end: 18 });
 
@@ -21,7 +35,16 @@ export function EditorScreen() {
     );
   }
 
-  const project = loadResult.project;
+  if (!project) {
+    return (
+      <main style={{ padding: 24 }}>
+        <p>Project failed to initialize.</p>
+      </main>
+    );
+  }
+
+  const displayProject = previewProject ?? project;
+  const isPreviewingAIEdit = Boolean(previewProject);
 
   return (
     <main style={{ display: "grid", gap: 20, padding: 24 }}>
@@ -29,21 +52,48 @@ export function EditorScreen() {
         <div>
           <p style={{ margin: 0, color: "#60a5fa", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>Tinker editor shell</p>
           <h1 style={{ margin: "6px 0 0", fontSize: 36 }}>{project.title}</h1>
+          {isPreviewingAIEdit ? <p style={{ margin: "6px 0 0", color: "#fbbf24" }}>Previewing proposed AI operations. Accept or reject in the AI panel.</p> : null}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <button type="button" onClick={() => setCurrentTime(3)} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white" }}>
             Jump to caption (3s)
           </button>
           <button type="button" onClick={() => setCurrentTime(14)} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white" }}>
             Jump to zoom/callout (14s)
           </button>
+          <button
+            type="button"
+            disabled={history.past.length === 0}
+            onClick={() => {
+              const result = undoEditorCommand(history, project);
+              setHistory(result.history);
+              setProject(result.project);
+              setPreviewProject(undefined);
+            }}
+            style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: history.past.length ? "#111827" : "#334155", color: "white" }}
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            disabled={history.future.length === 0}
+            onClick={() => {
+              const result = redoEditorCommand(history, project);
+              setHistory(result.history);
+              setProject(result.project);
+              setPreviewProject(undefined);
+            }}
+            style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: history.future.length ? "#111827" : "#334155", color: "white" }}
+          >
+            Redo
+          </button>
         </div>
       </header>
 
-      <ProjectLoadPanel result={loadResult} />
+      <ProjectLoadPanel result={{ ok: true, project }} />
 
       <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 22rem", gap: 20, alignItems: "start" }}>
-        <Preview project={project} currentTime={currentTime} />
+        <Preview project={displayProject} currentTime={currentTime} />
         <aside aria-label="Selection details" style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #334155", borderRadius: 12, background: "#0f172a" }}>
           <h2 style={{ margin: 0 }}>Editor state</h2>
           <div>
@@ -53,6 +103,10 @@ export function EditorScreen() {
           <div>
             <div style={{ color: "#94a3b8", fontSize: 12, textTransform: "uppercase" }}>Selected range</div>
             <strong>{formatRange(selectedRange)}</strong>
+          </div>
+          <div>
+            <div style={{ color: "#94a3b8", fontSize: 12, textTransform: "uppercase" }}>AI history</div>
+            <strong>{project.aiEditHistory.filter((edit) => edit.status === "accepted").length} accepted edits</strong>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={() => setSelectedRange({ start: 2, end: 5 })} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white" }}>
@@ -66,7 +120,20 @@ export function EditorScreen() {
         </aside>
       </section>
 
-      <Timeline project={project} currentTime={currentTime} selectedRange={selectedRange} onSeek={setCurrentTime} />
+      <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 22rem", gap: 20, alignItems: "start" }}>
+        <Timeline project={displayProject} currentTime={currentTime} selectedRange={selectedRange} onSeek={setCurrentTime} />
+        <AIEditPanel
+          project={project}
+          selectedRange={selectedRange}
+          onPreviewProjectChange={setPreviewProject}
+          onAccept={(updatedProject, command) => {
+            setProject(updatedProject);
+            setPreviewProject(undefined);
+            setHistory((currentHistory) => pushEditorCommand(currentHistory, command));
+          }}
+          onReject={() => setPreviewProject(undefined)}
+        />
+      </section>
     </main>
   );
 }

@@ -11,3 +11,20 @@ export { getActivePreviewOverlays } from "./preview/activeOverlays.js";
 export { Preview } from "./preview/Preview.js";
 export type { PreviewProps } from "./preview/Preview.js";
 export { getAssetById, getPrimaryClip, isBrowserRenderableMedia } from "./project/assetResolver.js";
+export type {
+  AIEditProposal,
+  ApplyEditOperationsError,
+  ApplyEditOperationsMode,
+  ApplyEditOperationsOptions,
+  ApplyEditOperationsResult,
+} from "./applyEditOperations.js";
+export { applyEditOperations } from "./applyEditOperations.js";
+export type { ProjectSlice, ProjectSliceClip } from "./selectProjectSlice.js";
+export { normalizeProjectSliceRange, selectProjectSlice } from "./selectProjectSlice.js";
+export type { EditorCommand, EditorCommandType, EditorHistory, HistoryStepResult } from "./editorHistory.js";
+export {
+  createEditorHistory,
+  pushEditorCommand,
+  redoEditorCommand,
+  undoEditorCommand,
+} from "./editorHistory.js";

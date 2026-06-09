@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.33.0",
   "type": "module",
   "scripts": {
-    "typecheck": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/editor typecheck && pnpm --filter @tinker/web typecheck",
+    "typecheck": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/editor typecheck && pnpm --filter @tinker/ai-edit-ui typecheck && pnpm --filter @tinker/web typecheck",
     "validate:schema": "pnpm --filter @tinker/project-schema validate:sample"
   },
   "devDependencies": {
