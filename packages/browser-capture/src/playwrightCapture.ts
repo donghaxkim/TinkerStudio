@@ -1,6 +1,6 @@
 import { mkdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { chromium, type Page } from "playwright";
+import { chromium, type Page, type Route } from "playwright";
 import {
   createClickEvent,
   createCursorEvent,
@@ -112,6 +112,19 @@ function assertGotoStepsStayOnTargetOrigin(plan: CapturePlan, origin: string | u
   });
 }
 
+async function blockOffOriginNavigation(route: Route, origin: string | undefined, error: CaptureError) {
+  const request = route.request();
+  const requestOrigin = targetOrigin(request.url());
+
+  if (request.isNavigationRequest() && requestOrigin !== undefined && origin !== undefined && requestOrigin !== origin) {
+    await route.abort("blockedbyclient");
+    return error;
+  }
+
+  await route.continue();
+  return undefined;
+}
+
 export async function runPlaywrightCapture(
   plan: CapturePlan,
   options: RunPlaywrightCaptureOptions,
@@ -140,27 +153,38 @@ export async function runPlaywrightCapture(
       recordVideo: { dir: videoDir, size: plan.viewport },
     });
 
-    const page = await context.newPage();
     let activeStepIndex = -1;
     let blockedNavigationError: CaptureError | undefined;
+    let popupError: CaptureError | undefined;
 
-    await page.route("**/*", async (route) => {
-      const request = route.request();
-      const requestOrigin = targetOrigin(request.url());
+    await context.route("**/*", async (route) => {
+      const error = await blockOffOriginNavigation(
+        route,
+        origin,
+        new CaptureError(`Capture step ${activeStepIndex} navigated away from target origin`, activeStepIndex),
+      );
 
-      if (request.isNavigationRequest() && request.frame() === page.mainFrame() && requestOrigin !== undefined && origin !== undefined && requestOrigin !== origin) {
-        blockedNavigationError = new CaptureError(`Capture step ${activeStepIndex} navigated away from target origin`, activeStepIndex);
-        await route.abort("blockedbyclient");
+      if (error !== undefined) {
+        blockedNavigationError = error;
+      }
+    });
+
+    const page = await context.newPage();
+
+    context.on("page", (newPage) => {
+      if (newPage === page) {
         return;
       }
 
-      await route.continue();
+      popupError = new CaptureError(`Capture step ${activeStepIndex} created a new page`, activeStepIndex);
+      void newPage.close().catch(() => undefined);
     });
 
     for (const [index, step] of plan.steps.entries()) {
       try {
         activeStepIndex = index;
         blockedNavigationError = undefined;
+        popupError = undefined;
         switch (step.type) {
           case "goto":
             await page.goto(step.url, { waitUntil: "networkidle" });
@@ -171,7 +195,14 @@ export async function runPlaywrightCapture(
           case "click": {
             const locator = resolveStepLocator(page, step);
             const box = await locator.boundingBox();
+            const popupPromise = page.waitForEvent("popup", { timeout: 250 }).catch(() => undefined);
             await locator.click();
+            const popup = await popupPromise;
+
+            if (popup !== undefined) {
+              popupError = new CaptureError(`Capture step ${index} created a new page`, index);
+              await popup.close().catch(() => undefined);
+            }
 
             if (box !== null) {
               const x = Math.round(box.x + box.width / 2);
@@ -213,11 +244,17 @@ export async function runPlaywrightCapture(
             await page.waitForTimeout(step.ms);
             break;
         }
+        if (popupError !== undefined) {
+          throw popupError;
+        }
         if (blockedNavigationError !== undefined) {
           throw blockedNavigationError;
         }
         assertPageStayedOnTargetOrigin(page.url(), origin, index);
       } catch (error) {
+        if (popupError !== undefined) {
+          throw popupError;
+        }
         if (blockedNavigationError !== undefined) {
           throw blockedNavigationError;
         }

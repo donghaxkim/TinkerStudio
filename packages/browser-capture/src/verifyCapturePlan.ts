@@ -19,6 +19,20 @@ function hasText(value: string | undefined) {
   return value !== undefined && value.trim().length > 0;
 }
 
+function isHttpUrl(value: string | undefined) {
+  const text = value?.trim();
+  if (text === undefined || text.length === 0) {
+    return false;
+  }
+
+  try {
+    const url = new URL(text);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function addIssue(issues: VerifyCapturePlanIssue[], path: string, message: string) {
   issues.push({ path, message });
 }
@@ -30,6 +44,8 @@ function verifyStep(step: CaptureStep, index: number, issues: VerifyCapturePlanI
     case "goto":
       if (!hasText(step.url)) {
         addIssue(issues, `${path}.url`, "goto step requires url");
+      } else if (!isHttpUrl(step.url)) {
+        addIssue(issues, `${path}.url`, "goto url must be an http or https URL");
       }
       return;
     case "click":
@@ -46,8 +62,8 @@ function verifyStep(step: CaptureStep, index: number, issues: VerifyCapturePlanI
       }
       return;
     case "scroll":
-      if (step.x === undefined && step.y === undefined) {
-        addIssue(issues, path, "scroll step requires x or y");
+      if (step.x === undefined && step.y === undefined && !hasText(step.selector)) {
+        addIssue(issues, path, "scroll step requires x, y, or selector");
       }
       if (step.x !== undefined && !isFiniteNumber(step.x)) {
         addIssue(issues, `${path}.x`, "scroll x must be finite");
@@ -91,6 +107,8 @@ export function verifyCapturePlan(plan: CapturePlan): VerifyCapturePlanResult {
 
   if (!hasText(plan.targetUrl)) {
     addIssue(issues, "targetUrl", "targetUrl is required");
+  } else if (!isHttpUrl(plan.targetUrl)) {
+    addIssue(issues, "targetUrl", "targetUrl must be an http or https URL");
   }
 
   if (!isPositiveNumber(plan.viewport.width)) {

@@ -68,7 +68,7 @@ try {
     offOriginRequestCount += 1;
   });
   const originServer = await startHtmlServer(
-    `<html><body><a data-testid="leave-origin" href="${offOriginServer.url}">Leave</a></body></html>`,
+    `<html><body><a data-testid="leave-origin" href="${offOriginServer.url}">Leave</a><a data-testid="popup-origin" href="${offOriginServer.url}" target="_blank">Popup</a></body></html>`,
   );
 
   try {
@@ -99,6 +99,21 @@ try {
           { outputDir },
         ),
       (error: unknown) => error instanceof CaptureError && /navigated away from target origin/.test(error.message),
+    );
+    assert.equal(offOriginRequestCount, 0);
+
+    await assert.rejects(
+      () =>
+        runPlaywrightCapture(
+          {
+            targetUrl: originServer.url,
+            viewport: { width: 640, height: 480 },
+            steps: [{ type: "goto", url: originServer.url }, { type: "click", selector: "[data-testid='popup-origin']" }],
+            expectedCheckpoints: [],
+          },
+          { outputDir },
+        ),
+      (error: unknown) => error instanceof CaptureError && /created a new page/.test(error.message),
     );
     assert.equal(offOriginRequestCount, 0);
   } finally {

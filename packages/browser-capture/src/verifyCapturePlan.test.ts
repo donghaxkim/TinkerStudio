@@ -23,6 +23,11 @@ const validPlan: CapturePlan = {
 assert.deepEqual(verifyCapturePlan(validPlan), { valid: true, issues: [] });
 assert.doesNotThrow(() => assertValidCapturePlan(validPlan));
 
+assert.deepEqual(verifyCapturePlan({ ...validPlan, steps: [{ type: "scroll", selector: "[data-testid='hero']" }] }), {
+  valid: true,
+  issues: [],
+});
+
 const invalidPlan: CapturePlan = {
   targetUrl: "",
   viewport: { width: 0, height: -1 },
@@ -47,6 +52,19 @@ assert.match(
 );
 assert.throws(() => assertValidCapturePlan(invalidPlan), /Invalid capture plan/);
 
+const invalidUrlPlan: CapturePlan = {
+  ...validPlan,
+  targetUrl: "file:///tmp/demo.html",
+  steps: [{ type: "goto", url: "not a url" }],
+};
+
+const invalidUrlResult = verifyCapturePlan(invalidUrlPlan);
+assert.equal(invalidUrlResult.valid, false);
+assert.deepEqual(invalidUrlResult.issues, [
+  { path: "targetUrl", message: "targetUrl must be an http or https URL" },
+  { path: "steps.0.url", message: "goto url must be an http or https URL" },
+]);
+
 const unknownStepPlan = {
   ...validPlan,
   steps: [{ type: "drag" }],
@@ -69,6 +87,10 @@ assert.deepEqual(nonFiniteScrollResult.issues, [
   { path: "steps.0.x", message: "scroll x must be finite" },
   { path: "steps.0.y", message: "scroll y must be finite" },
 ]);
+
+const emptyScrollResult = verifyCapturePlan({ ...validPlan, steps: [{ type: "scroll" }] });
+assert.equal(emptyScrollResult.valid, false);
+assert.deepEqual(emptyScrollResult.issues, [{ path: "steps.0", message: "scroll step requires x, y, or selector" }]);
 
 const oversizedTimingPlan: CapturePlan = {
   ...validPlan,
