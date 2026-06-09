@@ -1,0 +1,30 @@
+{
+  "name": "@tinker/demo-assembly",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx src/compileProject.test.ts",
+    "generate:manual-demo": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx scripts/generateManualDemo.ts"
+  },
+  "dependencies": {
+    "@tinker/browser-capture": "workspace:*",
+    "@tinker/project-schema": "workspace:*",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.3",
+    "tsx": "^4.21.0"
+  }
+}

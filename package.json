@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "pnpm -r typecheck",
-    "validate:schema": "pnpm --filter @tinker/project-schema validate:sample"
+    "validate:schema": "pnpm --filter @tinker/project-schema validate:sample",
+    "generate:manual-demo": "pnpm --filter @tinker/demo-assembly generate:manual-demo"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
