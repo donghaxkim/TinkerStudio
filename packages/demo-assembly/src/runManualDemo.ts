@@ -59,9 +59,9 @@ export async function runManualDemo(input: RunManualDemoInput): Promise<RunManua
       captureResult,
       outputRoot: input.outputRoot,
       createdAt: input.createdAt,
-      sourceRepoUrl: input.sourceRepoUrl,
+      ...(input.sourceRepoUrl === undefined ? {} : { sourceRepoUrl: input.sourceRepoUrl }),
       productUrl: input.productUrl ?? server.url,
-      prompt: input.prompt,
+      ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
     });
 
     const captureResultPath = join(input.outputRoot, "capture-result.json");

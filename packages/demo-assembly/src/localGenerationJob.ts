@@ -146,9 +146,9 @@ export async function runLocalGenerationJob(
       outputRoot: outputDirectory,
       projectId: jobId,
       createdAt: initialTime,
-      sourceRepoUrl: request.repoUrl,
-      productUrl: request.productUrl,
-      prompt: request.prompt,
+      ...(request.repoUrl === undefined ? {} : { sourceRepoUrl: request.repoUrl }),
+      ...(request.productUrl === undefined ? {} : { productUrl: request.productUrl }),
+      ...(request.prompt === undefined ? {} : { prompt: request.prompt }),
       onPhase: (phase) => {
         activeStage = phase;
         emit(phase === "capture" ? "capturing" : "assembling", `Manual fixture ${phase} started`);
