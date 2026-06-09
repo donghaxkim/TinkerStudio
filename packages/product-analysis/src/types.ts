@@ -29,4 +29,5 @@ export type AnalyzeWebsiteOptions = {
   screenshotFileName?: string;
   timeoutMs?: number;
   headless?: boolean;
+  waitForNetworkIdle?: boolean;
 };

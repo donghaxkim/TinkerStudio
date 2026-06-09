@@ -14,6 +14,20 @@ function uniqueNonEmpty(values: string[]) {
   return [...new Set(values.map(cleanText).filter((value) => value.length > 0))];
 }
 
+function uniqueBy<T>(values: T[], keyFor: (value: T) => string) {
+  const seen = new Set<string>();
+
+  return values.filter((value) => {
+    const key = keyFor(value);
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
 function truncate(value: string, maxLength: number) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
 }
@@ -36,7 +50,9 @@ export async function analyzeWebsite(url: string, options: AnalyzeWebsiteOptions
 
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 5000) }).catch(() => undefined);
+    if (options.waitForNetworkIdle) {
+      await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 5000) }).catch(() => undefined);
+    }
 
     const data = await page.evaluate(
       new Function(
@@ -120,18 +136,29 @@ export async function analyzeWebsite(url: string, options: AnalyzeWebsiteOptions
       await page.screenshot({ path: screenshotPath, fullPage: true });
     }
 
+    const links = uniqueBy(
+      data.links
+        .map((link) => ({ text: truncate(cleanText(link.text), 120), href: link.href }))
+        .filter((link) => link.text.length > 0 && link.href.length > 0),
+      (link) => `${link.text}\n${link.href}`,
+    ).slice(0, maxItems);
+    const inputs = uniqueBy(
+      data.inputs.map((input) => ({
+        ...(cleanText(input.label) ? { label: truncate(cleanText(input.label), 120) } : {}),
+        ...(cleanText(input.placeholder) ? { placeholder: truncate(cleanText(input.placeholder), 120) } : {}),
+        ...(cleanText(input.selectorHint) ? { selectorHint: input.selectorHint } : {}),
+      })),
+      (input) => `${input.label ?? ""}\n${input.placeholder ?? ""}\n${input.selectorHint ?? ""}`,
+    ).slice(0, maxItems);
+
     return {
       url,
       title: cleanText(data.title),
       headings: uniqueNonEmpty(data.headings).map((value) => truncate(value, 160)),
       bodySnippets: uniqueNonEmpty(data.paragraphs).map((value) => truncate(value, 220)),
-      links: data.links.map((link) => ({ text: truncate(cleanText(link.text), 120), href: link.href })).slice(0, maxItems),
+      links,
       buttons: uniqueNonEmpty(data.buttons).map((value) => truncate(value, 120)),
-      inputs: data.inputs.map((input) => ({
-        ...(cleanText(input.label) ? { label: truncate(cleanText(input.label), 120) } : {}),
-        ...(cleanText(input.placeholder) ? { placeholder: truncate(cleanText(input.placeholder), 120) } : {}),
-        ...(cleanText(input.selectorHint) ? { selectorHint: input.selectorHint } : {}),
-      })),
+      inputs,
       brandHints: {
         colors: uniqueNonEmpty(data.colors).filter((value) => value !== "rgba(0, 0, 0, 0)").slice(0, maxItems),
         fontFamilies: uniqueNonEmpty(data.fontFamilies).slice(0, 6),
