@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import type { Page } from "playwright";
 import type { AnalyzeWebsiteOptions, ProductAnalysis } from "./types.js";
 
 const defaultTimeoutMs = 10_000;
@@ -43,91 +44,94 @@ type PageAnalysisData = {
   fontFamilies: string[];
 };
 
+// tsx injects a Node-only __name helper into serialized functions; keep this browser collector static.
+const collectPageAnalysis = new Function(
+  "limit",
+  `
+    const text = (value) => (value ?? "").replace(/\\s+/g, " ").trim();
+    const visible = (element) => {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+    };
+    const selectorHint = (element) => {
+      const testId = element.getAttribute("data-testid");
+      if (testId) {
+        return "[data-testid='" + testId + "']";
+      }
+
+      const id = element.getAttribute("id");
+      return id ? "#" + CSS.escape(id) : undefined;
+    };
+
+    const headings = Array.from(document.querySelectorAll("h1, h2, h3"))
+      .filter(visible)
+      .map((element) => text(element.textContent))
+      .filter(Boolean)
+      .slice(0, limit);
+    const paragraphs = Array.from(document.querySelectorAll("p, li"))
+      .filter(visible)
+      .map((element) => text(element.textContent))
+      .filter(Boolean)
+      .slice(0, limit);
+    const links = Array.from(document.querySelectorAll("a[href]"))
+      .filter(visible)
+      .map((element) => ({ text: text(element.textContent), href: element.href }))
+      .filter((link) => link.text.length > 0 && link.href.length > 0)
+      .slice(0, limit);
+    const buttons = Array.from(document.querySelectorAll("button, [role='button']"))
+      .filter(visible)
+      .map((element) => text(element.textContent) || text(element.getAttribute("aria-label")))
+      .filter(Boolean)
+      .slice(0, limit);
+    const inputs = Array.from(document.querySelectorAll("input, textarea, select"))
+      .filter(visible)
+      .map((input) => {
+        const id = input.id;
+        const label = id ? text(document.querySelector("label[for='" + CSS.escape(id) + "']")?.textContent) : "";
+
+        return {
+          label: label || text(input.getAttribute("aria-label")),
+          placeholder: text(input.getAttribute("placeholder")),
+          selectorHint: selectorHint(input),
+        };
+      })
+      .slice(0, limit);
+    const sampledElements = Array.from(document.querySelectorAll("body, main, section, header, button, input, h1, h2"))
+      .filter(visible)
+      .slice(0, 40);
+    const colors = sampledElements.flatMap((element) => {
+      const style = window.getComputedStyle(element);
+      return [style.color, style.backgroundColor, style.borderColor];
+    });
+    const fontFamilies = sampledElements.map((element) => window.getComputedStyle(element).fontFamily);
+
+    return {
+      title: document.title,
+      headings,
+      paragraphs,
+      links,
+      buttons,
+      inputs,
+      colors,
+      fontFamilies,
+    };
+  `,
+) as (limit: number) => PageAnalysisData;
+
 export async function analyzeWebsite(url: string, options: AnalyzeWebsiteOptions = {}): Promise<ProductAnalysis> {
   const browser = await chromium.launch({ headless: options.headless ?? true });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  let page: Page | undefined;
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
 
   try {
+    page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
     if (options.waitForNetworkIdle) {
       await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 5000) }).catch(() => undefined);
     }
 
-    const data = await page.evaluate(
-      new Function(
-        "limit",
-        `
-          const text = (value) => (value ?? "").replace(/\\s+/g, " ").trim();
-          const visible = (element) => {
-            const rect = element.getBoundingClientRect();
-            const style = window.getComputedStyle(element);
-            return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
-          };
-          const selectorHint = (element) => {
-            const testId = element.getAttribute("data-testid");
-            if (testId) {
-              return "[data-testid='" + testId + "']";
-            }
-            const id = element.getAttribute("id");
-            return id ? "#" + CSS.escape(id) : undefined;
-          };
-
-          const headings = Array.from(document.querySelectorAll("h1, h2, h3"))
-            .filter(visible)
-            .map((element) => text(element.textContent))
-            .filter(Boolean)
-            .slice(0, limit);
-          const paragraphs = Array.from(document.querySelectorAll("p, li"))
-            .filter(visible)
-            .map((element) => text(element.textContent))
-            .filter(Boolean)
-            .slice(0, limit);
-          const links = Array.from(document.querySelectorAll("a[href]"))
-            .filter(visible)
-            .map((element) => ({ text: text(element.textContent), href: element.href }))
-            .filter((link) => link.text.length > 0 && link.href.length > 0)
-            .slice(0, limit);
-          const buttons = Array.from(document.querySelectorAll("button, [role='button']"))
-            .filter(visible)
-            .map((element) => text(element.textContent) || text(element.getAttribute("aria-label")))
-            .filter(Boolean)
-            .slice(0, limit);
-          const inputs = Array.from(document.querySelectorAll("input, textarea, select"))
-            .filter(visible)
-            .map((input) => {
-              const id = input.id;
-              const label = id ? text(document.querySelector("label[for='" + CSS.escape(id) + "']")?.textContent) : "";
-              return {
-                label: label || text(input.getAttribute("aria-label")),
-                placeholder: text(input.getAttribute("placeholder")),
-                selectorHint: selectorHint(input),
-              };
-            })
-            .slice(0, limit);
-          const sampledElements = Array.from(document.querySelectorAll("body, main, section, header, button, input, h1, h2"))
-            .filter(visible)
-            .slice(0, 40);
-          const colors = sampledElements.flatMap((element) => {
-            const style = window.getComputedStyle(element);
-            return [style.color, style.backgroundColor, style.borderColor];
-          });
-          const fontFamilies = sampledElements.map((element) => window.getComputedStyle(element).fontFamily);
-
-          return {
-            title: document.title,
-            headings,
-            paragraphs,
-            links,
-            buttons,
-            inputs,
-            colors,
-            fontFamilies,
-          };
-        `,
-      ) as (limit: number) => PageAnalysisData,
-      maxItems,
-    );
+    const data = await page.evaluate(collectPageAnalysis, maxItems);
 
     let screenshotPath: string | undefined;
     if (options.outputDirectory) {
@@ -166,7 +170,7 @@ export async function analyzeWebsite(url: string, options: AnalyzeWebsiteOptions
       ...(screenshotPath ? { screenshotPath } : {}),
     };
   } finally {
-    await page.close().catch(() => undefined);
+    await page?.close().catch(() => undefined);
     await browser.close();
   }
 }
