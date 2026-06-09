@@ -33,6 +33,9 @@ importers:
       '@tinker/generation-contract':
         specifier: workspace:*
         version: link:../generation-contract
+      '@tinker/product-analysis':
+        specifier: workspace:*
+        version: link:../product-analysis
       '@tinker/project-schema':
         specifier: workspace:*
         version: link:../project-schema
