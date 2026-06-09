@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -62,6 +62,25 @@ try {
     kind: "selector",
     selector: "[data-testid='export-card']",
   });
+
+  const captureServer = await startHtmlServer("<html><body><h1>Capture target</h1></body></html>");
+  try {
+    const result = await runPlaywrightCapture(
+      {
+        targetUrl: captureServer.url,
+        viewport: { width: 640, height: 480 },
+        steps: [{ type: "goto", url: captureServer.url }],
+        expectedCheckpoints: [{ id: "capture-target", label: "Capture target", text: "Capture target" }],
+      },
+      { outputDir },
+    );
+
+    assert.equal(result.clips[0]?.id, "capture-video-main");
+    assert.equal(result.clips[0]?.uri, "videos/main.webm");
+    await access(join(outputDir, "videos", "main.webm"));
+  } finally {
+    await captureServer.close();
+  }
 
   let offOriginRequestCount = 0;
   const offOriginServer = await startHtmlServer("<html><body><h1>Off origin</h1></body></html>", () => {

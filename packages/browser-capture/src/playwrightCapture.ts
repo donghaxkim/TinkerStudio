@@ -1,4 +1,4 @@
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { chromium, type Page, type Route } from "playwright";
 import {
@@ -277,12 +277,18 @@ export async function runPlaywrightCapture(
     await browser.close();
     browser = undefined;
 
+    const mainVideoPath = join(videoDir, "main.webm");
+    if (videoPath !== undefined && videoPath !== mainVideoPath) {
+      await rm(mainVideoPath, { force: true });
+      await rename(videoPath, mainVideoPath);
+    }
+
     const completedAtMs = Date.now();
     const completedAt = new Date(completedAtMs);
     const screenshots = [await createAsset("screenshot-final", options.outputDir, screenshotPath, "image", "image/png", screenshotDimensions)];
     const clips = videoPath === undefined
       ? []
-      : [await createAsset("capture-video-main", options.outputDir, videoPath, "video", "video/webm", plan.viewport, secondsSince(startedAtMs, completedAtMs))];
+      : [await createAsset("capture-video-main", options.outputDir, mainVideoPath, "video", "video/webm", plan.viewport, secondsSince(startedAtMs, completedAtMs))];
 
     return {
       clips,
