@@ -282,6 +282,58 @@ await assert.rejects(
           ok: true,
           status: 200,
           json: async () => ({
+            storyboard: { ...storyboardFixture, durationCapSeconds: 99 },
+            capturePlan: capturePlanFixture,
+          }),
+          text: async () => "",
+        }) as Response,
+    })({
+      productUrl: "http://127.0.0.1:3000/",
+      prompt: "Show the hero.",
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analysis: productAnalysisFixture,
+    }),
+  /Storyboard is invalid/,
+);
+
+await assert.rejects(
+  () =>
+    createEnvironmentAiUrlPlanner({
+      endpoint: "https://planner.example/v1/chat/completions",
+      apiKey: "test-key",
+      model: "planner-model",
+      fetchImpl: async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            storyboard: { ...storyboardFixture, aspectRatio: "9:16" },
+            capturePlan: capturePlanFixture,
+          }),
+          text: async () => "",
+        }) as Response,
+    })({
+      productUrl: "http://127.0.0.1:3000/",
+      prompt: "Show the hero.",
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analysis: productAnalysisFixture,
+    }),
+  /Storyboard is invalid/,
+);
+
+await assert.rejects(
+  () =>
+    createEnvironmentAiUrlPlanner({
+      endpoint: "https://planner.example/v1/chat/completions",
+      apiKey: "test-key",
+      model: "planner-model",
+      fetchImpl: async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => ({
             storyboard: storyboardFixture,
             capturePlan: {
               ...capturePlanFixture,

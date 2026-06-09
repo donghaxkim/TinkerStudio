@@ -96,11 +96,29 @@ function assertPageStayedOnTargetOrigin(pageUrl: string, origin: string | undefi
   }
 }
 
+function assertGotoStepsStayOnTargetOrigin(plan: CapturePlan, origin: string | undefined) {
+  if (origin === undefined) {
+    return;
+  }
+
+  plan.steps.forEach((step, index) => {
+    if (step.type !== "goto") {
+      return;
+    }
+
+    if (targetOrigin(step.url) !== origin) {
+      throw new CaptureError(`Capture step ${index} goto url must stay on target origin`, index);
+    }
+  });
+}
+
 export async function runPlaywrightCapture(
   plan: CapturePlan,
   options: RunPlaywrightCaptureOptions,
 ): Promise<CaptureResult> {
   assertValidCapturePlan(plan);
+  const origin = targetOrigin(plan.targetUrl);
+  assertGotoStepsStayOnTargetOrigin(plan, origin);
 
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs);
@@ -123,10 +141,26 @@ export async function runPlaywrightCapture(
     });
 
     const page = await context.newPage();
-    const origin = targetOrigin(plan.targetUrl);
+    let activeStepIndex = -1;
+    let blockedNavigationError: CaptureError | undefined;
+
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+      const requestOrigin = targetOrigin(request.url());
+
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame() && requestOrigin !== undefined && origin !== undefined && requestOrigin !== origin) {
+        blockedNavigationError = new CaptureError(`Capture step ${activeStepIndex} navigated away from target origin`, activeStepIndex);
+        await route.abort("blockedbyclient");
+        return;
+      }
+
+      await route.continue();
+    });
 
     for (const [index, step] of plan.steps.entries()) {
       try {
+        activeStepIndex = index;
+        blockedNavigationError = undefined;
         switch (step.type) {
           case "goto":
             await page.goto(step.url, { waitUntil: "networkidle" });
@@ -179,8 +213,14 @@ export async function runPlaywrightCapture(
             await page.waitForTimeout(step.ms);
             break;
         }
+        if (blockedNavigationError !== undefined) {
+          throw blockedNavigationError;
+        }
         assertPageStayedOnTargetOrigin(page.url(), origin, index);
       } catch (error) {
+        if (blockedNavigationError !== undefined) {
+          throw blockedNavigationError;
+        }
         if (error instanceof CaptureError) {
           throw error;
         }

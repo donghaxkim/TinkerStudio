@@ -70,4 +70,19 @@ assert.deepEqual(nonFiniteScrollResult.issues, [
   { path: "steps.0.y", message: "scroll y must be finite" },
 ]);
 
+const oversizedTimingPlan: CapturePlan = {
+  ...validPlan,
+  steps: [
+    { type: "waitForSelector", selector: "[data-testid='hero']", timeoutMs: 10_001 },
+    { type: "pause", ms: 5_001 },
+  ],
+};
+
+const oversizedTimingResult = verifyCapturePlan(oversizedTimingPlan);
+assert.equal(oversizedTimingResult.valid, false);
+assert.deepEqual(oversizedTimingResult.issues, [
+  { path: "steps.0.timeoutMs", message: "timeoutMs must be at most 10000" },
+  { path: "steps.1.ms", message: "pause ms must be at most 5000" },
+]);
+
 console.log("verifyCapturePlan tests passed");

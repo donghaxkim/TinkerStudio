@@ -248,6 +248,16 @@ function assertCapturePlanMatchesProductUrl(capturePlan: CapturePlan, productUrl
   });
 }
 
+function assertStoryboardMatchesInput(storyboard: ManualStoryboard, input: AiUrlPlannerInput) {
+  if (storyboard.durationCapSeconds !== input.durationCapSeconds) {
+    throw new Error("Storyboard is invalid: durationCapSeconds must match requested durationCapSeconds");
+  }
+
+  if (storyboard.aspectRatio !== input.aspectRatio) {
+    throw new Error("Storyboard is invalid: aspectRatio must match requested aspectRatio");
+  }
+}
+
 function buildPlannerPrompt(input: AiUrlPlannerInput) {
   return JSON.stringify(
     {
@@ -315,6 +325,7 @@ export function createEnvironmentAiUrlPlanner(options: EnvironmentAiUrlPlannerOp
     }
 
     const result = parsePlannerResult(responseBody);
+    assertStoryboardMatchesInput(result.storyboard, input);
     assertCapturePlanMatchesProductUrl(result.capturePlan, input.productUrl);
 
     return result;

@@ -1,5 +1,8 @@
 import { CaptureError, type CapturePlan, type CaptureStep, type VerifyCapturePlanIssue, type VerifyCapturePlanResult } from "./types.js";
 
+export const MAX_SELECTOR_TIMEOUT_MS = 10_000;
+export const MAX_PAUSE_MS = 5_000;
+
 function isPositiveNumber(value: number) {
   return Number.isFinite(value) && value > 0;
 }
@@ -65,10 +68,16 @@ function verifyStep(step: CaptureStep, index: number, issues: VerifyCapturePlanI
       if (step.timeoutMs !== undefined && !isPositiveNumber(step.timeoutMs)) {
         addIssue(issues, `${path}.timeoutMs`, "timeoutMs must be positive");
       }
+      if (step.timeoutMs !== undefined && step.timeoutMs > MAX_SELECTOR_TIMEOUT_MS) {
+        addIssue(issues, `${path}.timeoutMs`, `timeoutMs must be at most ${MAX_SELECTOR_TIMEOUT_MS}`);
+      }
       return;
     case "pause":
       if (!isNonNegativeNumber(step.ms)) {
         addIssue(issues, `${path}.ms`, "pause ms must be nonnegative");
+      }
+      if (step.ms > MAX_PAUSE_MS) {
+        addIssue(issues, `${path}.ms`, `pause ms must be at most ${MAX_PAUSE_MS}`);
       }
       return;
   }

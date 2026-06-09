@@ -10,8 +10,9 @@ import { CaptureError, type CapturePlan } from "./types.js";
 
 const outputDir = await mkdtemp(join(tmpdir(), "browser-capture-output-"));
 
-async function startHtmlServer(html: string) {
+async function startHtmlServer(html: string, onRequest?: () => void) {
   const server = createServer((_request, response) => {
+    onRequest?.();
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(html);
   });
@@ -62,12 +63,30 @@ try {
     selector: "[data-testid='export-card']",
   });
 
-  const offOriginServer = await startHtmlServer("<html><body><h1>Off origin</h1></body></html>");
+  let offOriginRequestCount = 0;
+  const offOriginServer = await startHtmlServer("<html><body><h1>Off origin</h1></body></html>", () => {
+    offOriginRequestCount += 1;
+  });
   const originServer = await startHtmlServer(
     `<html><body><a data-testid="leave-origin" href="${offOriginServer.url}">Leave</a></body></html>`,
   );
 
   try {
+    await assert.rejects(
+      () =>
+        runPlaywrightCapture(
+          {
+            targetUrl: originServer.url,
+            viewport: { width: 640, height: 480 },
+            steps: [{ type: "goto", url: offOriginServer.url }],
+            expectedCheckpoints: [],
+          },
+          { outputDir },
+        ),
+      (error: unknown) => error instanceof CaptureError && /goto url must stay on target origin/.test(error.message),
+    );
+    assert.equal(offOriginRequestCount, 0);
+
     await assert.rejects(
       () =>
         runPlaywrightCapture(
@@ -81,6 +100,7 @@ try {
         ),
       (error: unknown) => error instanceof CaptureError && /navigated away from target origin/.test(error.message),
     );
+    assert.equal(offOriginRequestCount, 0);
   } finally {
     await originServer.close();
     await offOriginServer.close();
