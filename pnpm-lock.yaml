@@ -20,6 +20,9 @@ importers:
       '@tinker/editor':
         specifier: workspace:*
         version: link:../../packages/editor
+      '@tinker/generation-contract':
+        specifier: workspace:*
+        version: link:../../packages/generation-contract
       '@tinker/project-schema':
         specifier: workspace:*
         version: link:../../packages/project-schema
@@ -134,6 +137,25 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.6(@types/node@22.19.20)(jsdom@26.1.0)(tsx@4.22.4)
+
+  packages/generation-contract:
+    dependencies:
+      '@tinker/project-schema':
+        specifier: workspace:*
+        version: link:../project-schema
+      zod:
+        specifier: ^4.2.1
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.19.3
+        version: 22.19.20
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.6(@types/node@22.19.20)(jsdom@27.4.0)(tsx@4.22.4)
 
   packages/project-schema:
     dependencies:

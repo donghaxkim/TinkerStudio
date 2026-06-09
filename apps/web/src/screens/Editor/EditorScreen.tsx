@@ -19,8 +19,12 @@ function formatRange(range: SelectedRange | undefined) {
   return `${range.start.toFixed(1)}s – ${range.end.toFixed(1)}s`;
 }
 
-export function EditorScreen() {
-  const loadResult = useMemo(() => loadSampleProject(), []);
+type EditorScreenProps = {
+  initialProject?: DemoProject;
+};
+
+export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
+  const loadResult = useMemo(() => (initialProject ? { ok: true as const, project: initialProject } : loadSampleProject()), [initialProject]);
   const [project, setProject] = useState<DemoProject | undefined>(loadResult.ok ? loadResult.project : undefined);
   const [previewProject, setPreviewProject] = useState<DemoProject | undefined>();
   const [history, setHistory] = useState<EditorHistory>(() => createEditorHistory());

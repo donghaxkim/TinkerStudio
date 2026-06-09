@@ -8,6 +8,7 @@ export default defineConfig({
     alias: {
       "@tinker/editor": fileURLToPath(new URL("../../packages/editor/src/index.ts", import.meta.url)),
       "@tinker/ai-edit-ui": fileURLToPath(new URL("../../packages/ai-edit-ui/src/index.ts", import.meta.url)),
+      "@tinker/generation-contract": fileURLToPath(new URL("../../packages/generation-contract/src/index.ts", import.meta.url)),
       "@tinker/project-schema": fileURLToPath(new URL("../../packages/project-schema/src/index.ts", import.meta.url)),
     },
   },

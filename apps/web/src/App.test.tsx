@@ -17,4 +17,12 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Jump to zoom/callout (14s)" }));
     expect(screen.getByTestId("active-callout")).toHaveTextContent("Real-time analytics");
   });
+
+  it("renders Create Demo UI before the editor", () => {
+    render(<App />);
+
+    expect(screen.getByLabelText("Create demo")).toBeInTheDocument();
+    expect(screen.getByLabelText("GitHub repo URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("Generation progress")).toBeInTheDocument();
+  });
 });
