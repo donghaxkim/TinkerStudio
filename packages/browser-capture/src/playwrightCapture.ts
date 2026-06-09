@@ -1,4 +1,4 @@
-import { mkdir, rename, rm, stat } from "node:fs/promises";
+import { mkdir, rename, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { chromium, type Page, type Route } from "playwright";
 import {
@@ -279,7 +279,6 @@ export async function runPlaywrightCapture(
 
     const mainVideoPath = join(videoDir, "main.webm");
     if (videoPath !== undefined && videoPath !== mainVideoPath) {
-      await rm(mainVideoPath, { force: true });
       await rename(videoPath, mainVideoPath);
     }
 

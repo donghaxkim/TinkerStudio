@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -65,19 +65,26 @@ try {
 
   const captureServer = await startHtmlServer("<html><body><h1>Capture target</h1></body></html>");
   try {
-    const result = await runPlaywrightCapture(
-      {
-        targetUrl: captureServer.url,
-        viewport: { width: 640, height: 480 },
-        steps: [{ type: "goto", url: captureServer.url }],
-        expectedCheckpoints: [{ id: "capture-target", label: "Capture target", text: "Capture target" }],
-      },
-      { outputDir },
-    );
+    const capturePlan: CapturePlan = {
+      targetUrl: captureServer.url,
+      viewport: { width: 640, height: 480 },
+      steps: [{ type: "goto", url: captureServer.url }],
+      expectedCheckpoints: [{ id: "capture-target", label: "Capture target", text: "Capture target" }],
+    };
+    const mainVideoPath = join(outputDir, "videos", "main.webm");
+    const result = await runPlaywrightCapture(capturePlan, { outputDir });
 
     assert.equal(result.clips[0]?.id, "capture-video-main");
     assert.equal(result.clips[0]?.uri, "videos/main.webm");
-    await access(join(outputDir, "videos", "main.webm"));
+    await access(mainVideoPath);
+
+    const staleVideo = Buffer.from("stale-video");
+    await writeFile(mainVideoPath, staleVideo);
+    const overwriteResult = await runPlaywrightCapture(capturePlan, { outputDir });
+
+    assert.equal(overwriteResult.clips[0]?.id, "capture-video-main");
+    assert.equal(overwriteResult.clips[0]?.uri, "videos/main.webm");
+    assert.notDeepEqual(await readFile(mainVideoPath), staleVideo);
   } finally {
     await captureServer.close();
   }
