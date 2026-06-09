@@ -6,6 +6,9 @@ import type { AspectRatio, ManualStoryboard } from "./types.js";
 
 const MISSING_ENV_MESSAGE =
   "TINKER_AI_URL_PLANNER_ENDPOINT, TINKER_AI_URL_PLANNER_API_KEY, and TINKER_AI_URL_PLANNER_MODEL are required";
+const MAX_SELECTOR_TIMEOUT_MS = 10_000;
+const MAX_PAUSE_MS = 5_000;
+const MAX_PLANNER_ERROR_BODY_LENGTH = 200;
 
 export type AiUrlPlannerInput = {
   productUrl: string;
@@ -80,6 +83,14 @@ const storyboardSchema = z
           message: "endHint must be less than or equal to durationCapSeconds",
         });
       }
+
+      if (beat.startHint !== undefined && beat.startHint > storyboard.durationCapSeconds) {
+        context.addIssue({
+          code: "custom",
+          path: ["beats", index, "startHint"],
+          message: "startHint must be less than or equal to durationCapSeconds",
+        });
+      }
     });
   });
 
@@ -98,9 +109,9 @@ const hoverStepSchema = z
   .strict()
   .refine((step) => step.selector !== undefined || step.text !== undefined, "hover step requires selector or text");
 const waitForSelectorStepSchema = z
-  .object({ type: z.literal("waitForSelector"), selector: nonEmptyString, timeoutMs: finiteNumber.positive().optional() })
+  .object({ type: z.literal("waitForSelector"), selector: nonEmptyString, timeoutMs: finiteNumber.positive().max(MAX_SELECTOR_TIMEOUT_MS).optional() })
   .strict();
-const pauseStepSchema = z.object({ type: z.literal("pause"), ms: finiteNumber.nonnegative() }).strict();
+const pauseStepSchema = z.object({ type: z.literal("pause"), ms: finiteNumber.nonnegative().max(MAX_PAUSE_MS) }).strict();
 
 const capturePlanSchema = z
   .object({
@@ -256,6 +267,14 @@ function buildPlannerPrompt(input: AiUrlPlannerInput) {
   );
 }
 
+function truncatePlannerErrorBody(value: string) {
+  if (value.length <= MAX_PLANNER_ERROR_BODY_LENGTH) {
+    return value;
+  }
+
+  return `${value.slice(0, MAX_PLANNER_ERROR_BODY_LENGTH)}... [truncated]`;
+}
+
 export function createEnvironmentAiUrlPlanner(options: EnvironmentAiUrlPlannerOptions = {}): AiUrlPlanner {
   return async (input) => {
     const endpoint = options.endpoint ?? process.env.TINKER_AI_URL_PLANNER_ENDPOINT;
@@ -285,7 +304,7 @@ export function createEnvironmentAiUrlPlanner(options: EnvironmentAiUrlPlannerOp
     });
 
     if (!response.ok) {
-      throw new Error(`AI URL planner request failed with status ${response.status}: ${await response.text()}`);
+      throw new Error(`AI URL planner request failed with status ${response.status}: ${truncatePlannerErrorBody(await response.text())}`);
     }
 
     let responseBody: unknown;

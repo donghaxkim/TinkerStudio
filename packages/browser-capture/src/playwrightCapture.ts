@@ -71,6 +71,31 @@ function stepErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function targetOrigin(targetUrl: string) {
+  try {
+    return new URL(targetUrl).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function assertPageStayedOnTargetOrigin(pageUrl: string, origin: string | undefined, stepIndex: number) {
+  if (origin === undefined) {
+    return;
+  }
+
+  let currentOrigin: string;
+  try {
+    currentOrigin = new URL(pageUrl).origin;
+  } catch {
+    throw new CaptureError(`Capture step ${stepIndex} navigated away from target origin`, stepIndex);
+  }
+
+  if (currentOrigin !== origin) {
+    throw new CaptureError(`Capture step ${stepIndex} navigated away from target origin`, stepIndex);
+  }
+}
+
 export async function runPlaywrightCapture(
   plan: CapturePlan,
   options: RunPlaywrightCaptureOptions,
@@ -98,6 +123,7 @@ export async function runPlaywrightCapture(
     });
 
     const page = await context.newPage();
+    const origin = targetOrigin(plan.targetUrl);
 
     for (const [index, step] of plan.steps.entries()) {
       try {
@@ -153,7 +179,11 @@ export async function runPlaywrightCapture(
             await page.waitForTimeout(step.ms);
             break;
         }
+        assertPageStayedOnTargetOrigin(page.url(), origin, index);
       } catch (error) {
+        if (error instanceof CaptureError) {
+          throw error;
+        }
         throw new CaptureError(`Capture step ${index} failed: ${stepErrorMessage(error)}`, index);
       }
     }

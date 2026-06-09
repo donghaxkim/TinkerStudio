@@ -121,7 +121,37 @@ assert.throws(
   /Storyboard is invalid/,
 );
 assert.throws(
+  () =>
+    parseStoryboardJson(
+      JSON.stringify({
+        ...storyboardFixture,
+        beats: [{ ...storyboardFixture.beats[0], startHint: 11, endHint: undefined }],
+      }),
+    ),
+  /Storyboard is invalid/,
+);
+assert.throws(
   () => parseCapturePlanJson(JSON.stringify({ ...capturePlanFixture, steps: [] })),
+  /Capture plan is invalid/,
+);
+assert.throws(
+  () =>
+    parseCapturePlanJson(
+      JSON.stringify({
+        ...capturePlanFixture,
+        steps: [{ type: "waitForSelector", selector: "[data-testid='hero']", timeoutMs: 10_001 }],
+      }),
+    ),
+  /Capture plan is invalid/,
+);
+assert.throws(
+  () =>
+    parseCapturePlanJson(
+      JSON.stringify({
+        ...capturePlanFixture,
+        steps: [{ type: "pause", ms: 5_001 }],
+      }),
+    ),
   /Capture plan is invalid/,
 );
 assert.throws(
@@ -310,6 +340,34 @@ await assert.rejects(
       analysis: productAnalysisFixture,
     }),
   /Planner returned malformed planner response JSON/,
+);
+
+await assert.rejects(
+  () =>
+    createEnvironmentAiUrlPlanner({
+      endpoint: "https://planner.example/v1/chat/completions",
+      apiKey: "test-key",
+      model: "planner-model",
+      fetchImpl: async () => ({
+        ok: false,
+        status: 500,
+        json: async () => ({}),
+        text: async () => `planner failed ${"x".repeat(1_000)}`,
+      }),
+    })({
+      productUrl: "http://127.0.0.1:3000/",
+      prompt: "Show the hero.",
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analysis: productAnalysisFixture,
+    }),
+  (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.match(error.message, /AI URL planner request failed with status 500/);
+    assert.equal(error.message.includes("x".repeat(1_000)), false);
+    assert.ok(error.message.length < 300);
+    return true;
+  },
 );
 
 console.log("ai planning tests passed");
