@@ -18,10 +18,10 @@ const validRequest = CreateDemoRequestSchema.parse({
   outputDirectory: "generated/local-job/manual-fixture-job",
 });
 
-assert.equal(validRequest.id, "manual-fixture-job");
+assert.equal("id" in validRequest ? validRequest.id : undefined, "manual-fixture-job");
 assert.equal(validRequest.durationCapSeconds, 12);
 assert.equal(validRequest.aspectRatio, "16:9");
-assert.equal(validRequest.mode, "manual-fixture");
+assert.equal("mode" in validRequest ? validRequest.mode : undefined, "manual-fixture");
 
 assert.equal(
   CreateDemoRequestSchema.safeParse({
@@ -88,7 +88,7 @@ const progress = GenerationProgressEventSchema.parse({
   artifactPath: "generated/local-job/manual-fixture-job/capture/video.webm",
 });
 
-assert.equal(progress.status, "capturing");
+assert.equal("status" in progress ? progress.status : undefined, "capturing");
 
 const result = GenerationResultSchema.parse({
   jobId: "manual-fixture-job",
@@ -98,7 +98,7 @@ const result = GenerationResultSchema.parse({
   artifactPaths: ["generated/local-job/manual-fixture-job/capture-result.json"],
 });
 
-assert.equal(result.status, "completed");
+assert.equal("status" in result ? result.status : undefined, "completed");
 
 const failure = GenerationErrorSchema.parse({
   jobId: "manual-fixture-job",
@@ -107,6 +107,6 @@ const failure = GenerationErrorSchema.parse({
   message: "Capture failed",
 });
 
-assert.equal(failure.stage, "capture");
+assert.equal("stage" in failure ? failure.stage : undefined, "capture");
 
 console.log("generation contract tests passed");

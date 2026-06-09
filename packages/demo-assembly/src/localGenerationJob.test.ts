@@ -39,6 +39,10 @@ const successfulManualRunner: ManualDemoRunner = async (input) => {
 
 const events: GenerationProgressEvent[] = [];
 
+function manualStatuses(events: GenerationProgressEvent[]) {
+  return events.map((event) => ("status" in event ? event.status : undefined));
+}
+
 const result = await runLocalGenerationJob(
   {
     id: "manual-fixture-job",
@@ -58,7 +62,7 @@ const result = await runLocalGenerationJob(
 assert.equal(result.jobId, "manual-fixture-job");
 assert.equal(result.status, "completed");
 assert.ok(result.projectPath.endsWith("generated/local-job/manual-fixture-job/demo-project.json"));
-assert.deepEqual(events.map((event) => event.status), [
+assert.deepEqual(manualStatuses(events), [
   "queued",
   "running",
   "capturing",
@@ -91,7 +95,7 @@ await assert.rejects(
 );
 
 assert.equal(manualRunnerCalled, false);
-assert.deepEqual(invalidEvents.map((event) => event.status), ["failed"]);
+assert.deepEqual(manualStatuses(invalidEvents), ["failed"]);
 
 const unsafeEvents: GenerationProgressEvent[] = [];
 
@@ -114,6 +118,6 @@ await assert.rejects(
   LocalGenerationJobError,
 );
 
-assert.deepEqual(unsafeEvents.map((event) => event.status), ["failed"]);
+assert.deepEqual(manualStatuses(unsafeEvents), ["failed"]);
 
 console.log("local generation job tests passed");

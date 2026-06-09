@@ -1,0 +1,32 @@
+{
+  "name": "@tinker/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/rendering build && pnpm --filter @tinker/editor build && pnpm --filter @tinker/ai-edit-ui build && tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/rendering build && pnpm --filter @tinker/editor build && pnpm --filter @tinker/ai-edit-ui build && tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tinker/ai-edit-ui": "workspace:*",
+    "@tinker/editor": "workspace:*",
+    "@tinker/generation-contract": "workspace:*",
+    "@tinker/project-schema": "workspace:*",
+    "@tinker/rendering": "workspace:*",
+    "@vitejs/plugin-react": "^4.7.0",
+    "vite": "^6.3.5",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

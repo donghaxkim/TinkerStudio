@@ -11,8 +11,8 @@ import {
   type GenerationFailureStage,
   type GenerationJob,
   type GenerationProgressEvent,
-  type GenerationResult,
   type GenerationStatus,
+  type ManualFixtureGenerationResult,
 } from "@tinker/generation-contract";
 import { runManualDemo, type RunManualDemoInput, type RunManualDemoResult } from "./runManualDemo.js";
 
@@ -83,7 +83,7 @@ function createFailure(jobId: string | undefined, stage: GenerationFailureStage,
 export async function runLocalGenerationJob(
   rawRequest: unknown,
   options: RunLocalGenerationJobOptions = {},
-): Promise<GenerationResult> {
+): Promise<ManualFixtureGenerationResult> {
   const now = options.now ?? (() => new Date().toISOString());
   const manualRunner = options.runManualDemo ?? runManualDemo;
   const initialTime = now();
@@ -118,6 +118,13 @@ export async function runLocalGenerationJob(
   }
 
   const request: CreateDemoRequest = parsedRequest.data;
+
+  if (!("mode" in request) || request.mode !== "manual-fixture") {
+    const failure = createFailure(jobId, "validation", "Local generation jobs require mode: manual-fixture");
+    emit("failed", failure.message);
+    throw new LocalGenerationJobError(failure);
+  }
+
   let outputDirectory: string;
 
   try {
@@ -162,6 +169,10 @@ export async function runLocalGenerationJob(
       outputDirectory,
       artifactPaths: manualResult.artifactPaths,
     });
+
+    if (!("projectPath" in result)) {
+      throw new Error("Local generation job produced a non-manual result");
+    }
 
     emit("completed", "Generation job completed", result.projectPath);
 

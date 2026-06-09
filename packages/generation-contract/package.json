@@ -13,15 +13,18 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx src/generationContract.test.ts"
+    "build": "pnpm --filter @tinker/project-schema build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @tinker/project-schema build && tsc -p tsconfig.json --noEmit",
+    "test": "tsx src/generationContract.test.ts && vitest run src/validators.test.ts"
   },
   "dependencies": {
+    "@tinker/project-schema": "workspace:*",
     "zod": "^4.2.1"
   },
   "devDependencies": {
     "@types/node": "^22.19.3",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   }
 }
