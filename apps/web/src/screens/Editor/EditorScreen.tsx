@@ -13,6 +13,7 @@ import {
 import type { DemoProject } from "@tinker/project-schema";
 import { loadSampleProject } from "../../fixtures/loadSampleProject.js";
 import { ProjectLoadPanel } from "./ProjectLoadPanel.js";
+import { ProjectExportPanel } from "./ProjectExportPanel.js";
 import { ProjectSaveLoadControls } from "./ProjectSaveLoadControls.js";
 
 function formatRange(range: SelectedRange | undefined) {
@@ -106,6 +107,7 @@ export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
           setSelectedRange({ start: 0, end: Math.min(loadedProject.duration, 6) });
         }}
       />
+      <ProjectExportPanel project={displayProject} />
 
       <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 22rem", gap: 20, alignItems: "start" }}>
         <Preview project={displayProject} currentTime={currentTime} />

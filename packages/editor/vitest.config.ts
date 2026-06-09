@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@tinker/project-schema": fileURLToPath(new URL("../project-schema/src/index.ts", import.meta.url)),
+      "@tinker/rendering": fileURLToPath(new URL("../rendering/src/index.ts", import.meta.url)),
     },
   },
   test: {

@@ -10,6 +10,7 @@ export default defineConfig({
       "@tinker/ai-edit-ui": fileURLToPath(new URL("../../packages/ai-edit-ui/src/index.ts", import.meta.url)),
       "@tinker/generation-contract": fileURLToPath(new URL("../../packages/generation-contract/src/index.ts", import.meta.url)),
       "@tinker/project-schema": fileURLToPath(new URL("../../packages/project-schema/src/index.ts", import.meta.url)),
+      "@tinker/rendering": fileURLToPath(new URL("../../packages/rendering/src/index.ts", import.meta.url)),
     },
   },
   server: {

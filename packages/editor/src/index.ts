@@ -39,3 +39,5 @@ export {
   redoEditorCommand,
   undoEditorCommand,
 } from "./editorHistory.js";
+export type { PrepareMp4ExportResult } from "./export/prepareMp4Export.js";
+export { prepareMp4Export } from "./export/prepareMp4Export.js";
