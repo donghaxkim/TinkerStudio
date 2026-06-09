@@ -30,6 +30,9 @@ importers:
       '@tinker/browser-capture':
         specifier: workspace:*
         version: link:../browser-capture
+      '@tinker/generation-contract':
+        specifier: workspace:*
+        version: link:../generation-contract
       '@tinker/project-schema':
         specifier: workspace:*
         version: link:../project-schema
