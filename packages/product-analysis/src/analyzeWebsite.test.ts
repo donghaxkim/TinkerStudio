@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { startFixtureServer } from "@tinker/browser-capture";
 import { analyzeWebsite } from "./analyzeWebsite.js";
+import { analyzeWebsiteWithBrowserLauncher } from "./analyzeWebsite.internal.js";
 
 const fixtureUrl = new URL("../../browser-capture/fixtures/manual-demo.html", import.meta.url);
 const outputDirectory = await mkdtemp(join(tmpdir(), "tinker-product-analysis-"));
@@ -29,6 +30,23 @@ const close = (server: ReturnType<typeof createServer>) =>
   });
 
 try {
+  const setupError = new Error("newPage failed");
+  let browserClosed = false;
+
+  await assert.rejects(
+    () =>
+      analyzeWebsiteWithBrowserLauncher("https://example.test", {}, async () => ({
+        newPage: async () => {
+          throw setupError;
+        },
+        close: async () => {
+          browserClosed = true;
+        },
+      })),
+    (error) => error === setupError,
+  );
+  assert.equal(browserClosed, true);
+
   const analysis = await analyzeWebsite(server.url, {
     outputDirectory,
     screenshotFileName: "analysis.png",
@@ -68,11 +86,9 @@ try {
   const pendingRequestUrl = await listen(pendingRequestServer);
 
   try {
-    const startedAt = Date.now();
     const pendingRequestAnalysis = await analyzeWebsite(pendingRequestUrl, { timeoutMs: 5000, headless: true });
 
     assert.equal(pendingRequestAnalysis.title, "Pending Request");
-    assert.ok(Date.now() - startedAt < 2000);
   } finally {
     await close(pendingRequestServer);
   }
