@@ -18,7 +18,7 @@
     "test": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && tsx src/compileProject.test.ts && tsx src/aiPlanning.test.ts && tsx src/runAiUrlDemo.test.ts && tsx src/localGenerationJob.test.ts",
     "generate:manual-demo": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx scripts/generateManualDemo.ts",
     "generate:local-job": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx scripts/generateLocalJob.ts",
-    "generate:ai-url-job": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && tsx scripts/generateAiUrlJob.ts"
+    "generate:ai-url-job": "tsx scripts/generateAiUrlJob.ts"
   },
   "dependencies": {
     "@tinker/browser-capture": "workspace:*",
