@@ -2,6 +2,7 @@ node_modules/
 dist/
 generated/
 docs/superpowers/plans/
+.worktrees/
 .DS_Store
 .env
 .env.*
