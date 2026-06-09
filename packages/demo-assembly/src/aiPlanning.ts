@@ -257,7 +257,14 @@ export function createEnvironmentAiUrlPlanner(options: EnvironmentAiUrlPlannerOp
       throw new Error(`AI URL planner request failed with status ${response.status}: ${await response.text()}`);
     }
 
-    return parsePlannerResult(await response.json());
+    let responseBody: unknown;
+    try {
+      responseBody = await response.json();
+    } catch (error) {
+      throw new Error("Planner returned malformed planner response JSON", { cause: error });
+    }
+
+    return parsePlannerResult(responseBody);
   };
 }
 

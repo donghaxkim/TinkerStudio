@@ -6,6 +6,15 @@ import {
   parseCapturePlanJson,
   parseStoryboardJson,
 } from "./aiPlanning.js";
+import {
+  createEnvironmentAiUrlPlanner as exportedCreateEnvironmentAiUrlPlanner,
+  createFixtureAiUrlPlanner as exportedCreateFixtureAiUrlPlanner,
+  parseCapturePlanJson as exportedParseCapturePlanJson,
+  parseStoryboardJson as exportedParseStoryboardJson,
+  type AiUrlPlanner as ExportedAiUrlPlanner,
+  type AiUrlPlannerInput as ExportedAiUrlPlannerInput,
+  type AiUrlPlannerResult as ExportedAiUrlPlannerResult,
+} from "./index.js";
 
 const productAnalysisFixture: ProductAnalysis = {
   url: "http://127.0.0.1:3000/",
@@ -56,6 +65,23 @@ const capturePlanFixture = {
   ],
   expectedCheckpoints: [{ id: "hero", label: "Hero", selector: "[data-testid='hero']" }],
 } as const;
+
+assert.equal(exportedCreateEnvironmentAiUrlPlanner, createEnvironmentAiUrlPlanner);
+assert.equal(exportedCreateFixtureAiUrlPlanner, createFixtureAiUrlPlanner);
+assert.equal(exportedParseCapturePlanJson, parseCapturePlanJson);
+assert.equal(exportedParseStoryboardJson, parseStoryboardJson);
+const exportedPlannerTypeCheck: ExportedAiUrlPlanner = createFixtureAiUrlPlanner();
+const exportedPlannerInputTypeCheck: ExportedAiUrlPlannerInput = {
+  productUrl: "http://127.0.0.1:3000/",
+  prompt: "Show the export path.",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analysis: productAnalysisFixture,
+};
+void exportedPlannerTypeCheck;
+void exportedPlannerInputTypeCheck;
+const exportedPlannerResultTypeCheck: ExportedAiUrlPlannerResult | undefined = undefined;
+void exportedPlannerResultTypeCheck;
 
 const parsedStoryboard = parseStoryboardJson(JSON.stringify(storyboardFixture));
 assert.equal(parsedStoryboard.title, "Fixture demo");
@@ -184,6 +210,31 @@ await assert.rejects(
       analysis: productAnalysisFixture,
     }),
   /TINKER_AI_URL_PLANNER_ENDPOINT, TINKER_AI_URL_PLANNER_API_KEY, and TINKER_AI_URL_PLANNER_MODEL are required/,
+);
+
+await assert.rejects(
+  () =>
+    createEnvironmentAiUrlPlanner({
+      endpoint: "https://planner.example/v1/chat/completions",
+      apiKey: "test-key",
+      model: "planner-model",
+      fetchImpl: async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => {
+            throw new SyntaxError("Unexpected token '<'");
+          },
+          text: async () => "<html>not json</html>",
+        }),
+    })({
+      productUrl: "http://127.0.0.1:3000/",
+      prompt: "Show the hero.",
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analysis: productAnalysisFixture,
+    }),
+  /Planner returned malformed planner response JSON/,
 );
 
 console.log("ai planning tests passed");
