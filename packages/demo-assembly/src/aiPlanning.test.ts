@@ -101,6 +101,26 @@ assert.throws(
   /Storyboard is invalid/,
 );
 assert.throws(
+  () =>
+    parseStoryboardJson(
+      JSON.stringify({
+        ...storyboardFixture,
+        beats: [{ ...storyboardFixture.beats[0], startHint: 5, endHint: 5 }],
+      }),
+    ),
+  /Storyboard is invalid/,
+);
+assert.throws(
+  () =>
+    parseStoryboardJson(
+      JSON.stringify({
+        ...storyboardFixture,
+        beats: [{ ...storyboardFixture.beats[0], endHint: 11 }],
+      }),
+    ),
+  /Storyboard is invalid/,
+);
+assert.throws(
   () => parseCapturePlanJson(JSON.stringify({ ...capturePlanFixture, steps: [] })),
   /Capture plan is invalid/,
 );
@@ -194,6 +214,61 @@ const openAiResult = await openAiPlanner({
 
 assert.equal(openAiResult.storyboard.title, "Fixture demo");
 assert.equal(openAiResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
+
+await assert.rejects(
+  () =>
+    createEnvironmentAiUrlPlanner({
+      endpoint: "https://planner.example/v1/chat/completions",
+      apiKey: "test-key",
+      model: "planner-model",
+      fetchImpl: async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            storyboard: storyboardFixture,
+            capturePlan: { ...capturePlanFixture, targetUrl: "https://evil.example/" },
+          }),
+          text: async () => "",
+        }) as Response,
+    })({
+      productUrl: "http://127.0.0.1:3000/",
+      prompt: "Show the hero.",
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analysis: productAnalysisFixture,
+    }),
+  /Capture plan is invalid/,
+);
+
+await assert.rejects(
+  () =>
+    createEnvironmentAiUrlPlanner({
+      endpoint: "https://planner.example/v1/chat/completions",
+      apiKey: "test-key",
+      model: "planner-model",
+      fetchImpl: async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            storyboard: storyboardFixture,
+            capturePlan: {
+              ...capturePlanFixture,
+              steps: [{ type: "goto", url: "https://evil.example/" }, ...capturePlanFixture.steps.slice(1)],
+            },
+          }),
+          text: async () => "",
+        }) as Response,
+    })({
+      productUrl: "http://127.0.0.1:3000/",
+      prompt: "Show the hero.",
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analysis: productAnalysisFixture,
+    }),
+  /Capture plan is invalid/,
+);
 
 await assert.rejects(
   () =>

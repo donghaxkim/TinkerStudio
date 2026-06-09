@@ -62,7 +62,26 @@ const storyboardSchema = z
       )
       .min(1),
   })
-  .strict();
+  .strict()
+  .superRefine((storyboard, context) => {
+    storyboard.beats.forEach((beat, index) => {
+      if (beat.startHint !== undefined && beat.endHint !== undefined && beat.endHint <= beat.startHint) {
+        context.addIssue({
+          code: "custom",
+          path: ["beats", index, "endHint"],
+          message: "endHint must be greater than startHint",
+        });
+      }
+
+      if (beat.endHint !== undefined && beat.endHint > storyboard.durationCapSeconds) {
+        context.addIssue({
+          code: "custom",
+          path: ["beats", index, "endHint"],
+          message: "endHint must be less than or equal to durationCapSeconds",
+        });
+      }
+    });
+  });
 
 const gotoStepSchema = z.object({ type: z.literal("goto"), url: nonEmptyString }).strict();
 const clickStepSchema = z
@@ -206,6 +225,18 @@ function parsePlannerResult(responseBody: unknown): AiUrlPlannerResult {
   };
 }
 
+function assertCapturePlanMatchesProductUrl(capturePlan: CapturePlan, productUrl: string) {
+  if (capturePlan.targetUrl !== productUrl) {
+    throw new Error("Capture plan is invalid: targetUrl must match productUrl");
+  }
+
+  capturePlan.steps.forEach((step, index) => {
+    if (step.type === "goto" && step.url !== productUrl) {
+      throw new Error(`Capture plan is invalid: steps.${index}.url must match productUrl`);
+    }
+  });
+}
+
 function buildPlannerPrompt(input: AiUrlPlannerInput) {
   return JSON.stringify(
     {
@@ -264,7 +295,10 @@ export function createEnvironmentAiUrlPlanner(options: EnvironmentAiUrlPlannerOp
       throw new Error("Planner returned malformed planner response JSON", { cause: error });
     }
 
-    return parsePlannerResult(responseBody);
+    const result = parsePlannerResult(responseBody);
+    assertCapturePlanMatchesProductUrl(result.capturePlan, input.productUrl);
+
+    return result;
   };
 }
 
