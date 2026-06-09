@@ -8,7 +8,15 @@ export const GenerationResultSchema = z.object({
   artifactPaths: z.array(z.string().min(1)),
 });
 
-export const GenerationFailureStageSchema = z.enum(["validation", "capture", "assembly", "unknown"]);
+export const GenerationFailureStageSchema = z.enum([
+  "validation",
+  "analysis",
+  "planning",
+  "verification",
+  "capture",
+  "assembly",
+  "unknown",
+]);
 
 export const GenerationErrorSchema = z.object({
   jobId: z.string().min(1).optional(),

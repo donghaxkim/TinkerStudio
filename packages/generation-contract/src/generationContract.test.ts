@@ -7,7 +7,7 @@ import {
   GenerationResultSchema,
 } from "./index.js";
 
-const validRequest = CreateDemoRequestSchema.parse({
+const validManualRequest = CreateDemoRequestSchema.parse({
   id: "manual-fixture-job",
   durationCapSeconds: 12,
   aspectRatio: "16:9",
@@ -18,10 +18,23 @@ const validRequest = CreateDemoRequestSchema.parse({
   outputDirectory: "generated/local-job/manual-fixture-job",
 });
 
-assert.equal(validRequest.id, "manual-fixture-job");
-assert.equal(validRequest.durationCapSeconds, 12);
-assert.equal(validRequest.aspectRatio, "16:9");
-assert.equal(validRequest.mode, "manual-fixture");
+assert.equal(validManualRequest.id, "manual-fixture-job");
+assert.equal(validManualRequest.durationCapSeconds, 12);
+assert.equal(validManualRequest.aspectRatio, "16:9");
+assert.equal(validManualRequest.mode, "manual-fixture");
+
+const validAiUrlRequest = CreateDemoRequestSchema.parse({
+  id: "ai-url-job",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  mode: "ai-url-planning",
+  productUrl: "http://127.0.0.1:3000/",
+  prompt: "Make a short demo of the main value prop.",
+  outputDirectory: "generated/local-job/ai-url-job",
+});
+
+assert.equal(validAiUrlRequest.mode, "ai-url-planning");
+assert.equal(validAiUrlRequest.productUrl, "http://127.0.0.1:3000/");
 
 assert.equal(
   CreateDemoRequestSchema.safeParse({
@@ -64,6 +77,27 @@ assert.equal(
   CreateDemoRequestSchema.safeParse({
     durationCapSeconds: 12,
     aspectRatio: "16:9",
+    mode: "ai-url-planning",
+    prompt: "Missing URL should fail.",
+  }).success,
+  false,
+);
+
+assert.equal(
+  CreateDemoRequestSchema.safeParse({
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    mode: "ai-url-planning",
+    productUrl: "not a url",
+    prompt: "Malformed URL should fail.",
+  }).success,
+  false,
+);
+
+assert.equal(
+  CreateDemoRequestSchema.safeParse({
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
     mode: "manual-fixture",
     outputDirectory: "bad\0path",
   }).success,
@@ -72,7 +106,7 @@ assert.equal(
 
 const job = GenerationJobSchema.parse({
   id: "manual-fixture-job",
-  request: validRequest,
+  request: validManualRequest,
   status: "queued",
   createdAt: "2026-06-09T00:00:00.000Z",
   updatedAt: "2026-06-09T00:00:00.000Z",
@@ -100,13 +134,15 @@ const result = GenerationResultSchema.parse({
 
 assert.equal(result.status, "completed");
 
-const failure = GenerationErrorSchema.parse({
-  jobId: "manual-fixture-job",
-  status: "failed",
-  stage: "capture",
-  message: "Capture failed",
-});
+for (const stage of ["validation", "analysis", "planning", "verification", "capture", "assembly", "unknown"] as const) {
+  const failure = GenerationErrorSchema.parse({
+    jobId: "manual-fixture-job",
+    status: "failed",
+    stage,
+    message: `${stage} failed`,
+  });
 
-assert.equal(failure.stage, "capture");
+  assert.equal(failure.stage, stage);
+}
 
 console.log("generation contract tests passed");
