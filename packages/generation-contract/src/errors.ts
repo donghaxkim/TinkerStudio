@@ -16,7 +16,15 @@ export const StructuredGenerationErrorSchema = z.object({
   details: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const GenerationFailureStageSchema = z.enum(["validation", "capture", "assembly", "unknown"]);
+export const GenerationFailureStageSchema = z.enum([
+  "validation",
+  "analysis",
+  "planning",
+  "verification",
+  "capture",
+  "assembly",
+  "unknown",
+]);
 
 export const ManualFixtureGenerationErrorSchema = z.object({
   jobId: z.string().min(1).optional(),

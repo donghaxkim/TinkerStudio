@@ -1,5 +1,10 @@
 import { CaptureError, type CapturePlan, type CaptureStep, type VerifyCapturePlanIssue, type VerifyCapturePlanResult } from "./types.js";
 
+export const MAX_SELECTOR_TIMEOUT_MS = 10_000;
+export const MAX_PAUSE_MS = 5_000;
+export const MAX_CAPTURE_STEPS = 50;
+export const MAX_CAPTURE_CHECKPOINTS = 20;
+
 function isPositiveNumber(value: number) {
   return Number.isFinite(value) && value > 0;
 }
@@ -16,6 +21,20 @@ function hasText(value: string | undefined) {
   return value !== undefined && value.trim().length > 0;
 }
 
+function isHttpUrl(value: string | undefined) {
+  const text = value?.trim();
+  if (text === undefined || text.length === 0) {
+    return false;
+  }
+
+  try {
+    const url = new URL(text);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function addIssue(issues: VerifyCapturePlanIssue[], path: string, message: string) {
   issues.push({ path, message });
 }
@@ -27,6 +46,8 @@ function verifyStep(step: CaptureStep, index: number, issues: VerifyCapturePlanI
     case "goto":
       if (!hasText(step.url)) {
         addIssue(issues, `${path}.url`, "goto step requires url");
+      } else if (!isHttpUrl(step.url)) {
+        addIssue(issues, `${path}.url`, "goto url must be an http or https URL");
       }
       return;
     case "click":
@@ -43,8 +64,8 @@ function verifyStep(step: CaptureStep, index: number, issues: VerifyCapturePlanI
       }
       return;
     case "scroll":
-      if (step.x === undefined && step.y === undefined) {
-        addIssue(issues, path, "scroll step requires x or y");
+      if (step.x === undefined && step.y === undefined && !hasText(step.selector)) {
+        addIssue(issues, path, "scroll step requires x, y, or selector");
       }
       if (step.x !== undefined && !isFiniteNumber(step.x)) {
         addIssue(issues, `${path}.x`, "scroll x must be finite");
@@ -65,10 +86,16 @@ function verifyStep(step: CaptureStep, index: number, issues: VerifyCapturePlanI
       if (step.timeoutMs !== undefined && !isPositiveNumber(step.timeoutMs)) {
         addIssue(issues, `${path}.timeoutMs`, "timeoutMs must be positive");
       }
+      if (step.timeoutMs !== undefined && step.timeoutMs > MAX_SELECTOR_TIMEOUT_MS) {
+        addIssue(issues, `${path}.timeoutMs`, `timeoutMs must be at most ${MAX_SELECTOR_TIMEOUT_MS}`);
+      }
       return;
     case "pause":
       if (!isNonNegativeNumber(step.ms)) {
         addIssue(issues, `${path}.ms`, "pause ms must be nonnegative");
+      }
+      if (step.ms > MAX_PAUSE_MS) {
+        addIssue(issues, `${path}.ms`, `pause ms must be at most ${MAX_PAUSE_MS}`);
       }
       return;
   }
@@ -82,6 +109,8 @@ export function verifyCapturePlan(plan: CapturePlan): VerifyCapturePlanResult {
 
   if (!hasText(plan.targetUrl)) {
     addIssue(issues, "targetUrl", "targetUrl is required");
+  } else if (!isHttpUrl(plan.targetUrl)) {
+    addIssue(issues, "targetUrl", "targetUrl must be an http or https URL");
   }
 
   if (!isPositiveNumber(plan.viewport.width)) {
@@ -96,9 +125,21 @@ export function verifyCapturePlan(plan: CapturePlan): VerifyCapturePlanResult {
     addIssue(issues, "steps", "at least one capture step is required");
   }
 
-  plan.steps.forEach((step, index) => verifyStep(step, index, issues));
+  if (plan.steps.length > MAX_CAPTURE_STEPS) {
+    addIssue(issues, "steps", `capture plan must have at most ${MAX_CAPTURE_STEPS} steps`);
+  }
 
-  plan.expectedCheckpoints.forEach((checkpoint, index) => {
+  if (plan.expectedCheckpoints.length > MAX_CAPTURE_CHECKPOINTS) {
+    addIssue(
+      issues,
+      "expectedCheckpoints",
+      `capture plan must have at most ${MAX_CAPTURE_CHECKPOINTS} expected checkpoints`,
+    );
+  }
+
+  plan.steps.slice(0, MAX_CAPTURE_STEPS).forEach((step, index) => verifyStep(step, index, issues));
+
+  plan.expectedCheckpoints.slice(0, MAX_CAPTURE_CHECKPOINTS).forEach((checkpoint, index) => {
     const path = `expectedCheckpoints.${index}`;
     if (!hasText(checkpoint.id)) {
       addIssue(issues, `${path}.id`, "checkpoint id is required");

@@ -7,7 +7,7 @@ import {
   GenerationResultSchema,
 } from "./index.js";
 
-const validRequest = CreateDemoRequestSchema.parse({
+const validManualRequest = CreateDemoRequestSchema.parse({
   id: "manual-fixture-job",
   durationCapSeconds: 12,
   aspectRatio: "16:9",
@@ -18,10 +18,34 @@ const validRequest = CreateDemoRequestSchema.parse({
   outputDirectory: "generated/local-job/manual-fixture-job",
 });
 
-assert.equal("id" in validRequest ? validRequest.id : undefined, "manual-fixture-job");
-assert.equal(validRequest.durationCapSeconds, 12);
-assert.equal(validRequest.aspectRatio, "16:9");
-assert.equal("mode" in validRequest ? validRequest.mode : undefined, "manual-fixture");
+assert.equal("id" in validManualRequest ? validManualRequest.id : undefined, "manual-fixture-job");
+assert.equal(validManualRequest.durationCapSeconds, 12);
+assert.equal(validManualRequest.aspectRatio, "16:9");
+assert.equal("mode" in validManualRequest ? validManualRequest.mode : undefined, "manual-fixture");
+
+const validAiUrlRequest = CreateDemoRequestSchema.parse({
+  id: "ai-url-job",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  mode: "ai-url-planning",
+  productUrl: "http://127.0.0.1:3000/",
+  prompt: "Make a short demo of the main value prop.",
+  outputDirectory: "generated/local-job/ai-url-job",
+});
+
+assert.equal("mode" in validAiUrlRequest ? validAiUrlRequest.mode : undefined, "ai-url-planning");
+assert.equal(validAiUrlRequest.productUrl, "http://127.0.0.1:3000/");
+
+const validAssistedRequest = CreateDemoRequestSchema.parse({
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  productUrl: "https://example.com/product",
+  repoUrl: "https://github.com/example/product",
+  prompt: "Show the assisted flow.",
+});
+
+assert.equal("mode" in validAssistedRequest, false);
+assert.equal(validAssistedRequest.prompt, "Show the assisted flow.");
 
 assert.equal(
   CreateDemoRequestSchema.safeParse({
@@ -64,6 +88,50 @@ assert.equal(
   CreateDemoRequestSchema.safeParse({
     durationCapSeconds: 12,
     aspectRatio: "16:9",
+    mode: "ai-url-planning",
+    prompt: "Missing URL should fail.",
+  }).success,
+  false,
+);
+
+assert.equal(
+  CreateDemoRequestSchema.safeParse({
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    mode: "ai-url-planning",
+    productUrl: "not a url",
+    prompt: "Malformed URL should fail.",
+  }).success,
+  false,
+);
+
+for (const productUrl of ["file:///tmp/product.html", "data:text/html,<h1>Product</h1>"]) {
+  assert.equal(
+    CreateDemoRequestSchema.safeParse({
+      durationCapSeconds: 12,
+      aspectRatio: "16:9",
+      mode: "ai-url-planning",
+      productUrl,
+      prompt: "Non-public URL schemes should fail.",
+    }).success,
+    false,
+  );
+}
+
+assert.equal(
+  CreateDemoRequestSchema.safeParse({
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    mode: "manual-fixture",
+    repoUrl: "file:///tmp/repo",
+  }).success,
+  false,
+);
+
+assert.equal(
+  CreateDemoRequestSchema.safeParse({
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
     mode: "manual-fixture",
     outputDirectory: "bad\0path",
   }).success,
@@ -72,7 +140,7 @@ assert.equal(
 
 const job = GenerationJobSchema.parse({
   id: "manual-fixture-job",
-  request: validRequest,
+  request: validManualRequest,
   status: "queued",
   createdAt: "2026-06-09T00:00:00.000Z",
   updatedAt: "2026-06-09T00:00:00.000Z",
@@ -100,13 +168,15 @@ const result = GenerationResultSchema.parse({
 
 assert.equal("status" in result ? result.status : undefined, "completed");
 
-const failure = GenerationErrorSchema.parse({
-  jobId: "manual-fixture-job",
-  status: "failed",
-  stage: "capture",
-  message: "Capture failed",
-});
+for (const stage of ["validation", "analysis", "planning", "verification", "capture", "assembly", "unknown"] as const) {
+  const failure = GenerationErrorSchema.parse({
+    jobId: "manual-fixture-job",
+    status: "failed",
+    stage,
+    message: `${stage} failed`,
+  });
 
-assert.equal("stage" in failure ? failure.stage : undefined, "capture");
+  assert.equal("stage" in failure ? failure.stage : undefined, stage);
+}
 
 console.log("generation contract tests passed");
