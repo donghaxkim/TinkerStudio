@@ -73,6 +73,10 @@ const successfulAiUrlRunner: AiUrlDemoRunner = async (input) => {
 
 const events: GenerationProgressEvent[] = [];
 
+function manualStatuses(events: GenerationProgressEvent[]) {
+  return events.map((event) => ("status" in event ? event.status : undefined));
+}
+
 const result = await runLocalGenerationJob(
   {
     id: "manual-fixture-job",
@@ -92,7 +96,7 @@ const result = await runLocalGenerationJob(
 assert.equal(result.jobId, "manual-fixture-job");
 assert.equal(result.status, "completed");
 assert.ok(result.projectPath.endsWith("generated/local-job/manual-fixture-job/demo-project.json"));
-assert.deepEqual(events.map((event) => event.status), [
+assert.deepEqual(manualStatuses(events), [
   "queued",
   "running",
   "capturing",
@@ -130,7 +134,7 @@ assert.deepEqual(aiUrlResult.artifactPaths.map((artifactPath) => artifactPath.sp
   "capture-result.json",
   "demo-project.json",
 ]);
-assert.deepEqual(aiUrlEvents.map((event) => event.status), [
+assert.deepEqual(manualStatuses(aiUrlEvents), [
   "queued",
   "running",
   "running",
@@ -176,7 +180,7 @@ await assert.rejects(
 );
 
 assert.equal(manualRunnerCalled, false);
-assert.deepEqual(invalidEvents.map((event) => event.status), ["failed"]);
+assert.deepEqual(manualStatuses(invalidEvents), ["failed"]);
 
 const unsafeEvents: GenerationProgressEvent[] = [];
 
@@ -199,7 +203,7 @@ await assert.rejects(
   LocalGenerationJobError,
 );
 
-assert.deepEqual(unsafeEvents.map((event) => event.status), ["failed"]);
+assert.deepEqual(manualStatuses(unsafeEvents), ["failed"]);
 
 const planningFailureEvents: GenerationProgressEvent[] = [];
 
@@ -227,11 +231,11 @@ await assert.rejects(
     ),
   (error: unknown) => {
     assert.ok(error instanceof LocalGenerationJobError);
-    assert.equal(error.generationError.stage, "planning");
+    assert.equal("stage" in error.generationError ? error.generationError.stage : undefined, "planning");
     return true;
   },
 );
 
-assert.equal(planningFailureEvents.at(-1)?.status, "failed");
+assert.equal(manualStatuses(planningFailureEvents).at(-1), "failed");
 
 console.log("local generation job tests passed");

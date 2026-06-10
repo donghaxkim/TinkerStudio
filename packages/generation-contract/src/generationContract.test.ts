@@ -18,10 +18,10 @@ const validManualRequest = CreateDemoRequestSchema.parse({
   outputDirectory: "generated/local-job/manual-fixture-job",
 });
 
-assert.equal(validManualRequest.id, "manual-fixture-job");
+assert.equal("id" in validManualRequest ? validManualRequest.id : undefined, "manual-fixture-job");
 assert.equal(validManualRequest.durationCapSeconds, 12);
 assert.equal(validManualRequest.aspectRatio, "16:9");
-assert.equal(validManualRequest.mode, "manual-fixture");
+assert.equal("mode" in validManualRequest ? validManualRequest.mode : undefined, "manual-fixture");
 
 const validAiUrlRequest = CreateDemoRequestSchema.parse({
   id: "ai-url-job",
@@ -33,8 +33,19 @@ const validAiUrlRequest = CreateDemoRequestSchema.parse({
   outputDirectory: "generated/local-job/ai-url-job",
 });
 
-assert.equal(validAiUrlRequest.mode, "ai-url-planning");
+assert.equal("mode" in validAiUrlRequest ? validAiUrlRequest.mode : undefined, "ai-url-planning");
 assert.equal(validAiUrlRequest.productUrl, "http://127.0.0.1:3000/");
+
+const validAssistedRequest = CreateDemoRequestSchema.parse({
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  productUrl: "https://example.com/product",
+  repoUrl: "https://github.com/example/product",
+  prompt: "Show the assisted flow.",
+});
+
+assert.equal("mode" in validAssistedRequest, false);
+assert.equal(validAssistedRequest.prompt, "Show the assisted flow.");
 
 assert.equal(
   CreateDemoRequestSchema.safeParse({
@@ -145,7 +156,7 @@ const progress = GenerationProgressEventSchema.parse({
   artifactPath: "generated/local-job/manual-fixture-job/capture/video.webm",
 });
 
-assert.equal(progress.status, "capturing");
+assert.equal("status" in progress ? progress.status : undefined, "capturing");
 
 const result = GenerationResultSchema.parse({
   jobId: "manual-fixture-job",
@@ -155,7 +166,7 @@ const result = GenerationResultSchema.parse({
   artifactPaths: ["generated/local-job/manual-fixture-job/capture-result.json"],
 });
 
-assert.equal(result.status, "completed");
+assert.equal("status" in result ? result.status : undefined, "completed");
 
 for (const stage of ["validation", "analysis", "planning", "verification", "capture", "assembly", "unknown"] as const) {
   const failure = GenerationErrorSchema.parse({
@@ -165,7 +176,7 @@ for (const stage of ["validation", "analysis", "planning", "verification", "capt
     message: `${stage} failed`,
   });
 
-  assert.equal(failure.stage, stage);
+  assert.equal("stage" in failure ? failure.stage : undefined, stage);
 }
 
 console.log("generation contract tests passed");

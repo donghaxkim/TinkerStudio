@@ -7,3 +7,7 @@ docs/superpowers/plans/
 .env
 .env.*
 !.env.example
+
+# Local per-person agent instructions. Do not commit personal AGENTS.md files.
+AGENTS.md
+agents.md

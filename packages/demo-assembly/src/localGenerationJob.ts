@@ -11,8 +11,8 @@ import {
   type GenerationFailureStage,
   type GenerationJob,
   type GenerationProgressEvent,
-  type GenerationResult,
   type GenerationStatus,
+  type ManualFixtureGenerationResult,
 } from "@tinker/generation-contract";
 import {
   runAiUrlDemo,
@@ -104,7 +104,7 @@ function statusForPhase(phase: GenerationFailureStage): GenerationStatus {
 export async function runLocalGenerationJob(
   rawRequest: unknown,
   options: RunLocalGenerationJobOptions = {},
-): Promise<GenerationResult> {
+): Promise<ManualFixtureGenerationResult> {
   const now = options.now ?? (() => new Date().toISOString());
   const manualRunner = options.runManualDemo ?? runManualDemo;
   const aiUrlRunner = options.runAiUrlDemo ?? runAiUrlDemo;
@@ -113,11 +113,11 @@ export async function runLocalGenerationJob(
 
   let job: GenerationJob | undefined;
 
-  function emit(status: GenerationStatus, message: string, artifactPath?: string) {
+  function emit(status: GenerationStatus, message: string, artifactPath?: string, error?: GenerationError) {
     const time = now();
 
     if (job) {
-      job = GenerationJobSchema.parse({ ...job, status, updatedAt: time });
+      job = GenerationJobSchema.parse({ ...job, status, updatedAt: time, ...(error ? { error } : {}) });
     }
 
     const event = GenerationProgressEventSchema.parse({
@@ -135,11 +135,17 @@ export async function runLocalGenerationJob(
 
   if (!parsedRequest.success) {
     const failure = createFailure(jobId, "validation", formatValidationError(parsedRequest.error));
-    emit("failed", failure.message);
+    emit("failed", failure.message, undefined, failure);
     throw new LocalGenerationJobError(failure);
   }
 
   const request: CreateDemoRequest = parsedRequest.data;
+
+  if (!("mode" in request) || (request.mode !== "manual-fixture" && request.mode !== "ai-url-planning")) {
+    const failure = createFailure(jobId, "validation", "Local generation jobs require mode: manual-fixture or ai-url-planning");
+    emit("failed", failure.message, undefined, failure);
+    throw new LocalGenerationJobError(failure);
+  }
 
   let outputDirectory: string;
 
@@ -147,7 +153,7 @@ export async function runLocalGenerationJob(
     outputDirectory = resolveSafeOutputDirectory(request.outputDirectory, jobId);
   } catch (error) {
     const failure = createFailure(jobId, "validation", formatUnknownError(error));
-    emit("failed", failure.message, request.outputDirectory);
+    emit("failed", failure.message, request.outputDirectory, failure);
     throw new LocalGenerationJobError(failure, { cause: error });
   }
 
@@ -204,12 +210,16 @@ export async function runLocalGenerationJob(
       artifactPaths: demoResult.artifactPaths,
     });
 
+    if (!("projectPath" in result)) {
+      throw new Error("Local generation job produced a non-manual result");
+    }
+
     emit("completed", "Generation job completed", result.projectPath);
 
     return result;
   } catch (error) {
     const failure = createFailure(jobId, activeStage, formatUnknownError(error));
-    emit("failed", failure.message);
+    emit("failed", failure.message, undefined, failure);
     throw new LocalGenerationJobError(failure, { cause: error });
   }
 }
