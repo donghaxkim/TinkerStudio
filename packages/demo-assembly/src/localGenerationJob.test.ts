@@ -208,6 +208,7 @@ await assert.rejects(
 assert.deepEqual(manualStatuses(unsafeEvents), ["failed"]);
 
 const planningFailureEvents: GenerationProgressEvent[] = [];
+let aiRunnerCalledWithoutRepo = false;
 
 await assert.rejects(
   () =>
@@ -224,20 +225,20 @@ await assert.rejects(
       {
         now: () => "2026-06-09T00:00:12.000Z",
         onProgress: (event) => planningFailureEvents.push(event),
-        runAiUrlDemo: async (input) => {
-          input.onPhase?.("analysis");
-          input.onPhase?.("planning");
-          throw new Error("Planner returned malformed storyboard JSON");
+        runAiUrlDemo: async () => {
+          aiRunnerCalledWithoutRepo = true;
+          throw new Error("AI runner should not run without repoUrl");
         },
       },
     ),
   (error: unknown) => {
     assert.ok(error instanceof LocalGenerationJobError);
-    assert.equal("stage" in error.generationError ? error.generationError.stage : undefined, "planning");
+    assert.equal("stage" in error.generationError ? error.generationError.stage : undefined, "validation");
     return true;
   },
 );
 
+assert.equal(aiRunnerCalledWithoutRepo, false);
 assert.equal(manualStatuses(planningFailureEvents).at(-1), "failed");
 
 console.log("local generation job tests passed");
