@@ -8,9 +8,13 @@ import {
   type CaptureResult,
 } from "@tinker/browser-capture";
 import {
+  analyzeRepo as defaultAnalyzeRepo,
   analyzeWebsite as defaultAnalyzeWebsite,
+  parseRepoAnalysis,
+  type AnalyzeRepoOptions,
   type AnalyzeWebsiteOptions,
   type ProductAnalysis,
+  type RepoAnalysis,
 } from "@tinker/product-analysis";
 import { compileProject } from "./compileProject.js";
 import { createEnvironmentAiUrlPlanner, type AiUrlPlanner } from "./aiPlanning.js";
@@ -19,6 +23,7 @@ import type { AspectRatio } from "./types.js";
 export type AiUrlDemoPhase = "analysis" | "planning" | "verification" | "capture" | "assembly";
 
 type AnalyzeWebsiteDependency = (url: string, options: AnalyzeWebsiteOptions) => Promise<ProductAnalysis>;
+type AnalyzeRepoDependency = (repoUrl: string, options: AnalyzeRepoOptions) => Promise<RepoAnalysis>;
 type RunCaptureDependency = (
   plan: CapturePlan,
   options: { outputDir: string; headless?: boolean },
@@ -32,8 +37,10 @@ export type RunAiUrlDemoInput = {
   prompt: string;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
+  repoUrl?: string;
   onPhase?: (phase: AiUrlDemoPhase) => void;
   analyzeWebsite?: AnalyzeWebsiteDependency;
+  analyzeRepo?: AnalyzeRepoDependency;
   planner?: AiUrlPlanner;
   runCapture?: RunCaptureDependency;
 };
@@ -66,6 +73,7 @@ function formatCapturePlanIssues(result: ReturnType<typeof verifyCapturePlan>) {
 export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDemoResult> {
   const captureOutputDir = join(input.outputRoot, "capture");
   const analyzeWebsite = input.analyzeWebsite ?? defaultAnalyzeWebsite;
+  const analyzeRepo = input.analyzeRepo ?? defaultAnalyzeRepo;
   const planner = input.planner ?? createEnvironmentAiUrlPlanner();
   const runCapture = input.runCapture ?? runPlaywrightCapture;
 
@@ -81,6 +89,32 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const productAnalysisPath = join(input.outputRoot, "product-analysis.json");
   await writeFile(productAnalysisPath, toPrettyJson(analysis));
 
+  let repoAnalysis: RepoAnalysis | undefined;
+  let repoAnalysisPath: string | undefined;
+
+  if (input.repoUrl !== undefined) {
+    const repoScratchDir = join(input.outputRoot, ".repo-scratch");
+    const checkoutDirectory = join(repoScratchDir, "checkout");
+    let repoStepError: unknown;
+
+    try {
+      repoAnalysis = parseRepoAnalysis(await analyzeRepo(input.repoUrl, { checkoutDirectory }), input.repoUrl);
+      repoAnalysisPath = join(input.outputRoot, "repo-analysis.json");
+      await writeFile(repoAnalysisPath, toPrettyJson(repoAnalysis));
+    } catch (error) {
+      repoStepError = error;
+      throw error;
+    } finally {
+      try {
+        await rm(repoScratchDir, { recursive: true, force: true });
+      } catch (cleanupError) {
+        if (repoStepError === undefined) {
+          throw cleanupError;
+        }
+      }
+    }
+  }
+
   input.onPhase?.("planning");
   const { storyboard, capturePlan } = await planner({
     productUrl: analysis.url,
@@ -88,6 +122,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,
     analysis,
+    ...(repoAnalysis === undefined ? {} : { repoAnalysis }),
   });
   const storyboardPath = join(input.outputRoot, "storyboard.json");
   await writeFile(storyboardPath, toPrettyJson(storyboard));
@@ -114,6 +149,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     outputRoot: input.outputRoot,
     createdAt: input.createdAt,
     productUrl: input.productUrl,
+    ...(input.repoUrl === undefined ? {} : { sourceRepoUrl: input.repoUrl }),
     prompt: input.prompt,
   });
   const projectPath = join(input.outputRoot, "demo-project.json");
@@ -121,6 +157,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
 
   const artifactPaths = [
     productAnalysisPath,
+    ...(repoAnalysisPath ? [repoAnalysisPath] : []),
     ...(analysis.screenshotPath ? [analysis.screenshotPath] : []),
     storyboardPath,
     capturePlanPath,

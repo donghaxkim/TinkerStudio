@@ -16,9 +16,42 @@ const PublicUrlSchema = z.string().url().refine((value) => {
   }
 }, "URL must use http or https");
 
+const GithubOwnerSegmentPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
+const GithubRepoSegmentPattern = /^(?=.*[A-Za-z0-9])[A-Za-z0-9._-]+$/;
+
+const PublicGithubRepoUrlSchema = z.string().url().refine((value) => {
+  try {
+    const url = new URL(value);
+    const pathMatch = /^\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+
+    if (pathMatch === null) {
+      return false;
+    }
+
+    const ownerName = decodeURIComponent(pathMatch[1]);
+    const repoPathSegment = decodeURIComponent(pathMatch[2]);
+    const repoName = repoPathSegment.endsWith(".git") ? repoPathSegment.slice(0, -4) : repoPathSegment;
+
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "github.com" &&
+      url.port === "" &&
+      url.username === "" &&
+      url.password === "" &&
+      url.search === "" &&
+      url.hash === "" &&
+      GithubOwnerSegmentPattern.test(ownerName) &&
+      GithubRepoSegmentPattern.test(repoName) &&
+      repoName !== "." &&
+      repoName !== ".."
+    );
+  } catch {
+    return false;
+  }
+}, "repoUrl must be a public GitHub repository root URL");
+
 const BaseCreateDemoRequestSchema = z.object({
   id: z.string().min(1).optional(),
-  repoUrl: PublicUrlSchema.optional(),
   prompt: z.string().min(1).optional(),
   durationCapSeconds: z.number().positive(),
   aspectRatio: AspectRatioSchema,
@@ -31,11 +64,13 @@ const BaseCreateDemoRequestSchema = z.object({
 
 export const ManualFixtureCreateDemoRequestSchema = BaseCreateDemoRequestSchema.extend({
   mode: z.literal("manual-fixture"),
+  repoUrl: PublicUrlSchema.optional(),
   productUrl: PublicUrlSchema.optional(),
 });
 
 export const AiUrlPlanningCreateDemoRequestSchema = BaseCreateDemoRequestSchema.extend({
   mode: z.literal("ai-url-planning"),
+  repoUrl: PublicGithubRepoUrlSchema.optional(),
   productUrl: PublicUrlSchema,
 });
 
