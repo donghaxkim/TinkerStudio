@@ -163,6 +163,30 @@ try {
       }),
     /Repository exceeds safe analysis file limit/,
   );
+
+  const invalidLimitCases: Array<{ name: "maxFiles" | "maxTotalBytes" | "maxFileBytes"; value: number }> = [
+    { name: "maxFiles", value: 0 },
+    { name: "maxFiles", value: 1.5 },
+    { name: "maxTotalBytes", value: Number.NaN },
+    { name: "maxTotalBytes", value: Infinity },
+    { name: "maxFileBytes", value: -1 },
+  ];
+  for (const { name, value } of invalidLimitCases) {
+    let fetchCalled = false;
+    await assert.rejects(
+      () =>
+        analyzeRepo(repoUrl, {
+          checkoutDirectory: join(fixtureRoot, `invalid-${name}-${String(value)}`),
+          [name]: value,
+          fetchRepo: async () => {
+            fetchCalled = true;
+            throw new Error("fetch should not run for invalid limits");
+          },
+        }),
+      new RegExp(`${name} must be a finite positive integer`),
+    );
+    assert.equal(fetchCalled, false);
+  }
 } finally {
   await rm(fixtureRoot, { recursive: true, force: true });
 }

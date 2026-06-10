@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readdir, readFile, rm } from "node:fs/promises";
-import { basename, extname, join, posix, relative, sep, win32 } from "node:path";
+import { lstat, mkdir, readdir, readFile } from "node:fs/promises";
+import { basename, dirname, extname, join, posix, relative, sep, win32 } from "node:path";
 import { promisify } from "node:util";
 import type { AnalyzeRepoOptions, RepoAnalysis } from "./types.js";
 
@@ -161,8 +161,7 @@ function normalizeRepoUrl(repoUrl: string) {
 }
 
 async function defaultFetchRepo(repoUrl: string, checkoutDirectory: string) {
-  await rm(checkoutDirectory, { recursive: true, force: true });
-  await mkdir(checkoutDirectory, { recursive: true });
+  await mkdir(dirname(checkoutDirectory), { recursive: true });
   await execFile("git", ["clone", "--depth", "1", "--no-tags", "--no-recurse-submodules", repoUrl, checkoutDirectory], {
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" },
   });
@@ -234,6 +233,9 @@ async function collectSourceFiles(root: string, options: Required<Pick<AnalyzeRe
       }
 
       candidates.push(relativePath);
+      if (candidates.length > options.maxFiles) {
+        throw new Error("Repository exceeds safe analysis file limit");
+      }
     }
   }
 
@@ -349,13 +351,25 @@ function buildAnalysis(repoUrl: string, commit: string | undefined, files: Colle
   );
 }
 
+function positiveIntegerLimit(value: number | undefined, fieldName: "maxFiles" | "maxTotalBytes" | "maxFileBytes", defaultValue: number) {
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${fieldName} must be a finite positive integer`);
+  }
+
+  return value;
+}
+
 export async function analyzeRepo(repoUrl: string, options: AnalyzeRepoOptions): Promise<RepoAnalysis> {
   const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
   const fetchRepo = options.fetchRepo ?? defaultFetchRepo;
   const limits = {
-    maxFiles: options.maxFiles ?? DEFAULT_MAX_FILES,
-    maxTotalBytes: options.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES,
-    maxFileBytes: options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
+    maxFiles: positiveIntegerLimit(options.maxFiles, "maxFiles", DEFAULT_MAX_FILES),
+    maxTotalBytes: positiveIntegerLimit(options.maxTotalBytes, "maxTotalBytes", DEFAULT_MAX_TOTAL_BYTES),
+    maxFileBytes: positiveIntegerLimit(options.maxFileBytes, "maxFileBytes", DEFAULT_MAX_FILE_BYTES),
   };
 
   const fetchResult = await fetchRepo(normalizedRepoUrl, options.checkoutDirectory);
