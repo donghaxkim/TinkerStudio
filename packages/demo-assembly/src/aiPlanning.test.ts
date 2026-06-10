@@ -236,6 +236,18 @@ assert.deepEqual(directCalls[0]?.headers, {
   authorization: "Bearer test-key",
   "content-type": "application/json",
 });
+const directBody = JSON.parse(String(directCalls[0]?.body));
+const directPrompt = String(directBody.messages[0].content);
+assert.match(directPrompt, /exactTopLevelShape/);
+assert.match(directPrompt, /"storyboard"/);
+assert.match(directPrompt, /"durationCapSeconds": 10/);
+assert.match(directPrompt, /"aspectRatio": "16:9"/);
+assert.match(directPrompt, /"beats": \[/);
+assert.match(directPrompt, /"capturePlan"/);
+assert.match(directPrompt, /"targetUrl": "http:\/\/127\.0\.0\.1:3000\/"/);
+assert.match(directPrompt, /"steps": \[/);
+assert.match(directPrompt, /Do not include schema, scenes, captions, audio, style, metadata, or editableTextFields/);
+assert.match(directPrompt, /Do not type into inputs unless the user prompt provides a safe value/);
 
 const openAiPlanner = createEnvironmentAiUrlPlanner({
   endpoint: "https://planner.example/v1/chat/completions",

@@ -8,11 +8,12 @@ import { runAiUrlDemo, type AiUrlDemoPhase } from "./runAiUrlDemo.js";
 
 const outputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-"));
 const productUrl = "http://127.0.0.1:3000/";
+const canonicalProductUrl = "http://127.0.0.1:3000/canonical";
 const prompt = "Show the hero and value proposition.";
 const phases: AiUrlDemoPhase[] = [];
 
 const productAnalysis: ProductAnalysis = {
-  url: productUrl,
+  url: canonicalProductUrl,
   title: "Fixture Product",
   headings: ["Build demos faster", "Export polished videos"],
   bodySnippets: ["Fixture Product turns product URLs into editable demo projects."],
@@ -27,10 +28,10 @@ const productAnalysis: ProductAnalysis = {
 };
 
 const capturePlan: CapturePlan = {
-  targetUrl: productUrl,
+  targetUrl: canonicalProductUrl,
   viewport: { width: 1280, height: 720 },
   steps: [
-    { type: "goto", url: productUrl },
+    { type: "goto", url: canonicalProductUrl },
     { type: "waitForSelector", selector: "[data-testid='hero']" },
   ],
   expectedCheckpoints: [{ id: "hero", label: "Hero", selector: "[data-testid='hero']" }],
@@ -56,7 +57,7 @@ const captureResult: CaptureResult = {
   metadata: {
     startedAt: "2026-06-09T00:00:00.000Z",
     completedAt: "2026-06-09T00:00:10.000Z",
-    targetUrl: productUrl,
+    targetUrl: canonicalProductUrl,
     viewport: { width: 1280, height: 720 },
   },
 };
@@ -81,7 +82,7 @@ const result = await runAiUrlDemo({
     return productAnalysis;
   },
   planner: async (input) => {
-    assert.equal(input.productUrl, productUrl);
+    assert.equal(input.productUrl, canonicalProductUrl);
     assert.equal(input.prompt, prompt);
     assert.equal(input.durationCapSeconds, 10);
     assert.equal(input.aspectRatio, "16:9");

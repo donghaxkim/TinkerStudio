@@ -267,14 +267,50 @@ function buildPlannerPrompt(input: AiUrlPlannerInput) {
   return JSON.stringify(
     {
       task: "Create strict JSON for an editable product demo storyboard and deterministic browser capture plan.",
+      instructions: [
+        "Return one JSON object only.",
+        "Use exactly the top-level keys storyboard and capturePlan.",
+        "Do not include schema, scenes, captions, audio, style, metadata, or editableTextFields.",
+        "Prefer simple visible UI actions and avoid auth, payments, destructive actions, or external navigation.",
+        "Do not type into inputs unless the user prompt provides a safe value; for external websites prefer goto, wait, hover, scroll, and pause.",
+      ],
       productUrl: input.productUrl,
       prompt: input.prompt,
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
       analysis: input.analysis,
-      responseShape: {
-        storyboard: "ManualStoryboard JSON",
-        capturePlan: "CapturePlan JSON",
+      exactTopLevelShape: {
+        storyboard: {
+          title: "string",
+          durationCapSeconds: input.durationCapSeconds,
+          aspectRatio: input.aspectRatio,
+          beats: [
+            {
+              id: "string",
+              type: "hook | screen_capture | feature | proof | cta",
+              goal: "string",
+              narration: "optional string",
+              startHint: "optional number >= 0",
+              endHint: `optional number <= ${input.durationCapSeconds}`,
+            },
+          ],
+        },
+        capturePlan: {
+          targetUrl: input.productUrl,
+          viewport: "{ width: number, height: number } matching aspectRatio",
+          steps: [
+            { type: "goto", url: input.productUrl },
+            { type: "waitForSelector", selector: "visible CSS selector", timeoutMs: "optional number <= 10000" },
+            { type: "click", selector: "optional CSS selector", text: "optional visible text" },
+            { type: "type", selector: "CSS selector", text: "string" },
+            { type: "scroll", x: "optional number", y: "optional number", selector: "optional CSS selector" },
+            { type: "hover", selector: "optional CSS selector", text: "optional visible text" },
+            { type: "pause", ms: "number <= 5000" },
+          ],
+          expectedCheckpoints: [
+            { id: "string", label: "string", selector: "CSS selector that should be visible after capture" },
+          ],
+        },
       },
     },
     null,

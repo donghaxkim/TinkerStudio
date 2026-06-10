@@ -83,7 +83,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
 
   input.onPhase?.("planning");
   const { storyboard, capturePlan } = await planner({
-    productUrl: input.productUrl,
+    productUrl: analysis.url,
     prompt: input.prompt,
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,

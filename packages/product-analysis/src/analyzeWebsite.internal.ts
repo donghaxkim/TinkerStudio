@@ -176,7 +176,7 @@ export async function analyzeWebsiteWithBrowserLauncher(
     ).slice(0, maxItems);
 
     return {
-      url,
+      url: page.url(),
       title: cleanText(data.title),
       headings: uniqueNonEmpty(data.headings).map((value) => truncate(value, 160)),
       bodySnippets: uniqueNonEmpty(data.paragraphs).map((value) => truncate(value, 220)),

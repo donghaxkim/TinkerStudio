@@ -84,6 +84,26 @@ try {
   assert.equal(analysis.screenshotPath, join(outputDirectory, "analysis.png"));
   assert.equal(existsSync(join(outputDirectory, "analysis.png")), true);
 
+  const canonicalServer = createServer((request, response) => {
+    if (request.url === "/") {
+      response.writeHead(302, { location: "/canonical" });
+      response.end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end("<!doctype html><title>Canonical Product</title><h1>Canonical Product</h1>");
+  });
+  const canonicalServerUrl = await listen(canonicalServer);
+
+  try {
+    const canonicalAnalysis = await analyzeWebsite(canonicalServerUrl, { timeoutMs: 5000, headless: true });
+
+    assert.equal(canonicalAnalysis.url, new URL("/canonical", canonicalServerUrl).href);
+  } finally {
+    await close(canonicalServer);
+  }
+
   const pendingRequestServer = createServer((request, response) => {
     if (request.url === "/") {
       response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
