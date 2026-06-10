@@ -4,5 +4,6 @@ export * from "./manualDemo.js";
 export * from "./runManualDemo.js";
 export * from "./localGenerationJob.js";
 export * from "./aiPlanning.js";
+export * from "./hyperframesPlanning.js";
 export * from "./runAiUrlDemo.js";
 export * from "./aiUrlRenderer.js";

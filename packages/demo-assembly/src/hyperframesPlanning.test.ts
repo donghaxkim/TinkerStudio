@@ -3,7 +3,11 @@ import { access, chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/prom
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
+import * as demoAssembly from "./index.js";
 import { createOpencodeHyperframesGenerator, createOpencodeHyperframesRepairer, defaultRunOpencode } from "./hyperframesPlanning.js";
+
+assert.equal(typeof demoAssembly.createOpencodeHyperframesGenerator, "function");
+assert.equal(typeof demoAssembly.createOpencodeHyperframesRepairer, "function");
 
 const productAnalysis: ProductAnalysis = {
   url: "https://example.com",
@@ -69,7 +73,14 @@ assert.match(calls[0]?.prompt ?? "", /durationCapSeconds/);
 assert.match(calls[0]?.prompt ?? "", /aspectRatio/);
 assert.match(calls[0]?.prompt ?? "", /sourceGrounding/);
 assert.match(calls[0]?.prompt ?? "", /outputVideoPath/);
-assert.match(calls[0]?.prompt ?? "", /assets\[\]/);
+const generatePrompt = JSON.parse(calls[0]?.prompt ?? "{}");
+assert.ok(Array.isArray(generatePrompt.requiredAssetManifest.schema.assets));
+assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.id, "string");
+assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.type, "string");
+assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.sourcePath, "string");
+assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.outputPath, "string");
+assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.evidence, "string");
+assert.doesNotMatch(calls[0]?.prompt ?? "", /assets\[\]/);
 assert.match(calls[0]?.prompt ?? "", /id/);
 assert.match(calls[0]?.prompt ?? "", /type/);
 assert.match(calls[0]?.prompt ?? "", /sourcePath/);

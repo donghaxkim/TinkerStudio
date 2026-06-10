@@ -194,13 +194,15 @@ function buildGeneratePrompt(input: GenerateHyperframesProjectInput) {
       },
       requiredAssetManifest: {
         schema: {
-          "assets[]": {
-            id: "string",
-            type: "string",
-            sourcePath: "string",
-            outputPath: "string",
-            evidence: "string",
-          },
+          assets: [
+            {
+              id: "string",
+              type: "string",
+              sourcePath: "string",
+              outputPath: "string",
+              evidence: "string",
+            },
+          ],
         },
       },
     },
