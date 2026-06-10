@@ -13,6 +13,8 @@ try {
     aspectRatio: "16:9",
     mode: "ai-url-planning",
     productUrl: server.url,
+    repoUrl: "https://github.com/tinker/fixture",
+    renderer: "hyperframes",
     outputDirectory: "generated/local-job/ai-url-fixture-local-job",
     prompt: "Make a short demo of the main value prop.",
   };

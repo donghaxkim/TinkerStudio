@@ -5,3 +5,4 @@ export * from "./runManualDemo.js";
 export * from "./localGenerationJob.js";
 export * from "./aiPlanning.js";
 export * from "./runAiUrlDemo.js";
+export * from "./aiUrlRenderer.js";
