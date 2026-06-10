@@ -78,6 +78,31 @@ const captureResult: CaptureResult = {
   },
 };
 
+const defaultRendererOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-default-renderer-"));
+let defaultRendererAnalyzeCalled = false;
+await assert.rejects(
+  () =>
+    runAiUrlDemo({
+      outputRoot: defaultRendererOutputRoot,
+      projectId: "ai-url-demo-default-renderer-test",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      productUrl,
+      prompt,
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analyzeWebsite: async () => {
+        defaultRendererAnalyzeCalled = true;
+        return productAnalysis;
+      },
+      planner: async () => {
+        throw new Error("planner should not run for unsupported renderer");
+      },
+      runCapture: async () => captureResult,
+    }),
+  /Hyperframes renderer is not implemented yet/,
+);
+assert.equal(defaultRendererAnalyzeCalled, false);
+
 const result = await runAiUrlDemo({
   outputRoot,
   projectId: "ai-url-demo-test",
@@ -180,6 +205,7 @@ await assert.rejects(
       createdAt: "2026-06-09T00:00:00.000Z",
       productUrl,
       repoUrl,
+      renderer: "playwright",
       prompt,
       durationCapSeconds: 10,
       aspectRatio: "16:9",
@@ -205,6 +231,7 @@ await assert.rejects(
       createdAt: "2026-06-09T00:00:00.000Z",
       productUrl,
       repoUrl,
+      renderer: "playwright",
       prompt,
       durationCapSeconds: 10,
       aspectRatio: "16:9",
@@ -236,6 +263,7 @@ try {
     createdAt: "2026-06-09T00:00:00.000Z",
     productUrl,
     repoUrl,
+    renderer: "playwright",
     prompt,
     durationCapSeconds: 10,
     aspectRatio: "16:9",

@@ -88,6 +88,11 @@ async function cleanupRepoScratch(repoScratchDir: string | undefined, priorError
 
 export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDemoResult> {
   const renderer = input.renderer ?? "hyperframes";
+
+  if (renderer !== "playwright") {
+    throw new Error("Hyperframes renderer is not implemented yet");
+  }
+
   const playwrightOutputRoot = join(input.outputRoot, "playwright");
   const captureOutputDir = join(playwrightOutputRoot, "capture");
   const analyzeWebsite = input.analyzeWebsite ?? defaultAnalyzeWebsite;
@@ -207,11 +212,5 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     };
   }
 
-  if (renderer === "playwright") {
-    return runPlaywrightRenderer();
-  }
-
-  const rendererError = new Error("Hyperframes renderer is not implemented yet");
-  await cleanupRepoScratch(repoScratchDir, rendererError);
-  throw rendererError;
+  return runPlaywrightRenderer();
 }

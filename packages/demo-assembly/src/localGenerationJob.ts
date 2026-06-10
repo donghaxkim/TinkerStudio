@@ -193,6 +193,7 @@ export async function runLocalGenerationJob(
         createdAt: initialTime,
         productUrl: request.productUrl,
         ...(request.repoUrl === undefined ? {} : { repoUrl: request.repoUrl }),
+        renderer: request.renderer,
         prompt: request.prompt ?? "Make a short demo of the main value prop.",
         durationCapSeconds: request.durationCapSeconds,
         aspectRatio: request.aspectRatio,
