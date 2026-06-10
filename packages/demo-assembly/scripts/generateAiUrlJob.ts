@@ -50,6 +50,7 @@ function missingPlannerEnv() {
 }
 
 const productUrl = readArg("--url");
+const repoUrl = readArg("--repo");
 
 if (!productUrl) {
   console.error("--url is required");
@@ -85,6 +86,7 @@ if (!productUrl) {
         aspectRatio: aspectRatioValue,
         mode: "ai-url-planning",
         productUrl,
+        ...(repoUrl === undefined ? {} : { repoUrl }),
         outputDirectory: `generated/local-job/${id}`,
         prompt,
       };
