@@ -95,32 +95,50 @@ await mkdir(fakeBinDir);
 const fakeNpxPath = join(fakeBinDir, "npx");
 await writeFile(
   fakeNpxPath,
-  `#!/bin/sh
-printf "lint started\\n"
-( sleep 7; printf "close-only-output\\n" ) &
-trap "" TERM
-while :; do sleep 1; done
+  `#!/usr/bin/env node
+const { spawn } = require("node:child_process");
+
+process.stdout.write("lint started\\n");
+const child = spawn(process.execPath, ["-e", "setTimeout(() => process.exit(0), 2000)"], {
+  detached: true,
+  stdio: ["ignore", "inherit", "inherit"],
+});
+child.unref();
+process.on("SIGTERM", () => {});
+setInterval(() => {}, 1000);
 `,
 );
 await chmod(fakeNpxPath, 0o755);
 const originalPath = process.env.PATH;
 process.env.PATH = `${fakeBinDir}${delimiter}${originalPath ?? ""}`;
+const fallbackStartedAt = Date.now();
+let fallbackBound: ReturnType<typeof setTimeout> | undefined;
 try {
   await assert.rejects(
     () =>
-      runHyperframesRender({
-        hyperframesDir: defaultTimeoutDir,
-        outputVideoPath: join(defaultTimeoutDir, "output.mp4"),
-        lintTimeoutMs: 1000,
-      }),
+      Promise.race([
+        runHyperframesRender({
+          hyperframesDir: defaultTimeoutDir,
+          outputVideoPath: join(defaultTimeoutDir, "output.mp4"),
+          lintTimeoutMs: 500,
+          timeoutKillGraceMs: 50,
+          timeoutCloseFallbackMs: 50,
+        }),
+        new Promise((_, reject) => {
+          fallbackBound = setTimeout(() => reject(new Error("hard fallback did not settle")), 1_500);
+        }),
+      ]),
     /timed out/i,
   );
 } finally {
+  if (fallbackBound !== undefined) {
+    clearTimeout(fallbackBound);
+  }
   process.env.PATH = originalPath;
 }
+assert.ok(Date.now() - fallbackStartedAt < 1_500);
 const defaultTimeoutLog = await readFile(join(defaultTimeoutDir, "lint.log"), "utf8");
 assert.match(defaultTimeoutLog, /timedOut: true/);
 assert.match(defaultTimeoutLog, /lint started/);
-assert.match(defaultTimeoutLog, /close-only-output/);
 
 console.log("hyperframes render tests passed");
