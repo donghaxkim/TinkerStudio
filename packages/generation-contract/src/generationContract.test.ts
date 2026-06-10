@@ -6,6 +6,7 @@ import {
   GenerationProgressEventSchema,
   GenerationResultSchema,
 } from "./index.js";
+import { parseCreateDemoRequest, safeParseCreateDemoRequest } from "./createDemoRequest.js";
 
 const validManualRequest = CreateDemoRequestSchema.parse({
   id: "manual-fixture-job",
@@ -42,12 +43,43 @@ const validAiUrlRequest = CreateDemoRequestSchema.parse({
   aspectRatio: "16:9",
   mode: "ai-url-planning",
   productUrl: "http://127.0.0.1:3000/",
+  repoUrl: "https://github.com/example/product",
   prompt: "Make a short demo of the main value prop.",
   outputDirectory: "generated/local-job/ai-url-job",
 });
 
 assert.equal("mode" in validAiUrlRequest ? validAiUrlRequest.mode : undefined, "ai-url-planning");
 assert.equal(validAiUrlRequest.productUrl, "http://127.0.0.1:3000/");
+
+const aiUrlBaseRequest = {
+  mode: "ai-url-planning",
+  productUrl: "https://example.com",
+  repoUrl: "https://github.com/example/product",
+  durationCapSeconds: 12,
+  aspectRatio: "16:9",
+} as const;
+
+const parsedDefaultRendererRequest = parseCreateDemoRequest(aiUrlBaseRequest);
+assert.equal(parsedDefaultRendererRequest.mode, "ai-url-planning");
+assert.equal(parsedDefaultRendererRequest.renderer, "hyperframes");
+
+for (const renderer of ["hyperframes", "playwright", "both"] as const) {
+  const parsed = parseCreateDemoRequest({ ...aiUrlBaseRequest, renderer });
+  assert.equal(parsed.mode, "ai-url-planning");
+  assert.equal(parsed.renderer, renderer);
+}
+
+assert.equal(
+  safeParseCreateDemoRequest({
+    mode: "ai-url-planning",
+    productUrl: "https://example.com",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+  }).success,
+  false,
+);
+
+assert.equal(safeParseCreateDemoRequest({ ...aiUrlBaseRequest, renderer: "remotion" }).success, false);
 
 for (const repoUrl of ["https://github.com/example/product", "https://github.com/example/product.git"]) {
   const request = CreateDemoRequestSchema.parse({

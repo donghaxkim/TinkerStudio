@@ -50,6 +50,9 @@ const PublicGithubRepoUrlSchema = z.string().url().refine((value) => {
   }
 }, "repoUrl must be a public GitHub repository root URL");
 
+export const AiUrlRendererSchema = z.enum(["hyperframes", "playwright", "both"]);
+export type AiUrlRenderer = z.infer<typeof AiUrlRendererSchema>;
+
 const BaseCreateDemoRequestSchema = z.object({
   id: z.string().min(1).optional(),
   prompt: z.string().min(1).optional(),
@@ -70,8 +73,9 @@ export const ManualFixtureCreateDemoRequestSchema = BaseCreateDemoRequestSchema.
 
 export const AiUrlPlanningCreateDemoRequestSchema = BaseCreateDemoRequestSchema.extend({
   mode: z.literal("ai-url-planning"),
-  repoUrl: PublicGithubRepoUrlSchema.optional(),
+  repoUrl: PublicGithubRepoUrlSchema,
   productUrl: PublicUrlSchema,
+  renderer: AiUrlRendererSchema.default("hyperframes"),
 });
 
 export const AssistedCreateDemoRequestSchema = z.object({
