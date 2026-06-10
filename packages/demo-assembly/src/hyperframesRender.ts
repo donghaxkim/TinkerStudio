@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 const DEFAULT_LINT_TIMEOUT_MS = 120_000;
 const DEFAULT_RENDER_TIMEOUT_MS = 600_000;
+const TIMEOUT_KILL_GRACE_MS = 5_000;
 
 export type HyperframesCommand = {
   command: string;
@@ -40,7 +41,11 @@ function effectiveTimeout(value: number | undefined, fallback: number) {
 }
 
 function formatLog(result: HyperframesCommandResult) {
-  return [`stdout:\n${result.stdout}`, `stderr:\n${result.stderr}`].join("\n\n");
+  return [`status: ${result.status ?? "null"}`, `timedOut: ${result.timedOut === true}`, `stdout:\n${result.stdout}`, `stderr:\n${result.stderr}`].join("\n\n");
+}
+
+function formatError(error: unknown) {
+  return error instanceof Error ? (error.stack ?? error.message) : String(error);
 }
 
 async function defaultRunCommand(command: HyperframesCommand): Promise<HyperframesCommandResult> {
@@ -49,10 +54,41 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let settled = false;
+    let killTimeout: ReturnType<typeof setTimeout> | undefined;
     const timeout = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
+      killTimeout = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolveOnce({ status: null, stdout, stderr, timedOut });
+      }, TIMEOUT_KILL_GRACE_MS);
     }, command.timeoutMs);
+
+    function clearTimers() {
+      clearTimeout(timeout);
+      if (killTimeout !== undefined) {
+        clearTimeout(killTimeout);
+      }
+    }
+
+    function resolveOnce(result: HyperframesCommandResult) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimers();
+      resolve(result);
+    }
+
+    function rejectOnce(error: Error) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimers();
+      reject(error);
+    }
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
@@ -63,14 +99,27 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
       stderr += chunk;
     });
     child.on("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
+      rejectOnce(error);
     });
-    child.on("exit", (status) => {
-      clearTimeout(timeout);
-      resolve({ status, stdout, stderr, timedOut });
+    child.on("close", (status) => {
+      resolveOnce({ status, stdout, stderr, timedOut });
     });
   });
+}
+
+async function runAndLogCommand(step: "lint" | "render", command: HyperframesCommand, logPath: string, runCommand: HyperframesCommandRun) {
+  let result: HyperframesCommandResult;
+  try {
+    result = await runCommand(command);
+  } catch (error) {
+    result = { status: null, stdout: "", stderr: formatError(error) };
+  }
+
+  await writeFile(logPath, `${formatLog(result)}\n`);
+  if (result.timedOut || result.status !== 0) {
+    const timeoutDetail = result.timedOut ? " (timed out)" : "";
+    throw new Error(`Hyperframes ${step} failed${timeoutDetail}; see ${logPath}`);
+  }
 }
 
 export async function runHyperframesRender(input: RunHyperframesRenderInput): Promise<RunHyperframesRenderResult> {
@@ -78,27 +127,29 @@ export async function runHyperframesRender(input: RunHyperframesRenderInput): Pr
   const lintLogPath = join(input.hyperframesDir, "lint.log");
   const renderLogPath = join(input.hyperframesDir, "render.log");
 
-  const lintResult = await runCommand({
-    command: "npx",
-    args: ["hyperframes", "lint"],
-    cwd: input.hyperframesDir,
-    timeoutMs: effectiveTimeout(input.lintTimeoutMs, DEFAULT_LINT_TIMEOUT_MS),
-  });
-  await writeFile(lintLogPath, `${formatLog(lintResult)}\n`);
-  if (lintResult.timedOut || lintResult.status !== 0) {
-    throw new Error(`Hyperframes lint failed; see ${lintLogPath}`);
-  }
+  await runAndLogCommand(
+    "lint",
+    {
+      command: "npx",
+      args: ["hyperframes", "lint"],
+      cwd: input.hyperframesDir,
+      timeoutMs: effectiveTimeout(input.lintTimeoutMs, DEFAULT_LINT_TIMEOUT_MS),
+    },
+    lintLogPath,
+    runCommand,
+  );
 
-  const renderResult = await runCommand({
-    command: "npx",
-    args: ["hyperframes", "render", "--output", input.outputVideoPath],
-    cwd: input.hyperframesDir,
-    timeoutMs: effectiveTimeout(input.renderTimeoutMs, DEFAULT_RENDER_TIMEOUT_MS),
-  });
-  await writeFile(renderLogPath, `${formatLog(renderResult)}\n`);
-  if (renderResult.timedOut || renderResult.status !== 0) {
-    throw new Error(`Hyperframes render failed; see ${renderLogPath}`);
-  }
+  await runAndLogCommand(
+    "render",
+    {
+      command: "npx",
+      args: ["hyperframes", "render", "--output", input.outputVideoPath],
+      cwd: input.hyperframesDir,
+      timeoutMs: effectiveTimeout(input.renderTimeoutMs, DEFAULT_RENDER_TIMEOUT_MS),
+    },
+    renderLogPath,
+    runCommand,
+  );
 
   return { lintLogPath, renderLogPath, outputVideoPath: input.outputVideoPath };
 }

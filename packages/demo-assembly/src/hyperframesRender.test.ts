@@ -43,4 +43,50 @@ await assert.rejects(
   /Hyperframes lint failed/,
 );
 
+const lintFailureDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-lint-failure-"));
+const lintFailureCalls: Parameters<HyperframesCommandRun>[0][] = [];
+await assert.rejects(
+  () =>
+    runHyperframesRender({
+      hyperframesDir: lintFailureDir,
+      outputVideoPath: join(lintFailureDir, "output.mp4"),
+      runCommand: async (command) => {
+        lintFailureCalls.push(command);
+        return { status: command.args.includes("lint") ? 1 : 0, stdout: "lint stdout", stderr: "lint stderr" };
+      },
+    }),
+  /Hyperframes lint failed/,
+);
+assert.equal(lintFailureCalls.length, 1);
+assert.deepEqual(lintFailureCalls[0]?.args, ["hyperframes", "lint"]);
+assert.match(await readFile(join(lintFailureDir, "lint.log"), "utf8"), /lint stderr/);
+
+const timeoutDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-timeout-"));
+await assert.rejects(
+  () =>
+    runHyperframesRender({
+      hyperframesDir: timeoutDir,
+      outputVideoPath: join(timeoutDir, "output.mp4"),
+      runCommand: async () => ({ status: null, stdout: "partial stdout", stderr: "partial stderr", timedOut: true }),
+    }),
+  /timed out/i,
+);
+const timeoutLog = await readFile(join(timeoutDir, "lint.log"), "utf8");
+assert.match(timeoutLog, /partial stdout/);
+assert.match(timeoutLog, /timedOut: true/);
+
+const rejectedRunnerDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-rejection-"));
+await assert.rejects(
+  () =>
+    runHyperframesRender({
+      hyperframesDir: rejectedRunnerDir,
+      outputVideoPath: join(rejectedRunnerDir, "output.mp4"),
+      runCommand: async () => {
+        throw new Error("runner exploded");
+      },
+    }),
+  /Hyperframes lint failed/,
+);
+assert.match(await readFile(join(rejectedRunnerDir, "lint.log"), "utf8"), /runner exploded/);
+
 console.log("hyperframes render tests passed");
