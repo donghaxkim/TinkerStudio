@@ -8,7 +8,7 @@ import {
   createZoomTargetEvent,
   secondsSince,
 } from "./captureEvents.js";
-import { checkpointTarget, fullPageDocumentDimensions, locatorTarget, usableSelector } from "./playwrightCaptureInternals.js";
+import { checkpointTarget, fullPageDocumentDimensions, isAllowedCaptureUrl, locatorTarget, usableSelector } from "./playwrightCaptureInternals.js";
 import { assertValidCapturePlan } from "./verifyCapturePlan.js";
 import { CaptureError, type CaptureAsset, type CaptureEvent, type CapturePlan, type CaptureResult } from "./types.js";
 
@@ -71,52 +71,40 @@ function stepErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function targetOrigin(targetUrl: string) {
-  try {
-    return new URL(targetUrl).origin;
-  } catch {
-    return undefined;
+function assertPageStayedOnTargetOrigin(pageUrl: string, targetUrl: string, stepIndex: number) {
+  if (!isAllowedCaptureUrl(pageUrl, targetUrl)) {
+    throw new CaptureError(`Capture step ${stepIndex} navigated away from target origin to ${pageUrl}`, stepIndex);
   }
 }
 
-function assertPageStayedOnTargetOrigin(pageUrl: string, origin: string | undefined, stepIndex: number) {
-  if (origin === undefined) {
-    return;
-  }
-
-  let currentOrigin: string;
-  try {
-    currentOrigin = new URL(pageUrl).origin;
-  } catch {
-    throw new CaptureError(`Capture step ${stepIndex} navigated away from target origin`, stepIndex);
-  }
-
-  if (currentOrigin !== origin) {
-    throw new CaptureError(`Capture step ${stepIndex} navigated away from target origin`, stepIndex);
-  }
-}
-
-function assertGotoStepsStayOnTargetOrigin(plan: CapturePlan, origin: string | undefined) {
-  if (origin === undefined) {
-    return;
-  }
-
+function assertGotoStepsStayOnTargetOrigin(plan: CapturePlan) {
   plan.steps.forEach((step, index) => {
     if (step.type !== "goto") {
       return;
     }
 
-    if (targetOrigin(step.url) !== origin) {
+    if (!isAllowedCaptureUrl(step.url, plan.targetUrl)) {
       throw new CaptureError(`Capture step ${index} goto url must stay on target origin`, index);
     }
   });
 }
 
-async function blockOffOriginNavigation(route: Route, origin: string | undefined, error: CaptureError) {
+async function blockOffOriginNavigation(route: Route, targetUrl: string, error: CaptureError) {
   const request = route.request();
-  const requestOrigin = targetOrigin(request.url());
 
-  if (request.isNavigationRequest() && requestOrigin !== undefined && origin !== undefined && requestOrigin !== origin) {
+  if (!request.isNavigationRequest() || isAllowedCaptureUrl(request.url(), targetUrl)) {
+    await route.continue();
+    return undefined;
+  }
+
+  let isTopLevelNavigation = true;
+  try {
+    isTopLevelNavigation = request.frame().parentFrame() === null;
+  } catch {
+    isTopLevelNavigation = true;
+  }
+
+  if (isTopLevelNavigation) {
     await route.abort("blockedbyclient");
     return error;
   }
@@ -130,8 +118,7 @@ export async function runPlaywrightCapture(
   options: RunPlaywrightCaptureOptions,
 ): Promise<CaptureResult> {
   assertValidCapturePlan(plan);
-  const origin = targetOrigin(plan.targetUrl);
-  assertGotoStepsStayOnTargetOrigin(plan, origin);
+  assertGotoStepsStayOnTargetOrigin(plan);
 
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs);
@@ -160,7 +147,7 @@ export async function runPlaywrightCapture(
     await context.route("**/*", async (route) => {
       const error = await blockOffOriginNavigation(
         route,
-        origin,
+        plan.targetUrl,
         new CaptureError(`Capture step ${activeStepIndex} navigated away from target origin`, activeStepIndex),
       );
 
@@ -224,6 +211,9 @@ export async function runPlaywrightCapture(
           case "type":
             await page.locator(step.selector).fill(step.text);
             break;
+          case "press":
+            await page.locator(step.selector).press(step.key);
+            break;
           case "scroll": {
             const selector = usableSelector(step.selector);
             if (selector !== undefined) {
@@ -250,7 +240,7 @@ export async function runPlaywrightCapture(
         if (blockedNavigationError !== undefined) {
           throw blockedNavigationError;
         }
-        assertPageStayedOnTargetOrigin(page.url(), origin, index);
+        assertPageStayedOnTargetOrigin(page.url(), plan.targetUrl, index);
       } catch (error) {
         if (popupError !== undefined) {
           throw popupError;

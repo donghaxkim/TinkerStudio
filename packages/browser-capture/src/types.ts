@@ -2,6 +2,7 @@ export type CaptureStep =
   | { type: "goto"; url: string }
   | { type: "click"; selector?: string; text?: string; label?: string }
   | { type: "type"; selector: string; text: string }
+  | { type: "press"; selector: string; key: string }
   | { type: "scroll"; x?: number; y?: number; selector?: string }
   | { type: "hover"; selector?: string; text?: string }
   | { type: "waitForSelector"; selector: string; timeoutMs?: number }

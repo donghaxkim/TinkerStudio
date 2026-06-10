@@ -3,12 +3,14 @@ import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import {
   createEnvironmentAiUrlPlanner,
   createFixtureAiUrlPlanner,
+  createOpencodeAiUrlPlanner,
   parseCapturePlanJson,
   parseStoryboardJson,
 } from "./aiPlanning.js";
 import {
   createEnvironmentAiUrlPlanner as exportedCreateEnvironmentAiUrlPlanner,
   createFixtureAiUrlPlanner as exportedCreateFixtureAiUrlPlanner,
+  createOpencodeAiUrlPlanner as exportedCreateOpencodeAiUrlPlanner,
   parseCapturePlanJson as exportedParseCapturePlanJson,
   parseStoryboardJson as exportedParseStoryboardJson,
   type AiUrlPlanner as ExportedAiUrlPlanner,
@@ -74,6 +76,7 @@ const capturePlanFixture = {
     { type: "goto", url: "http://127.0.0.1:3000/" },
     { type: "waitForSelector", selector: "[data-testid='hero']" },
     { type: "click", selector: "[data-testid='start-demo']" },
+    { type: "press", selector: "[data-testid='workspace-name']", key: "Enter" },
     { type: "pause", ms: 300 },
   ],
   expectedCheckpoints: [{ id: "hero", label: "Hero", selector: "[data-testid='hero']" }],
@@ -81,6 +84,7 @@ const capturePlanFixture = {
 
 assert.equal(exportedCreateEnvironmentAiUrlPlanner, createEnvironmentAiUrlPlanner);
 assert.equal(exportedCreateFixtureAiUrlPlanner, createFixtureAiUrlPlanner);
+assert.equal(exportedCreateOpencodeAiUrlPlanner, createOpencodeAiUrlPlanner);
 assert.equal(exportedParseCapturePlanJson, parseCapturePlanJson);
 assert.equal(exportedParseStoryboardJson, parseStoryboardJson);
 const exportedPlannerTypeCheck: ExportedAiUrlPlanner = createFixtureAiUrlPlanner();
@@ -91,6 +95,7 @@ const exportedPlannerInputTypeCheck: ExportedAiUrlPlannerInput = {
   aspectRatio: "16:9",
   analysis: productAnalysisFixture,
   repoAnalysis: repoAnalysisFixture,
+  repoCheckoutDirectory: "/tmp/repo-checkout",
 };
 void exportedPlannerTypeCheck;
 void exportedPlannerInputTypeCheck;
@@ -106,7 +111,7 @@ assert.equal(parsedStoryboard.beats.length, 2);
 const parsedCapturePlan = parseCapturePlanJson(JSON.stringify(capturePlanFixture));
 assert.equal(parsedCapturePlan.targetUrl, "http://127.0.0.1:3000/");
 assert.deepEqual(parsedCapturePlan.viewport, { width: 1280, height: 720 });
-assert.equal(parsedCapturePlan.steps.length, 4);
+assert.equal(parsedCapturePlan.steps.length, 5);
 assert.equal(parsedCapturePlan.expectedCheckpoints[0]?.id, "hero");
 
 assert.throws(() => parseStoryboardJson("{"), /Planner returned malformed storyboard JSON/);
@@ -341,6 +346,59 @@ await assert.rejects(
   /RepoAnalysis is invalid/,
 );
 assert.equal(invalidRepoFetchCalls, 0);
+
+const opencodeCalls: { prompt: string; cwd: string }[] = [];
+const opencodePlanner = createOpencodeAiUrlPlanner({
+  runOpencode: async (prompt, options) => {
+    opencodeCalls.push({ prompt, cwd: options.cwd });
+
+    return [
+      JSON.stringify({ type: "message", text: "planning" }),
+      JSON.stringify({ type: "message", text: JSON.stringify({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }) }),
+    ].join("\n");
+  },
+});
+
+const opencodeResult = await opencodePlanner({
+  productUrl: "http://127.0.0.1:3000/",
+  prompt: "Show a real workflow using a safe public sample URL.",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analysis: { ...productAnalysisFixture, inputs: [], buttons: ["About Us"] },
+  repoAnalysis: {
+    ...repoAnalysisFixture,
+    features: ["Paste a YouTube URL", "Generate highlight reels"],
+    demoIdeas: ["Search the web for a safe public long YouTube URL, paste it, and show generated highlights."],
+  },
+  repoCheckoutDirectory: "/tmp/repo-checkout",
+});
+
+assert.equal(opencodeResult.storyboard.title, "Fixture demo");
+assert.equal(opencodeResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
+assert.equal(opencodeCalls.length, 1);
+assert.equal(opencodeCalls[0]?.cwd, "/tmp/repo-checkout");
+assert.match(opencodeCalls[0]?.prompt ?? "", /primary demo planning agent/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /web research/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /safe public sample inputs/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /Feeling Lucky/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /generated-result controls/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /press step with key Enter/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /product workflow/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /homepage-only/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /Generate highlight reels/);
+
+await assert.rejects(
+  () =>
+    opencodePlanner({
+      productUrl: "http://127.0.0.1:3000/",
+      prompt: "Show the workflow.",
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analysis: productAnalysisFixture,
+      repoAnalysis: repoAnalysisFixture,
+    }),
+  /repoCheckoutDirectory is required/,
+);
 
 const openAiPlanner = createEnvironmentAiUrlPlanner({
   endpoint: "https://planner.example/v1/chat/completions",

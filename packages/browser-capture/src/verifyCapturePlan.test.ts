@@ -10,6 +10,7 @@ const validPlan: CapturePlan = {
     { type: "waitForSelector", selector: "[data-testid='hero']" },
     { type: "click", selector: "[data-testid='start-demo']", label: "Start demo" },
     { type: "type", selector: "[data-testid='workspace-name']", text: "Acme Launch" },
+    { type: "press", selector: "[data-testid='workspace-name']", key: "Enter" },
     { type: "scroll", y: 400 },
     { type: "hover", text: "Export" },
     { type: "pause", ms: 250 },
@@ -34,6 +35,7 @@ const invalidPlan: CapturePlan = {
   steps: [
     { type: "click" },
     { type: "type", selector: "", text: "" },
+    { type: "press", selector: "", key: "" },
     { type: "waitForSelector", selector: "", timeoutMs: -1 },
     { type: "pause", ms: -5 },
   ],
@@ -49,6 +51,10 @@ assert.match(
 assert.match(
   result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n"),
   /steps\.0: click step requires selector or text/,
+);
+assert.match(
+  result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n"),
+  /steps\.2\.selector: press step requires selector/,
 );
 assert.throws(() => assertValidCapturePlan(invalidPlan), /Invalid capture plan/);
 

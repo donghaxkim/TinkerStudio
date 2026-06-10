@@ -100,6 +100,7 @@ const result = await runAiUrlDemo({
   analyzeRepo: async (url, options) => {
     assert.equal(url, repoUrl);
     assert.ok(options.checkoutDirectory.endsWith(".repo-scratch/checkout"));
+    await mkdir(options.checkoutDirectory, { recursive: true });
     return repoAnalysis;
   },
   planner: async (input) => {
@@ -109,6 +110,12 @@ const result = await runAiUrlDemo({
     assert.equal(input.aspectRatio, "16:9");
     assert.deepEqual(input.analysis, productAnalysis);
     assert.deepEqual(input.repoAnalysis, repoAnalysis);
+    const repoCheckoutDirectory = input.repoCheckoutDirectory;
+    if (repoCheckoutDirectory === undefined) {
+      throw new Error("repoCheckoutDirectory should be passed to planner");
+    }
+    assert.ok(repoCheckoutDirectory.endsWith(".repo-scratch/checkout"));
+    assert.equal(existsSync(repoCheckoutDirectory), true);
 
     return {
       storyboard: {

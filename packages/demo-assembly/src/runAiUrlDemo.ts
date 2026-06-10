@@ -17,7 +17,7 @@ import {
   type RepoAnalysis,
 } from "@tinker/product-analysis";
 import { compileProject } from "./compileProject.js";
-import { createEnvironmentAiUrlPlanner, type AiUrlPlanner } from "./aiPlanning.js";
+import { createEnvironmentAiUrlPlanner, createOpencodeAiUrlPlanner, type AiUrlPlanner, type AiUrlPlannerResult } from "./aiPlanning.js";
 import type { AspectRatio } from "./types.js";
 
 export type AiUrlDemoPhase = "analysis" | "planning" | "verification" | "capture" | "assembly";
@@ -70,11 +70,25 @@ function formatCapturePlanIssues(result: ReturnType<typeof verifyCapturePlan>) {
   return result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ");
 }
 
+async function cleanupRepoScratch(repoScratchDir: string | undefined, priorError: unknown) {
+  if (repoScratchDir === undefined) {
+    return;
+  }
+
+  try {
+    await rm(repoScratchDir, { recursive: true, force: true });
+  } catch (cleanupError) {
+    if (priorError === undefined) {
+      throw cleanupError;
+    }
+  }
+}
+
 export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDemoResult> {
   const captureOutputDir = join(input.outputRoot, "capture");
   const analyzeWebsite = input.analyzeWebsite ?? defaultAnalyzeWebsite;
   const analyzeRepo = input.analyzeRepo ?? defaultAnalyzeRepo;
-  const planner = input.planner ?? createEnvironmentAiUrlPlanner();
+  const planner = input.planner ?? (input.repoUrl === undefined ? createEnvironmentAiUrlPlanner() : createOpencodeAiUrlPlanner());
   const runCapture = input.runCapture ?? runPlaywrightCapture;
 
   await rm(input.outputRoot, { recursive: true, force: true });
@@ -91,39 +105,43 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
 
   let repoAnalysis: RepoAnalysis | undefined;
   let repoAnalysisPath: string | undefined;
+  let repoScratchDir: string | undefined;
+  let repoCheckoutDirectory: string | undefined;
 
   if (input.repoUrl !== undefined) {
-    const repoScratchDir = join(input.outputRoot, ".repo-scratch");
-    const checkoutDirectory = join(repoScratchDir, "checkout");
-    let repoStepError: unknown;
+    repoScratchDir = join(input.outputRoot, ".repo-scratch");
+    repoCheckoutDirectory = join(repoScratchDir, "checkout");
 
     try {
-      repoAnalysis = parseRepoAnalysis(await analyzeRepo(input.repoUrl, { checkoutDirectory }), input.repoUrl);
+      repoAnalysis = parseRepoAnalysis(await analyzeRepo(input.repoUrl, { checkoutDirectory: repoCheckoutDirectory }), input.repoUrl);
       repoAnalysisPath = join(input.outputRoot, "repo-analysis.json");
       await writeFile(repoAnalysisPath, toPrettyJson(repoAnalysis));
     } catch (error) {
-      repoStepError = error;
+      await cleanupRepoScratch(repoScratchDir, error);
       throw error;
-    } finally {
-      try {
-        await rm(repoScratchDir, { recursive: true, force: true });
-      } catch (cleanupError) {
-        if (repoStepError === undefined) {
-          throw cleanupError;
-        }
-      }
     }
   }
 
   input.onPhase?.("planning");
-  const { storyboard, capturePlan } = await planner({
-    productUrl: analysis.url,
-    prompt: input.prompt,
-    durationCapSeconds: input.durationCapSeconds,
-    aspectRatio: input.aspectRatio,
-    analysis,
-    ...(repoAnalysis === undefined ? {} : { repoAnalysis }),
-  });
+  let plannerResult: AiUrlPlannerResult;
+  let plannerError: unknown;
+  try {
+    plannerResult = await planner({
+      productUrl: analysis.url,
+      prompt: input.prompt,
+      durationCapSeconds: input.durationCapSeconds,
+      aspectRatio: input.aspectRatio,
+      analysis,
+      ...(repoAnalysis === undefined ? {} : { repoAnalysis, repoCheckoutDirectory }),
+    });
+  } catch (error) {
+    plannerError = error;
+    throw error;
+  } finally {
+    await cleanupRepoScratch(repoScratchDir, plannerError);
+  }
+
+  const { storyboard, capturePlan } = plannerResult!;
   const storyboardPath = join(input.outputRoot, "storyboard.json");
   await writeFile(storyboardPath, toPrettyJson(storyboard));
 

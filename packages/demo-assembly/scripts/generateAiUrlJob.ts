@@ -68,7 +68,7 @@ if (!productUrl) {
     console.error("--aspect-ratio must be one of 16:9, 9:16, 1:1");
     process.exitCode = 1;
   } else {
-    const missingEnv = missingPlannerEnv();
+    const missingEnv = repoUrl === undefined ? missingPlannerEnv() : [];
 
     if (missingEnv.length > 0) {
       console.error(`Missing required environment variables: ${missingEnv.join(", ")}`);

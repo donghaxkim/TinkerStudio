@@ -63,6 +63,14 @@ function verifyStep(step: CaptureStep, index: number, issues: VerifyCapturePlanI
         addIssue(issues, `${path}.text`, "type step requires text");
       }
       return;
+    case "press":
+      if (!hasText(step.selector)) {
+        addIssue(issues, `${path}.selector`, "press step requires selector");
+      }
+      if (!hasText(step.key)) {
+        addIssue(issues, `${path}.key`, "press step requires key");
+      }
+      return;
     case "scroll":
       if (step.x === undefined && step.y === undefined && !hasText(step.selector)) {
         addIssue(issues, path, "scroll step requires x, y, or selector");
