@@ -74,6 +74,8 @@ assert.match(calls[0]?.prompt ?? "", /aspectRatio/);
 assert.match(calls[0]?.prompt ?? "", /sourceGrounding/);
 assert.match(calls[0]?.prompt ?? "", /outputVideoPath/);
 const generatePrompt = JSON.parse(calls[0]?.prompt ?? "{}");
+assert.equal(generatePrompt.requiredGenerationManifest.schema.renderer, "hyperframes");
+assert.deepEqual(generatePrompt.requiredGenerationManifest.schema.sourceGrounding, ["repo", "website-analysis"]);
 assert.ok(Array.isArray(generatePrompt.requiredAssetManifest.schema.assets));
 assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.id, "string");
 assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.type, "string");

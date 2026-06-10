@@ -182,12 +182,12 @@ function buildGeneratePrompt(input: GenerateHyperframesProjectInput) {
       repoAnalysis: input.repoAnalysis,
       requiredGenerationManifest: {
         schema: {
-          renderer: "string",
+          renderer: "hyperframes",
           productUrl: "string",
           sourceRepoUrl: "string",
           durationCapSeconds: "number",
           aspectRatio: "16:9 | 9:16 | 1:1",
-          sourceGrounding: "array of source evidence references",
+          sourceGrounding: ["repo", "website-analysis"],
           outputVideoPath: "output.mp4",
         },
         outputVideoPath: "output.mp4",
