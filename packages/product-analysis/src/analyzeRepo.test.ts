@@ -116,9 +116,30 @@ try {
       await symlink(outsideFile, join(checkout, "linked-secret.txt"));
       return { commit: "abcdef123456" };
     },
+    runOpencode: async (prompt, options) => {
+      commandsRun.push("opencode");
+      assert.match(prompt, /read-only repository research/);
+      assert.match(prompt, /Do not edit files/);
+      assert.match(prompt, /Return one JSON object only/);
+      assert.equal(options.cwd, checkoutDirectory);
+      return JSON.stringify({
+        type: "text",
+        text: JSON.stringify({
+          repoUrl,
+          productName: "Fixture Product",
+          summary: "Fixture Product turns product URLs and source context into editable demos.",
+          features: ["AI storyboard planning", "Deterministic browser capture"],
+          likelyRoutes: ["/", "/pricing"],
+          demoIdeas: ["Show a repo-informed hero-to-export workflow."],
+          importantTerms: ["Fixture Product", "storyboard", "capture plan"],
+          setupNotes: ["OpenCode inspected the cloned checkout without executing project scripts."],
+          sourceHints: [{ path: "README.md", reason: "Describes the product value proposition." }],
+        }),
+      });
+    },
   });
 
-  assert.deepEqual(commandsRun, ["fetch-only"]);
+  assert.deepEqual(commandsRun, ["fetch-only", "opencode"]);
   assert.equal(analysis.repoUrl, repoUrl);
   assert.equal(analysis.commit, "abcdef123456");
   assert.equal(analysis.productName, "Fixture Product");
@@ -129,7 +150,7 @@ try {
   assert.ok(analysis.likelyRoutes.includes("/pricing"));
   assert.ok(analysis.demoIdeas.length > 0);
   assert.ok(analysis.importantTerms.includes("Fixture Product"));
-  assert.ok(analysis.setupNotes.some((note) => note.includes("package.json")));
+  assert.ok(analysis.setupNotes.some((note) => note.includes("OpenCode")));
   assert.ok(analysis.sourceHints.some((hint) => hint.path === "README.md"));
   const serialized = JSON.stringify(analysis);
   assert.equal(serialized.includes("SHOULD_NOT_APPEAR"), false);
@@ -155,44 +176,45 @@ try {
     /Submodules are not supported/,
   );
 
-  await assert.rejects(
-    () =>
-      analyzeRepo(repoUrl, {
-        checkoutDirectory: join(fixtureRoot, "oversized-checkout"),
-        maxFiles: 1,
-        fetchRepo: async (_repoUrl, checkout) => {
-          await mkdir(checkout, { recursive: true });
-          await writeFile(join(checkout, "README.md"), "# One");
-          await writeFile(join(checkout, "app.tsx"), "export const value = true;");
-          return {};
-        },
-      }),
-    /Repository exceeds safe analysis file limit/,
-  );
-
-  const invalidLimitCases: Array<{ name: "maxFiles" | "maxTotalBytes" | "maxFileBytes"; value: number }> = [
-    { name: "maxFiles", value: 0 },
-    { name: "maxFiles", value: 1.5 },
-    { name: "maxTotalBytes", value: Number.NaN },
-    { name: "maxTotalBytes", value: Infinity },
-    { name: "maxFileBytes", value: -1 },
-  ];
-  for (const { name, value } of invalidLimitCases) {
-    let fetchCalled = false;
-    await assert.rejects(
-      () =>
-        analyzeRepo(repoUrl, {
-          checkoutDirectory: join(fixtureRoot, `invalid-${name}-${String(value)}`),
-          [name]: value,
-          fetchRepo: async () => {
-            fetchCalled = true;
-            throw new Error("fetch should not run for invalid limits");
-          },
+  const oversizedAnalysis = await analyzeRepo(repoUrl, {
+    checkoutDirectory: join(fixtureRoot, "oversized-checkout"),
+    fetchRepo: async (_repoUrl, checkout) => {
+      await mkdir(checkout, { recursive: true });
+      await writeFile(join(checkout, "README.md"), "# Large Product\n\nA large repo that needs agentic inspection.");
+      for (let index = 0; index < 81; index += 1) {
+        await writeFile(join(checkout, `file-${index}.ts`), `export const value${index} = true;`);
+      }
+      return { commit: "fedcba987654" };
+    },
+    runOpencode: async (prompt, options) => {
+      assert.match(prompt, /Return one JSON object only/);
+      assert.equal(options.cwd, join(fixtureRoot, "oversized-checkout"));
+      return [
+        JSON.stringify({ type: "text", text: '{"repoUrl":"https://github.com/example/product",' }),
+        JSON.stringify({ type: "text", text: '"productName":"Large Product",' }),
+        JSON.stringify({ type: "text", text: '"summary":"Large Product uses source-aware analysis to summarize oversized repositories.",' }),
+        JSON.stringify({ type: "text", text: `"features":[${Array.from({ length: 13 }, (_, index) => `"Feature ${index}"`).join(",")}],` }),
+        JSON.stringify({ type: "text", text: '"likelyRoutes":["/"],' }),
+        JSON.stringify({ type: "text", text: '"demoIdeas":["Show OpenCode producing repo context for an oversized repo."],' }),
+        JSON.stringify({ type: "text", text: '"importantTerms":["Large Product"],' }),
+        JSON.stringify({ type: "text", text: '"setupNotes":["OpenCode inspected the cloned checkout."],' }),
+        JSON.stringify({
+          type: "text",
+          text: `"sourceHints":[${Array.from(
+            { length: 21 },
+            (_, index) => `{"path":"file-${index}.md","reason":"Source evidence ${index}."}`,
+          ).join(",")}]}`,
         }),
-      new RegExp(`${name} must be a finite positive integer`),
-    );
-    assert.equal(fetchCalled, false);
-  }
+      ].join("\n");
+    },
+  });
+
+  assert.equal(oversizedAnalysis.repoUrl, repoUrl);
+  assert.equal(oversizedAnalysis.commit, "fedcba987654");
+  assert.equal(oversizedAnalysis.productName, "Large Product");
+  assert.equal(oversizedAnalysis.features.length, 12);
+  assert.equal(oversizedAnalysis.sourceHints.length, 20);
+
 } finally {
   await rm(fixtureRoot, { recursive: true, force: true });
 }
