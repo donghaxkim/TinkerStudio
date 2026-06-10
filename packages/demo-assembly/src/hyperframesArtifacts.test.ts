@@ -87,4 +87,71 @@ await assert.rejects(
   /outputVideoPath must stay inside the Hyperframes directory/,
 );
 
+const absoluteVideoRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-absolute-video-"));
+const absoluteVideoDir = join(absoluteVideoRoot, "hyperframes");
+await mkdir(absoluteVideoDir, { recursive: true });
+await writeFile(join(absoluteVideoDir, "index.html"), "<html></html>\n");
+await writeFile(join(absoluteVideoDir, "asset-manifest.json"), JSON.stringify({ assets: [] }));
+await writeFile(
+  join(absoluteVideoDir, "generation-manifest.json"),
+  JSON.stringify({
+    renderer: "hyperframes",
+    productUrl: "https://example.com",
+    sourceRepoUrl: "https://github.com/example/product",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    sourceGrounding: ["repo"],
+    outputVideoPath: join(tmpdir(), "outside.mp4"),
+  }),
+);
+await assert.rejects(
+  () =>
+    validateHyperframesArtifacts({
+      hyperframesDir: absoluteVideoDir,
+      productUrl: "https://example.com",
+      repoUrl: "https://github.com/example/product",
+    }),
+  /outputVideoPath must stay inside the Hyperframes directory/,
+);
+
+const absoluteAssetRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-absolute-asset-"));
+const absoluteAssetDir = join(absoluteAssetRoot, "hyperframes");
+await mkdir(absoluteAssetDir, { recursive: true });
+await writeFile(join(absoluteAssetDir, "index.html"), "<html></html>\n");
+await writeFile(
+  join(absoluteAssetDir, "asset-manifest.json"),
+  JSON.stringify({
+    assets: [
+      {
+        id: "logo-primary",
+        type: "logo",
+        sourcePath: "public/logo.svg",
+        outputPath: join(tmpdir(), "logo.svg"),
+        evidence: "Primary logo from public assets.",
+      },
+    ],
+  }),
+);
+await writeFile(
+  join(absoluteAssetDir, "generation-manifest.json"),
+  JSON.stringify({
+    renderer: "hyperframes",
+    productUrl: "https://example.com",
+    sourceRepoUrl: "https://github.com/example/product",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    sourceGrounding: ["repo"],
+    outputVideoPath: "output.mp4",
+  }),
+);
+await assert.rejects(
+  () =>
+    validateHyperframesArtifacts({
+      hyperframesDir: absoluteAssetDir,
+      productUrl: "https://example.com",
+      repoUrl: "https://github.com/example/product",
+    }),
+  /asset outputPath must stay inside the Hyperframes directory/,
+);
+
 console.log("hyperframes artifact tests passed");

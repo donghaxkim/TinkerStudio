@@ -1,5 +1,5 @@
 import { access, readFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 
 const assetManifestSchema = z
@@ -54,7 +54,7 @@ function formatZodIssues(error: z.ZodError) {
 
 function assertInside(parent: string, child: string, message: string) {
   const relativePath = relative(resolve(parent), resolve(child));
-  if (relativePath === "" || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+  if (relativePath === "" || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
     throw new Error(message);
   }
 }
@@ -106,6 +106,9 @@ export async function validateHyperframesArtifacts(
   }
 
   for (const asset of assetManifestResult.data.assets) {
+    if (isAbsolute(asset.outputPath)) {
+      throw new Error("asset outputPath must stay inside the Hyperframes directory");
+    }
     assertInside(
       hyperframesDir,
       join(hyperframesDir, asset.outputPath),
@@ -113,6 +116,9 @@ export async function validateHyperframesArtifacts(
     );
   }
 
+  if (isAbsolute(generationManifest.outputVideoPath)) {
+    throw new Error("outputVideoPath must stay inside the Hyperframes directory");
+  }
   const outputVideoPath = join(hyperframesDir, generationManifest.outputVideoPath);
   assertInside(hyperframesDir, outputVideoPath, "outputVideoPath must stay inside the Hyperframes directory");
 
