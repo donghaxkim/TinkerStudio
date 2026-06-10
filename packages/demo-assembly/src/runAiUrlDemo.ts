@@ -10,6 +10,7 @@ import {
 import {
   analyzeRepo as defaultAnalyzeRepo,
   analyzeWebsite as defaultAnalyzeWebsite,
+  parseRepoAnalysis,
   type AnalyzeRepoOptions,
   type AnalyzeWebsiteOptions,
   type ProductAnalysis,
@@ -97,7 +98,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     let repoStepError: unknown;
 
     try {
-      repoAnalysis = await analyzeRepo(input.repoUrl, { checkoutDirectory });
+      repoAnalysis = parseRepoAnalysis(await analyzeRepo(input.repoUrl, { checkoutDirectory }), input.repoUrl);
       repoAnalysisPath = join(input.outputRoot, "repo-analysis.json");
       await writeFile(repoAnalysisPath, toPrettyJson(repoAnalysis));
     } catch (error) {

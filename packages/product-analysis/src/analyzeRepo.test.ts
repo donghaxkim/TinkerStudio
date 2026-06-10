@@ -109,6 +109,8 @@ try {
       await writeFile(join(checkout, "app", "pricing", "page.tsx"), "export default function Pricing() { return <main>Pricing route</main>; }");
       await writeFile(join(checkout, "config", "api-key.json"), JSON.stringify({ apiKey: "SHOULD_NOT_APPEAR" }));
       await writeFile(join(checkout, ".env"), "SECRET_TOKEN=SHOULD_NOT_APPEAR");
+      await writeFile(join(checkout, ".env.yaml"), "token: ENV_YAML_SHOULD_NOT_APPEAR");
+      await writeFile(join(checkout, "config", ".env.json"), JSON.stringify({ token: "ENV_JSON_SHOULD_NOT_APPEAR" }));
       await writeFile(join(checkout, "node_modules", "ignored", "README.md"), "SHOULD_NOT_APPEAR");
       await writeFile(join(checkout, ".git", "config"), "SHOULD_NOT_APPEAR");
       await symlink(outsideFile, join(checkout, "linked-secret.txt"));
@@ -133,6 +135,10 @@ try {
   assert.equal(serialized.includes("SHOULD_NOT_APPEAR"), false);
   assert.equal(serialized.includes("config/api-key.json"), false);
   assert.equal(serialized.includes("SECRET_TOKEN"), false);
+  assert.equal(serialized.includes("ENV_YAML_SHOULD_NOT_APPEAR"), false);
+  assert.equal(serialized.includes("ENV_JSON_SHOULD_NOT_APPEAR"), false);
+  assert.equal(serialized.includes(".env.yaml"), false);
+  assert.equal(serialized.includes("config/.env.json"), false);
   assert.equal(serialized.includes("https://docs.example.com"), false);
   assert.equal(serialized.includes("https://evil.example"), false);
 

@@ -1,6 +1,6 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readdir, readFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { basename, dirname, extname, join, posix, relative, sep, win32 } from "node:path";
 import { promisify } from "node:util";
 import type { AnalyzeRepoOptions, RepoAnalysis } from "./types.js";
@@ -118,7 +118,7 @@ const DEFAULT_MAX_FILE_BYTES = 24_000;
 const GithubOwnerSegmentPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const GithubRepoSegmentPattern = /^(?=.*[A-Za-z0-9])[A-Za-z0-9._-]+$/;
 const ignoredDirectoryNames = new Set([".git", "node_modules", ".next", "dist", "build", "coverage", ".turbo", ".cache"]);
-const ignoredFileNames = new Set([".env", ".env.local", ".env.development", ".env.production", ".npmrc", ".yarnrc"]);
+const ignoredFileNames = new Set([".npmrc", ".yarnrc"]);
 const textExtensions = new Set([".md", ".mdx", ".txt", ".json", ".ts", ".tsx", ".js", ".jsx", ".css", ".html", ".yml", ".yaml"]);
 
 type CollectedSourceFile = {
@@ -162,22 +162,54 @@ function normalizeRepoUrl(repoUrl: string) {
 
 async function defaultFetchRepo(repoUrl: string, checkoutDirectory: string) {
   await mkdir(dirname(checkoutDirectory), { recursive: true });
-  await execFile("git", ["clone", "--depth", "1", "--no-tags", "--no-recurse-submodules", repoUrl, checkoutDirectory], {
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" },
-  });
+  const gitHomeDirectory = await mkdtemp(join(dirname(checkoutDirectory), "git-home-"));
+  const gitConfigDirectory = join(gitHomeDirectory, ".config");
+  await mkdir(gitConfigDirectory, { recursive: true });
+
+  const gitEnv = createIsolatedGitEnv(gitHomeDirectory, gitConfigDirectory);
+  const isolatedGitArgs = ["-c", "credential.helper=", "-c", "core.askPass="];
 
   try {
-    const { stdout } = await execFile("git", ["-C", checkoutDirectory, "rev-parse", "--short", "HEAD"], {
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_LFS_SKIP_SMUDGE: "1" },
+    await execFile("git", [...isolatedGitArgs, "clone", "--depth", "1", "--no-tags", "--no-recurse-submodules", repoUrl, checkoutDirectory], {
+      env: gitEnv,
     });
-    return { commit: stdout.trim() || undefined };
-  } catch {
-    return {};
+
+    try {
+      const { stdout } = await execFile("git", [...isolatedGitArgs, "-C", checkoutDirectory, "rev-parse", "--short", "HEAD"], {
+        env: gitEnv,
+      });
+      return { commit: stdout.trim() || undefined };
+    } catch {
+      return {};
+    }
+  } finally {
+    await rm(gitHomeDirectory, { recursive: true, force: true });
   }
 }
 
+function createIsolatedGitEnv(homeDirectory: string, configDirectory: string) {
+  const env: NodeJS.ProcessEnv = {
+    GIT_ASKPASS: "",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_LFS_SKIP_SMUDGE: "1",
+    GIT_TERMINAL_PROMPT: "0",
+    HOME: homeDirectory,
+    SSH_ASKPASS: "",
+    XDG_CONFIG_HOME: configDirectory,
+  };
+
+  for (const name of ["PATH", "TMPDIR", "TEMP", "TMP", "SystemRoot", "WINDIR"]) {
+    const value = process.env[name];
+    if (value !== undefined) {
+      env[name] = value;
+    }
+  }
+
+  return env;
+}
+
 function shouldSkipPath(relativePath: string, directoryEntryName: string) {
-  if (ignoredDirectoryNames.has(directoryEntryName) || ignoredFileNames.has(directoryEntryName)) {
+  if (directoryEntryName.toLowerCase().startsWith(".env") || ignoredDirectoryNames.has(directoryEntryName) || ignoredFileNames.has(directoryEntryName)) {
     return true;
   }
 

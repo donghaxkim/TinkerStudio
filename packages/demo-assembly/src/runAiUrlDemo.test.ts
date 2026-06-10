@@ -162,6 +162,30 @@ assert.equal(result.artifactPaths.includes(join(outputRoot, ".repo-scratch", "ch
 assert.equal(result.artifactPaths.some((artifactPath) => artifactPath.startsWith(join(outputRoot, ".repo-scratch"))), false);
 assert.equal(existsSync(join(outputRoot, ".repo-scratch")), false);
 
+const mismatchedRepoOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-repo-mismatch-"));
+await assert.rejects(
+  () =>
+    runAiUrlDemo({
+      outputRoot: mismatchedRepoOutputRoot,
+      projectId: "ai-url-demo-repo-mismatch-test",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      productUrl,
+      repoUrl,
+      prompt,
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+      analyzeRepo: async () => ({ ...repoAnalysis, repoUrl: "https://github.com/example/other" }),
+      planner: async () => {
+        throw new Error("planner should not run with mismatched repo analysis");
+      },
+      runCapture: async () => captureResult,
+    }),
+  /repoUrl must match requested repository URL/,
+);
+assert.equal(existsSync(join(mismatchedRepoOutputRoot, "repo-analysis.json")), false);
+assert.equal(existsSync(join(mismatchedRepoOutputRoot, ".repo-scratch")), false);
+
 const repoFailureOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-repo-failure-"));
 const repoAnalysisError = new Error("primary repo analysis failed");
 await assert.rejects(
