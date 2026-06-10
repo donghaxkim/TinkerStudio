@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   runPlaywrightCapture,
@@ -30,6 +30,8 @@ import { runHyperframesRender, type RunHyperframesRenderInput, type RunHyperfram
 import type { AspectRatio } from "./types.js";
 
 export type AiUrlDemoPhase = "analysis" | "planning" | "verification" | "capture" | "assembly";
+
+const MAX_HYPERFRAMES_REPAIR_LOG_BYTES = 20_000;
 
 type AnalyzeWebsiteDependency = (url: string, options: AnalyzeWebsiteOptions) => Promise<ProductAnalysis>;
 type AnalyzeRepoDependency = (repoUrl: string, options: AnalyzeRepoOptions) => Promise<RepoAnalysis>;
@@ -142,8 +144,14 @@ async function readHyperframesFailureLog(hyperframesDir: string, failureStage: s
   }
 
   try {
-    const logText = await readFile(join(hyperframesDir, `${failureStage}.log`), "utf8");
-    return logText.length > 0 ? logText : fallback;
+    const file = await open(join(hyperframesDir, `${failureStage}.log`), "r");
+    try {
+      const buffer = Buffer.alloc(MAX_HYPERFRAMES_REPAIR_LOG_BYTES);
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+      return bytesRead > 0 ? buffer.toString("utf8", 0, bytesRead) : fallback;
+    } finally {
+      await file.close();
+    }
   } catch {
     return fallback;
   }

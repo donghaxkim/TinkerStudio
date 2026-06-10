@@ -264,6 +264,57 @@ const result = GenerationResultSchema.parse({
 
 assert.equal("status" in result ? result.status : undefined, "completed");
 
+const hyperframesRendererResult = {
+  outputVideoPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
+  generationManifestPath: "generated/local-job/ai-url-job/hyperframes/generation-manifest.json",
+  assetManifestPath: "generated/local-job/ai-url-job/hyperframes/asset-manifest.json",
+};
+const playwrightRendererResult = {
+  projectPath: "generated/local-job/ai-url-job/playwright/demo-project.json",
+  captureResultPath: "generated/local-job/ai-url-job/playwright/capture-result.json",
+};
+const aiUrlGenerationResult = {
+  jobId: "ai-url-job",
+  status: "completed",
+  projectPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
+  captureResultPath: "generated/local-job/ai-url-job/hyperframes/generation-manifest.json",
+  outputDirectory: "generated/local-job/ai-url-job",
+  artifactPaths: ["generated/local-job/ai-url-job/hyperframes/output.mp4"],
+};
+
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "both",
+    rendererResults: { hyperframes: hyperframesRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "hyperframes",
+    rendererResults: { playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "hyperframes",
+    rendererResults: { hyperframes: { ...hyperframesRendererResult, extra: "not allowed" } },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "both",
+    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
+  }).success,
+  true,
+);
+
 for (const stage of ["validation", "analysis", "planning", "verification", "capture", "assembly", "unknown"] as const) {
   const failure = GenerationErrorSchema.parse({
     jobId: "manual-fixture-job",

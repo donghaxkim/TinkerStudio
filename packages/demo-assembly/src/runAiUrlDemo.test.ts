@@ -267,6 +267,52 @@ assert.deepEqual(repairCalls, [{ failureStage: "render", logText: "actual render
 assert.equal(repairedResult.rendererResults.hyperframes?.outputVideoPath, join(repairOutputRoot, "hyperframes", "output.mp4"));
 assert.equal(existsSync(join(repairOutputRoot, ".repo-scratch")), false);
 
+const oversizedRepairLogOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-hyperframes-repair-log-"));
+const oversizedRenderLog = `render failure detail\n${"x".repeat(25_000)}`;
+const oversizedRepairLogTexts: string[] = [];
+let oversizedRepairRenderAttempts = 0;
+await runAiUrlDemo({
+  outputRoot: oversizedRepairLogOutputRoot,
+  projectId: "ai-url-demo-hyperframes-repair-log-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "hyperframes",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  generateHyperframes: async (input) => {
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+  },
+  runHyperframes: async (input) => {
+    oversizedRepairRenderAttempts += 1;
+    if (oversizedRepairRenderAttempts === 1) {
+      await writeFile(join(input.hyperframesDir, "render.log"), oversizedRenderLog);
+      throw new Error("Hyperframes render failed; see render.log");
+    }
+
+    await writeFile(input.outputVideoPath, "fake repaired mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async (input) => {
+    oversizedRepairLogTexts.push(input.logText);
+  },
+  runCapture: async () => {
+    throw new Error("runCapture should not run for oversized repair log test");
+  },
+});
+
+assert.deepEqual(oversizedRepairLogTexts, [oversizedRenderLog.slice(0, 20_000)]);
+
 const negativeRepairAttemptsOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-negative-repairs-"));
 let negativeRepairRenderAttempts = 0;
 const negativeRepairAttemptsResult = await runAiUrlDemo({
