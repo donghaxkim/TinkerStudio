@@ -1,10 +1,25 @@
 import { startFixtureServer } from "@tinker/browser-capture";
 import type { CreateDemoRequest } from "@tinker/generation-contract";
+import type { RepoAnalysis } from "@tinker/product-analysis";
 import { createFixtureAiUrlPlanner, runAiUrlDemo } from "../src/index.js";
 import { LocalGenerationJobError, runLocalGenerationJob } from "../src/localGenerationJob.js";
 
 const fixtureUrl = new URL("../../browser-capture/fixtures/manual-demo.html", import.meta.url);
 const server = await startFixtureServer(fixtureUrl);
+
+function createFixtureRepoAnalysis(repoUrl: string): RepoAnalysis {
+  return {
+    repoUrl,
+    productName: "Tinker Fixture",
+    summary: "Fixture repo analysis for deterministic local AI URL generation.",
+    features: ["Local fixture page", "Deterministic capture plan"],
+    likelyRoutes: ["/"],
+    demoIdeas: ["Show the fixture landing page value prop"],
+    importantTerms: ["fixture", "demo"],
+    setupNotes: ["No external repository checkout required"],
+    sourceHints: [],
+  };
+}
 
 try {
   const request: CreateDemoRequest = {
@@ -23,7 +38,12 @@ try {
     onProgress: (event) => {
       console.log(JSON.stringify(event));
     },
-    runAiUrlDemo: (input) => runAiUrlDemo({ ...input, planner: createFixtureAiUrlPlanner() }),
+    runAiUrlDemo: (input) =>
+      runAiUrlDemo({
+        ...input,
+        analyzeRepo: async (repoUrl) => createFixtureRepoAnalysis(repoUrl),
+        planner: createFixtureAiUrlPlanner(),
+      }),
   });
 
   console.log(JSON.stringify(result, null, 2));
