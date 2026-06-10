@@ -42,7 +42,7 @@ function buildRequiredPackages() {
 
 const productUrl = readArg("--url");
 const repoUrl = readArg("--repo");
-const rendererValue = readArg("--renderer") ?? "playwright";
+const rendererValue = readArg("--renderer") ?? "hyperframes";
 
 if (!productUrl) {
   console.error("--url is required");

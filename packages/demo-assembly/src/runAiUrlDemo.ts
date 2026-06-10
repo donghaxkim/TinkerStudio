@@ -19,6 +19,14 @@ import {
 import type { AiUrlRenderer } from "./aiUrlRenderer.js";
 import { compileProject } from "./compileProject.js";
 import { createEnvironmentAiUrlPlanner, createOpencodeAiUrlPlanner, type AiUrlPlanner, type AiUrlPlannerResult } from "./aiPlanning.js";
+import { validateHyperframesArtifacts } from "./hyperframesArtifacts.js";
+import {
+  createOpencodeHyperframesGenerator,
+  createOpencodeHyperframesRepairer,
+  type GenerateHyperframesProject,
+  type RepairHyperframesProject,
+} from "./hyperframesPlanning.js";
+import { runHyperframesRender, type RunHyperframesRenderInput, type RunHyperframesRenderResult } from "./hyperframesRender.js";
 import type { AspectRatio } from "./types.js";
 
 export type AiUrlDemoPhase = "analysis" | "planning" | "verification" | "capture" | "assembly";
@@ -29,6 +37,25 @@ type RunCaptureDependency = (
   plan: CapturePlan,
   options: { outputDir: string; headless?: boolean },
 ) => Promise<CaptureResult>;
+type GenerateHyperframesProjectDependency = GenerateHyperframesProject;
+type RepairHyperframesProjectDependency = RepairHyperframesProject;
+type RunHyperframesDependency = (input: RunHyperframesRenderInput) => Promise<RunHyperframesRenderResult>;
+
+type HyperframesRendererResult = {
+  outputVideoPath: string;
+  generationManifestPath: string;
+  assetManifestPath: string;
+};
+
+type PlaywrightRendererResult = {
+  projectPath: string;
+  captureResultPath: string;
+};
+
+type RendererResults = {
+  hyperframes?: HyperframesRendererResult;
+  playwright?: PlaywrightRendererResult;
+};
 
 export type RunAiUrlDemoInput = {
   outputRoot: string;
@@ -45,9 +72,15 @@ export type RunAiUrlDemoInput = {
   analyzeRepo?: AnalyzeRepoDependency;
   planner?: AiUrlPlanner;
   runCapture?: RunCaptureDependency;
+  generateHyperframes?: GenerateHyperframesProjectDependency;
+  runHyperframes?: RunHyperframesDependency;
+  repairHyperframes?: RepairHyperframesProjectDependency;
+  maxHyperframesRepairAttempts?: number;
 };
 
 export type RunAiUrlDemoResult = {
+  renderer: AiUrlRenderer;
+  rendererResults: RendererResults;
   projectPath: string;
   captureResultPath: string;
   outputRoot: string;
@@ -59,6 +92,8 @@ export type RunAiUrlDemoResult = {
     checkpoints: number;
   };
 };
+
+type InternalRendererResult = Omit<RunAiUrlDemoResult, "renderer">;
 
 function toPrettyJson(value: unknown) {
   return `${JSON.stringify(value, null, 2)}\n`;
@@ -86,12 +121,27 @@ async function cleanupRepoScratch(repoScratchDir: string | undefined, priorError
   }
 }
 
+function classifyHyperframesFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes("render")) {
+    return { failureStage: "render", logText: message };
+  }
+
+  if (lowerMessage.includes("lint")) {
+    return { failureStage: "lint", logText: message };
+  }
+
+  return { failureStage: "validation", logText: message };
+}
+
+function mergeArtifactPaths(...artifactPathGroups: string[][]) {
+  return [...new Set(artifactPathGroups.flat())];
+}
+
 export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDemoResult> {
   const renderer = input.renderer ?? "hyperframes";
-
-  if (renderer !== "playwright") {
-    throw new Error("Hyperframes renderer is not implemented yet");
-  }
 
   const playwrightOutputRoot = join(input.outputRoot, "playwright");
   const captureOutputDir = join(playwrightOutputRoot, "capture");
@@ -99,6 +149,10 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const analyzeRepo = input.analyzeRepo ?? defaultAnalyzeRepo;
   const planner = input.planner ?? (input.repoUrl === undefined ? createEnvironmentAiUrlPlanner() : createOpencodeAiUrlPlanner());
   const runCapture = input.runCapture ?? runPlaywrightCapture;
+  const generateHyperframes = input.generateHyperframes ?? createOpencodeHyperframesGenerator();
+  const repairHyperframes = input.repairHyperframes ?? createOpencodeHyperframesRepairer();
+  const runHyperframes = input.runHyperframes ?? runHyperframesRender;
+  const maxHyperframesRepairAttempts = input.maxHyperframesRepairAttempts ?? 1;
 
   await rm(input.outputRoot, { recursive: true, force: true });
   await mkdir(input.outputRoot, { recursive: true });
@@ -131,27 +185,96 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     }
   }
 
-  async function runPlaywrightRenderer(): Promise<RunAiUrlDemoResult> {
+  async function runHyperframesRenderer(): Promise<InternalRendererResult> {
+    if (input.repoUrl === undefined || repoAnalysis === undefined || repoCheckoutDirectory === undefined) {
+      throw new Error("repoUrl is required for Hyperframes AI URL demos");
+    }
+
+    const hyperframesDir = join(input.outputRoot, "hyperframes");
+    await mkdir(hyperframesDir, { recursive: true });
+
+    input.onPhase?.("planning");
+    await generateHyperframes({
+      productUrl: analysis.url,
+      repoUrl: input.repoUrl,
+      prompt: input.prompt,
+      durationCapSeconds: input.durationCapSeconds,
+      aspectRatio: input.aspectRatio,
+      websiteAnalysis: analysis,
+      repoAnalysis,
+      repoCheckoutDirectory,
+      hyperframesDir,
+    });
+
+    let validated: Awaited<ReturnType<typeof validateHyperframesArtifacts>> | undefined;
+    let renderResult: RunHyperframesRenderResult | undefined;
+    for (let attempt = 0; attempt <= maxHyperframesRepairAttempts; attempt += 1) {
+      try {
+        input.onPhase?.("verification");
+        validated = await validateHyperframesArtifacts({ hyperframesDir, productUrl: analysis.url, repoUrl: input.repoUrl });
+
+        input.onPhase?.("capture");
+        renderResult = await runHyperframes({ hyperframesDir, outputVideoPath: validated.outputVideoPath });
+        break;
+      } catch (error) {
+        if (attempt >= maxHyperframesRepairAttempts) {
+          throw error;
+        }
+
+        await repairHyperframes({ repoCheckoutDirectory, hyperframesDir, ...classifyHyperframesFailure(error) });
+      }
+    }
+
+    if (validated === undefined || renderResult === undefined) {
+      throw new Error("Hyperframes render did not produce a result");
+    }
+
+    input.onPhase?.("assembly");
+    const artifactPaths = [
+      productAnalysisPath,
+      ...(repoAnalysisPath ? [repoAnalysisPath] : []),
+      ...(analysis.screenshotPath ? [analysis.screenshotPath] : []),
+      validated.indexPath,
+      validated.assetManifestPath,
+      validated.generationManifestPath,
+      renderResult.lintLogPath,
+      renderResult.renderLogPath,
+      renderResult.outputVideoPath,
+    ];
+
+    return {
+      projectPath: renderResult.outputVideoPath,
+      captureResultPath: validated.generationManifestPath,
+      outputRoot: input.outputRoot,
+      artifactPaths,
+      captureCounts: {
+        clips: 1,
+        screenshots: 0,
+        events: 0,
+        checkpoints: 0,
+      },
+      rendererResults: {
+        hyperframes: {
+          outputVideoPath: renderResult.outputVideoPath,
+          generationManifestPath: validated.generationManifestPath,
+          assetManifestPath: validated.assetManifestPath,
+        },
+      },
+    };
+  }
+
+  async function runPlaywrightRenderer(): Promise<InternalRendererResult> {
     await mkdir(captureOutputDir, { recursive: true });
 
     input.onPhase?.("planning");
-    let plannerResult: AiUrlPlannerResult;
-    let plannerError: unknown;
-    try {
-      plannerResult = await planner({
-        productUrl: analysis.url,
-        prompt: input.prompt,
-        durationCapSeconds: input.durationCapSeconds,
-        aspectRatio: input.aspectRatio,
-        analysis,
-        ...(repoAnalysis === undefined ? {} : { repoAnalysis, repoCheckoutDirectory }),
-      });
-    } catch (error) {
-      plannerError = error;
-      throw error;
-    } finally {
-      await cleanupRepoScratch(repoScratchDir, plannerError);
-    }
+    const plannerResult: AiUrlPlannerResult = await planner({
+      productUrl: analysis.url,
+      prompt: input.prompt,
+      durationCapSeconds: input.durationCapSeconds,
+      aspectRatio: input.aspectRatio,
+      analysis,
+      ...(repoAnalysis === undefined ? {} : { repoAnalysis, repoCheckoutDirectory }),
+    });
 
     const { storyboard, capturePlan } = plannerResult!;
     const storyboardPath = join(playwrightOutputRoot, "storyboard.json");
@@ -209,8 +332,41 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
         events: captureResult.events.length,
         checkpoints: captureResult.checkpoints.length,
       },
+      rendererResults: {
+        playwright: { projectPath, captureResultPath },
+      },
     };
   }
 
-  return runPlaywrightRenderer();
+  let renderError: unknown;
+  try {
+    if (renderer === "hyperframes") {
+      return { renderer: "hyperframes", ...(await runHyperframesRenderer()) };
+    }
+
+    if (renderer === "playwright") {
+      return { renderer: "playwright", ...(await runPlaywrightRenderer()) };
+    }
+
+    const hyperframesResult = await runHyperframesRenderer();
+    const playwrightResult = await runPlaywrightRenderer();
+
+    return {
+      renderer: "hyperframes",
+      projectPath: hyperframesResult.projectPath,
+      captureResultPath: hyperframesResult.captureResultPath,
+      outputRoot: input.outputRoot,
+      artifactPaths: mergeArtifactPaths(hyperframesResult.artifactPaths, playwrightResult.artifactPaths),
+      captureCounts: hyperframesResult.captureCounts,
+      rendererResults: {
+        ...hyperframesResult.rendererResults,
+        ...playwrightResult.rendererResults,
+      },
+    };
+  } catch (error) {
+    renderError = error;
+    throw error;
+  } finally {
+    await cleanupRepoScratch(repoScratchDir, renderError);
+  }
 }

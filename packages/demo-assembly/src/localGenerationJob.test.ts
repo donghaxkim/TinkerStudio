@@ -54,6 +54,13 @@ const successfulAiUrlRunner: AiUrlDemoRunner = async (input) => {
   }
 
   return {
+    renderer: "playwright",
+    rendererResults: {
+      playwright: {
+        projectPath: `${input.outputRoot}/demo-project.json`,
+        captureResultPath: `${input.outputRoot}/capture-result.json`,
+      },
+    },
     projectPath: `${input.outputRoot}/demo-project.json`,
     captureResultPath: `${input.outputRoot}/capture-result.json`,
     outputRoot: input.outputRoot,

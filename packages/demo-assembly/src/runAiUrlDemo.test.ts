@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { CapturePlan, CaptureResult } from "@tinker/browser-capture";
@@ -79,29 +79,77 @@ const captureResult: CaptureResult = {
 };
 
 const defaultRendererOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-default-renderer-"));
-let defaultRendererAnalyzeCalled = false;
-await assert.rejects(
-  () =>
-    runAiUrlDemo({
-      outputRoot: defaultRendererOutputRoot,
-      projectId: "ai-url-demo-default-renderer-test",
-      createdAt: "2026-06-09T00:00:00.000Z",
-      productUrl,
-      prompt,
-      durationCapSeconds: 10,
-      aspectRatio: "16:9",
-      analyzeWebsite: async () => {
-        defaultRendererAnalyzeCalled = true;
-        return productAnalysis;
-      },
-      planner: async () => {
-        throw new Error("planner should not run for unsupported renderer");
-      },
-      runCapture: async () => captureResult,
-    }),
-  /Hyperframes renderer is not implemented yet/,
+const defaultRendererCalls: string[] = [];
+const defaultRendererResult = await runAiUrlDemo({
+  outputRoot: defaultRendererOutputRoot,
+  projectId: "ai-url-demo-default-renderer-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async (url) => {
+    assert.equal(url, productUrl);
+    return { ...productAnalysis, screenshotPath: undefined };
+  },
+  analyzeRepo: async (url, options) => {
+    assert.equal(url, repoUrl);
+    assert.ok(options.checkoutDirectory.endsWith(".repo-scratch/checkout"));
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  generateHyperframes: async (input) => {
+    defaultRendererCalls.push("generate");
+    assert.equal(input.hyperframesDir, join(defaultRendererOutputRoot, "hyperframes"));
+    assert.equal(existsSync(input.repoCheckoutDirectory), true);
+    assert.ok(input.repoCheckoutDirectory.endsWith(".repo-scratch/checkout"));
+    await mkdir(input.hyperframesDir, { recursive: true });
+    await writeFile(join(input.hyperframesDir, "index.html"), "<html><body>Fixture Product</body></html>\n");
+    await writeFile(join(input.hyperframesDir, "asset-manifest.json"), `${JSON.stringify({ assets: [] }, null, 2)}\n`);
+    await writeFile(
+      join(input.hyperframesDir, "generation-manifest.json"),
+      `${JSON.stringify(
+        {
+          renderer: "hyperframes",
+          productUrl: canonicalProductUrl,
+          sourceRepoUrl: repoUrl,
+          durationCapSeconds: 10,
+          aspectRatio: "16:9",
+          sourceGrounding: ["repo", "website-analysis"],
+          outputVideoPath: "output.mp4",
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  },
+  runHyperframes: async (input) => {
+    defaultRendererCalls.push("render");
+    assert.equal(input.hyperframesDir, join(defaultRendererOutputRoot, "hyperframes"));
+    assert.equal(input.outputVideoPath, join(defaultRendererOutputRoot, "hyperframes", "output.mp4"));
+    await writeFile(input.outputVideoPath, "fake mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async () => {
+    throw new Error("repair should not run for valid generated Hyperframes artifacts");
+  },
+  runCapture: async () => {
+    throw new Error("runCapture should not run for default Hyperframes renderer");
+  },
+});
+assert.deepEqual(defaultRendererCalls, ["generate", "render"]);
+assert.equal(defaultRendererResult.renderer, "hyperframes");
+assert.equal(defaultRendererResult.projectPath, join(defaultRendererOutputRoot, "hyperframes", "output.mp4"));
+assert.equal(
+  defaultRendererResult.rendererResults.hyperframes?.outputVideoPath,
+  join(defaultRendererOutputRoot, "hyperframes", "output.mp4"),
 );
-assert.equal(defaultRendererAnalyzeCalled, false);
+assert.equal(existsSync(join(defaultRendererOutputRoot, ".repo-scratch")), false);
 
 const result = await runAiUrlDemo({
   outputRoot,
