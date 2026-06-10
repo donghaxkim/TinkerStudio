@@ -60,13 +60,13 @@ const aiUrlBaseRequest = {
 } as const;
 
 const parsedDefaultRendererRequest = parseCreateDemoRequest(aiUrlBaseRequest);
-assert.equal(parsedDefaultRendererRequest.mode, "ai-url-planning");
-assert.equal(parsedDefaultRendererRequest.renderer, "hyperframes");
+assert.equal("mode" in parsedDefaultRendererRequest ? parsedDefaultRendererRequest.mode : undefined, "ai-url-planning");
+assert.equal("renderer" in parsedDefaultRendererRequest ? parsedDefaultRendererRequest.renderer : undefined, "hyperframes");
 
 for (const renderer of ["hyperframes", "playwright", "both"] as const) {
   const parsed = parseCreateDemoRequest({ ...aiUrlBaseRequest, renderer });
-  assert.equal(parsed.mode, "ai-url-planning");
-  assert.equal(parsed.renderer, renderer);
+  assert.equal("mode" in parsed ? parsed.mode : undefined, "ai-url-planning");
+  assert.equal("renderer" in parsed ? parsed.renderer : undefined, renderer);
 }
 
 assert.equal(
@@ -182,6 +182,7 @@ assert.equal(
     durationCapSeconds: 12,
     aspectRatio: "16:9",
     mode: "ai-url-planning",
+    repoUrl: "https://github.com/example/product",
     prompt: "Missing URL should fail.",
   }).success,
   false,
@@ -193,6 +194,7 @@ assert.equal(
     aspectRatio: "16:9",
     mode: "ai-url-planning",
     productUrl: "not a url",
+    repoUrl: "https://github.com/example/product",
     prompt: "Malformed URL should fail.",
   }).success,
   false,
@@ -205,6 +207,7 @@ for (const productUrl of ["file:///tmp/product.html", "data:text/html,<h1>Produc
       aspectRatio: "16:9",
       mode: "ai-url-planning",
       productUrl,
+      repoUrl: "https://github.com/example/product",
       prompt: "Non-public URL schemes should fail.",
     }).success,
     false,
