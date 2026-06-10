@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { CapturePlan, CaptureResult } from "@tinker/browser-capture";
@@ -159,7 +159,72 @@ const repoAnalysisJson = JSON.parse(await readFile(join(outputRoot, "repo-analys
 assert.deepEqual(repoAnalysisJson, repoAnalysis);
 assert.equal(projectJson.metadata.sourceRepoUrl, repoUrl);
 assert.equal(result.artifactPaths.includes(join(outputRoot, ".repo-scratch", "checkout")), false);
+assert.equal(result.artifactPaths.some((artifactPath) => artifactPath.startsWith(join(outputRoot, ".repo-scratch"))), false);
 assert.equal(existsSync(join(outputRoot, ".repo-scratch")), false);
+
+const repoFailureOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-repo-failure-"));
+const repoAnalysisError = new Error("primary repo analysis failed");
+await assert.rejects(
+  () =>
+    runAiUrlDemo({
+      outputRoot: repoFailureOutputRoot,
+      projectId: "ai-url-demo-repo-failure-test",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      productUrl,
+      repoUrl,
+      prompt,
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+      analyzeRepo: async (_url, options) => {
+        await mkdir(options.checkoutDirectory, { recursive: true });
+        throw repoAnalysisError;
+      },
+      planner: async () => {
+        throw new Error("planner should not run after repo analysis failure");
+      },
+      runCapture: async () => captureResult,
+    }),
+  (error) => {
+    assert.equal(error, repoAnalysisError);
+    return true;
+  },
+);
+assert.equal(existsSync(join(repoFailureOutputRoot, ".repo-scratch")), false);
+
+const cleanupMaskOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-cleanup-mask-"));
+const maskedRepoAnalysisError = new Error("repo analysis failed before cleanup");
+let cleanupMaskRejection: unknown;
+
+try {
+  await runAiUrlDemo({
+    outputRoot: cleanupMaskOutputRoot,
+    projectId: "ai-url-demo-cleanup-mask-test",
+    createdAt: "2026-06-09T00:00:00.000Z",
+    productUrl,
+    repoUrl,
+    prompt,
+    durationCapSeconds: 10,
+    aspectRatio: "16:9",
+    analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+    analyzeRepo: async (_url, options) => {
+      await mkdir(options.checkoutDirectory, { recursive: true });
+      await chmod(cleanupMaskOutputRoot, 0o500);
+      throw maskedRepoAnalysisError;
+    },
+    planner: async () => {
+      throw new Error("planner should not run after repo analysis failure");
+    },
+    runCapture: async () => captureResult,
+  });
+} catch (error) {
+  cleanupMaskRejection = error;
+} finally {
+  await chmod(cleanupMaskOutputRoot, 0o700);
+  await rm(cleanupMaskOutputRoot, { recursive: true, force: true });
+}
+
+assert.equal(cleanupMaskRejection, maskedRepoAnalysisError);
 
 const noRepoOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-no-repo-"));
 let noRepoAnalyzerCalled = false;

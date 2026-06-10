@@ -94,13 +94,23 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   if (input.repoUrl !== undefined) {
     const repoScratchDir = join(input.outputRoot, ".repo-scratch");
     const checkoutDirectory = join(repoScratchDir, "checkout");
+    let repoStepError: unknown;
 
     try {
       repoAnalysis = await analyzeRepo(input.repoUrl, { checkoutDirectory });
       repoAnalysisPath = join(input.outputRoot, "repo-analysis.json");
       await writeFile(repoAnalysisPath, toPrettyJson(repoAnalysis));
+    } catch (error) {
+      repoStepError = error;
+      throw error;
     } finally {
-      await rm(repoScratchDir, { recursive: true, force: true });
+      try {
+        await rm(repoScratchDir, { recursive: true, force: true });
+      } catch (cleanupError) {
+        if (repoStepError === undefined) {
+          throw cleanupError;
+        }
+      }
     }
   }
 
