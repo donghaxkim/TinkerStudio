@@ -78,6 +78,28 @@ const captureResult: CaptureResult = {
   },
 };
 
+async function writeValidHyperframesArtifacts(hyperframesDir: string) {
+  await mkdir(hyperframesDir, { recursive: true });
+  await writeFile(join(hyperframesDir, "index.html"), "<html><body>Fixture Product</body></html>\n");
+  await writeFile(join(hyperframesDir, "asset-manifest.json"), `${JSON.stringify({ assets: [] }, null, 2)}\n`);
+  await writeFile(
+    join(hyperframesDir, "generation-manifest.json"),
+    `${JSON.stringify(
+      {
+        renderer: "hyperframes",
+        productUrl: canonicalProductUrl,
+        sourceRepoUrl: repoUrl,
+        durationCapSeconds: 10,
+        aspectRatio: "16:9",
+        sourceGrounding: ["repo", "website-analysis"],
+        outputVideoPath: "output.mp4",
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
 const defaultRendererOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-default-renderer-"));
 const defaultRendererCalls: string[] = [];
 const defaultRendererResult = await runAiUrlDemo({
@@ -104,25 +126,7 @@ const defaultRendererResult = await runAiUrlDemo({
     assert.equal(input.hyperframesDir, join(defaultRendererOutputRoot, "hyperframes"));
     assert.equal(existsSync(input.repoCheckoutDirectory), true);
     assert.ok(input.repoCheckoutDirectory.endsWith(".repo-scratch/checkout"));
-    await mkdir(input.hyperframesDir, { recursive: true });
-    await writeFile(join(input.hyperframesDir, "index.html"), "<html><body>Fixture Product</body></html>\n");
-    await writeFile(join(input.hyperframesDir, "asset-manifest.json"), `${JSON.stringify({ assets: [] }, null, 2)}\n`);
-    await writeFile(
-      join(input.hyperframesDir, "generation-manifest.json"),
-      `${JSON.stringify(
-        {
-          renderer: "hyperframes",
-          productUrl: canonicalProductUrl,
-          sourceRepoUrl: repoUrl,
-          durationCapSeconds: 10,
-          aspectRatio: "16:9",
-          sourceGrounding: ["repo", "website-analysis"],
-          outputVideoPath: "output.mp4",
-        },
-        null,
-        2,
-      )}\n`,
-    );
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
   },
   runHyperframes: async (input) => {
     defaultRendererCalls.push("render");
@@ -150,6 +154,117 @@ assert.equal(
   join(defaultRendererOutputRoot, "hyperframes", "output.mp4"),
 );
 assert.equal(existsSync(join(defaultRendererOutputRoot, ".repo-scratch")), false);
+
+const bothOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-both-renderers-"));
+const bothCalls: string[] = [];
+const bothResult = await runAiUrlDemo({
+  outputRoot: bothOutputRoot,
+  projectId: "ai-url-demo-both-renderers-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "both",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  generateHyperframes: async (input) => {
+    bothCalls.push("hyperframes:generate");
+    assert.equal(existsSync(input.repoCheckoutDirectory), true);
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+  },
+  runHyperframes: async (input) => {
+    bothCalls.push("hyperframes:render");
+    await writeFile(input.outputVideoPath, "fake mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async () => {
+    throw new Error("repair should not run for valid both-renderer artifacts");
+  },
+  planner: async (input) => {
+    bothCalls.push("playwright:plan");
+    assert.equal(existsSync(input.repoCheckoutDirectory ?? ""), true);
+    return {
+      storyboard: {
+        title: "Both Renderers Demo",
+        durationCapSeconds: 10,
+        aspectRatio: "16:9",
+        beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
+      },
+      capturePlan,
+    };
+  },
+  runCapture: async () => {
+    bothCalls.push("playwright:capture");
+    return captureResult;
+  },
+});
+
+assert.deepEqual(bothCalls, ["hyperframes:generate", "hyperframes:render", "playwright:plan", "playwright:capture"]);
+assert.equal(bothResult.renderer, "both");
+assert.ok(bothResult.rendererResults.hyperframes);
+assert.ok(bothResult.rendererResults.playwright);
+assert.ok(bothResult.artifactPaths.some((artifactPath) => artifactPath.startsWith(join(bothOutputRoot, "hyperframes"))));
+assert.ok(bothResult.artifactPaths.some((artifactPath) => artifactPath.startsWith(join(bothOutputRoot, "playwright"))));
+assert.equal(new Set(bothResult.artifactPaths).size, bothResult.artifactPaths.length);
+assert.deepEqual(bothResult.captureCounts, { clips: 2, screenshots: 0, events: 0, checkpoints: 1 });
+assert.equal(existsSync(join(bothOutputRoot, ".repo-scratch")), false);
+
+const repairOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-hyperframes-repair-"));
+const repairCalls: Array<{ failureStage: string; logText: string }> = [];
+let renderAttempts = 0;
+const repairedResult = await runAiUrlDemo({
+  outputRoot: repairOutputRoot,
+  projectId: "ai-url-demo-hyperframes-repair-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "hyperframes",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  generateHyperframes: async (input) => {
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+  },
+  runHyperframes: async (input) => {
+    renderAttempts += 1;
+    if (renderAttempts === 1) {
+      throw new Error("Hyperframes render failed; see render.log");
+    }
+
+    await writeFile(input.outputVideoPath, "fake repaired mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async (input) => {
+    repairCalls.push({ failureStage: input.failureStage, logText: input.logText });
+    assert.equal(existsSync(input.repoCheckoutDirectory), true);
+  },
+  runCapture: async () => {
+    throw new Error("runCapture should not run for Hyperframes repair test");
+  },
+});
+
+assert.equal(renderAttempts, 2);
+assert.deepEqual(repairCalls, [{ failureStage: "render", logText: "Hyperframes render failed; see render.log" }]);
+assert.equal(repairedResult.rendererResults.hyperframes?.outputVideoPath, join(repairOutputRoot, "hyperframes", "output.mp4"));
+assert.equal(existsSync(join(repairOutputRoot, ".repo-scratch")), false);
 
 const result = await runAiUrlDemo({
   outputRoot,

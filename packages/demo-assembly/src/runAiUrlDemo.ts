@@ -140,6 +140,18 @@ function mergeArtifactPaths(...artifactPathGroups: string[][]) {
   return [...new Set(artifactPathGroups.flat())];
 }
 
+function combineCaptureCounts(...counts: RunAiUrlDemoResult["captureCounts"][]): RunAiUrlDemoResult["captureCounts"] {
+  return counts.reduce(
+    (total, count) => ({
+      clips: total.clips + count.clips,
+      screenshots: total.screenshots + count.screenshots,
+      events: total.events + count.events,
+      checkpoints: total.checkpoints + count.checkpoints,
+    }),
+    { clips: 0, screenshots: 0, events: 0, checkpoints: 0 },
+  );
+}
+
 export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDemoResult> {
   const renderer = input.renderer ?? "hyperframes";
 
@@ -352,12 +364,12 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     const playwrightResult = await runPlaywrightRenderer();
 
     return {
-      renderer: "hyperframes",
+      renderer: "both",
       projectPath: hyperframesResult.projectPath,
       captureResultPath: hyperframesResult.captureResultPath,
       outputRoot: input.outputRoot,
       artifactPaths: mergeArtifactPaths(hyperframesResult.artifactPaths, playwrightResult.artifactPaths),
-      captureCounts: hyperframesResult.captureCounts,
+      captureCounts: combineCaptureCounts(hyperframesResult.captureCounts, playwrightResult.captureCounts),
       rendererResults: {
         ...hyperframesResult.rendererResults,
         ...playwrightResult.rendererResults,
