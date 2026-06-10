@@ -97,6 +97,7 @@ try {
     fetchRepo: async (_repoUrl, checkout) => {
       commandsRun.push("fetch-only");
       await mkdir(join(checkout, "app", "pricing"), { recursive: true });
+      await mkdir(join(checkout, "config"), { recursive: true });
       await mkdir(join(checkout, "node_modules", "ignored"), { recursive: true });
       await mkdir(join(checkout, ".git"), { recursive: true });
       await writeFile(
@@ -106,6 +107,7 @@ try {
       await writeFile(join(checkout, "package.json"), JSON.stringify({ name: "fixture-product", scripts: { test: "node evil.js" } }));
       await writeFile(join(checkout, "app", "page.tsx"), "export default function Page() { return <main>Hero route</main>; }");
       await writeFile(join(checkout, "app", "pricing", "page.tsx"), "export default function Pricing() { return <main>Pricing route</main>; }");
+      await writeFile(join(checkout, "config", "api-key.json"), JSON.stringify({ apiKey: "SHOULD_NOT_APPEAR" }));
       await writeFile(join(checkout, ".env"), "SECRET_TOKEN=SHOULD_NOT_APPEAR");
       await writeFile(join(checkout, "node_modules", "ignored", "README.md"), "SHOULD_NOT_APPEAR");
       await writeFile(join(checkout, ".git", "config"), "SHOULD_NOT_APPEAR");
@@ -129,6 +131,7 @@ try {
   assert.ok(analysis.sourceHints.some((hint) => hint.path === "README.md"));
   const serialized = JSON.stringify(analysis);
   assert.equal(serialized.includes("SHOULD_NOT_APPEAR"), false);
+  assert.equal(serialized.includes("config/api-key.json"), false);
   assert.equal(serialized.includes("SECRET_TOKEN"), false);
   assert.equal(serialized.includes("https://docs.example.com"), false);
   assert.equal(serialized.includes("https://evil.example"), false);

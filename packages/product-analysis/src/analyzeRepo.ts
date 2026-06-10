@@ -183,7 +183,7 @@ function shouldSkipPath(relativePath: string, directoryEntryName: string) {
   }
 
   const lowerPath = relativePath.toLowerCase();
-  return lowerPath.includes("secret") || lowerPath.includes("token") || lowerPath.endsWith(".pem") || lowerPath.endsWith(".key");
+  return lowerPath.includes("secret") || lowerPath.includes("token") || /(^|[/._-])keys?([/._-]|$)/.test(lowerPath) || lowerPath.endsWith(".pem");
 }
 
 function priorityForPath(path: string) {
