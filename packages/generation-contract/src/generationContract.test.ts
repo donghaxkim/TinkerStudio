@@ -36,6 +36,47 @@ const validAiUrlRequest = CreateDemoRequestSchema.parse({
 assert.equal("mode" in validAiUrlRequest ? validAiUrlRequest.mode : undefined, "ai-url-planning");
 assert.equal(validAiUrlRequest.productUrl, "http://127.0.0.1:3000/");
 
+for (const repoUrl of ["https://github.com/example/product", "https://github.com/example/product.git"]) {
+  const request = CreateDemoRequestSchema.parse({
+    id: "ai-url-job-with-repo",
+    durationCapSeconds: 10,
+    aspectRatio: "16:9",
+    mode: "ai-url-planning",
+    productUrl: "http://127.0.0.1:3000/",
+    repoUrl,
+    prompt: "Make a repo-aware demo.",
+  });
+
+  assert.equal("mode" in request ? request.mode : undefined, "ai-url-planning");
+  assert.equal("repoUrl" in request ? request.repoUrl : undefined, repoUrl);
+}
+
+for (const repoUrl of [
+  "http://github.com/example/product",
+  "https://github.example.com/example/product",
+  "https://gitlab.com/example/product",
+  "https://github.com/example/product/tree/main",
+  "https://github.com/example/product/blob/main/README.md",
+  "https://github.com/example/product/commit/abcdef123456",
+  "https://github.com/example/product?tab=readme-ov-file",
+  "https://user:token@github.com/example/product",
+  "file:///tmp/product",
+  "../product",
+]) {
+  assert.equal(
+    CreateDemoRequestSchema.safeParse({
+      durationCapSeconds: 12,
+      aspectRatio: "16:9",
+      mode: "ai-url-planning",
+      productUrl: "http://127.0.0.1:3000/",
+      repoUrl,
+      prompt: "Invalid repo URL should fail.",
+    }).success,
+    false,
+    `Expected AI URL repoUrl to reject ${repoUrl}`,
+  );
+}
+
 const validAssistedRequest = CreateDemoRequestSchema.parse({
   durationCapSeconds: 10,
   aspectRatio: "16:9",

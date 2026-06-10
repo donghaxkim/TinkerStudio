@@ -28,6 +28,48 @@ describe("generation contract validators", () => {
     }
   });
 
+  it("accepts public GitHub repo roots for AI URL planning", () => {
+    for (const repoUrl of ["https://github.com/example/product", "https://github.com/example/product.git"]) {
+      const result = safeParseCreateDemoRequest({
+        id: "ai-url-job-with-repo",
+        durationCapSeconds: 10,
+        aspectRatio: "16:9",
+        mode: "ai-url-planning",
+        productUrl: "http://127.0.0.1:3000/",
+        repoUrl,
+        prompt: "Show the repo-aware path.",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect("repoUrl" in result.data ? result.data.repoUrl : undefined).toBe(repoUrl);
+      }
+    }
+  });
+
+  it("rejects unsupported AI URL planning repo URLs", () => {
+    for (const repoUrl of [
+      "http://github.com/example/product",
+      "https://gitlab.com/example/product",
+      "https://github.com/example/product/tree/main",
+      "https://github.com/example/product/blob/main/README.md",
+      "https://github.com/example/product?tab=readme-ov-file",
+      "https://user:token@github.com/example/product",
+      "file:///tmp/product",
+    ]) {
+      const result = safeParseCreateDemoRequest({
+        durationCapSeconds: 10,
+        aspectRatio: "16:9",
+        mode: "ai-url-planning",
+        productUrl: "http://127.0.0.1:3000/",
+        repoUrl,
+        prompt: "Invalid repo URL should fail.",
+      });
+
+      expect(result.success).toBe(false);
+    }
+  });
+
   it("rejects empty prompts and invalid aspect ratios", () => {
     const result = AssistedCreateDemoRequestSchema.safeParse({
       repoUrl: "https://github.com/example/product",
