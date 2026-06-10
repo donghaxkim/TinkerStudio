@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import { runHyperframesRender, type HyperframesCommandRun } from "./hyperframesRender.js";
 
@@ -88,5 +88,39 @@ await assert.rejects(
   /Hyperframes lint failed/,
 );
 assert.match(await readFile(join(rejectedRunnerDir, "lint.log"), "utf8"), /runner exploded/);
+
+const defaultTimeoutDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-default-timeout-"));
+const fakeBinDir = join(defaultTimeoutDir, "bin");
+await mkdir(fakeBinDir);
+const fakeNpxPath = join(fakeBinDir, "npx");
+await writeFile(
+  fakeNpxPath,
+  `#!/bin/sh
+printf "lint started\\n"
+( sleep 6; printf "close-only-output\\n" ) &
+trap "" TERM
+while :; do sleep 1; done
+`,
+);
+await chmod(fakeNpxPath, 0o755);
+const originalPath = process.env.PATH;
+process.env.PATH = `${fakeBinDir}${delimiter}${originalPath ?? ""}`;
+try {
+  await assert.rejects(
+    () =>
+      runHyperframesRender({
+        hyperframesDir: defaultTimeoutDir,
+        outputVideoPath: join(defaultTimeoutDir, "output.mp4"),
+        lintTimeoutMs: 200,
+      }),
+    /timed out/i,
+  );
+} finally {
+  process.env.PATH = originalPath;
+}
+const defaultTimeoutLog = await readFile(join(defaultTimeoutDir, "lint.log"), "utf8");
+assert.match(defaultTimeoutLog, /timedOut: true/);
+assert.match(defaultTimeoutLog, /lint started/);
+assert.match(defaultTimeoutLog, /close-only-output/);
 
 console.log("hyperframes render tests passed");

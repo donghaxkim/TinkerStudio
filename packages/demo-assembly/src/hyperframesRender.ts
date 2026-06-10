@@ -5,6 +5,7 @@ import { join } from "node:path";
 const DEFAULT_LINT_TIMEOUT_MS = 120_000;
 const DEFAULT_RENDER_TIMEOUT_MS = 600_000;
 const TIMEOUT_KILL_GRACE_MS = 5_000;
+const TIMEOUT_CLOSE_FALLBACK_MS = 5_000;
 
 export type HyperframesCommand = {
   command: string;
@@ -56,12 +57,16 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
     let timedOut = false;
     let settled = false;
     let killTimeout: ReturnType<typeof setTimeout> | undefined;
+    let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
     const timeout = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
       killTimeout = setTimeout(() => {
         child.kill("SIGKILL");
-        resolveOnce({ status: null, stdout, stderr, timedOut });
+        // Prefer close for flushed streams; this only settles if close never arrives.
+        closeFallbackTimeout = setTimeout(() => {
+          resolveOnce({ status: null, stdout, stderr, timedOut });
+        }, TIMEOUT_CLOSE_FALLBACK_MS);
       }, TIMEOUT_KILL_GRACE_MS);
     }, command.timeoutMs);
 
@@ -69,6 +74,9 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
       clearTimeout(timeout);
       if (killTimeout !== undefined) {
         clearTimeout(killTimeout);
+      }
+      if (closeFallbackTimeout !== undefined) {
+        clearTimeout(closeFallbackTimeout);
       }
     }
 
