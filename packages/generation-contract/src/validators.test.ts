@@ -47,6 +47,21 @@ describe("generation contract validators", () => {
     }
   });
 
+  it("accepts broad HTTP(S) repo URLs for manual fixtures", () => {
+    const result = safeParseCreateDemoRequest({
+      id: "manual-fixture-job-with-non-github-repo",
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      mode: "manual-fixture",
+      repoUrl: "https://gitlab.com/example/product",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect("repoUrl" in result.data ? result.data.repoUrl : undefined).toBe("https://gitlab.com/example/product");
+    }
+  });
+
   it("rejects unsupported AI URL planning repo URLs", () => {
     for (const repoUrl of [
       "http://github.com/example/product",
@@ -54,6 +69,13 @@ describe("generation contract validators", () => {
       "https://github.com/example/product/tree/main",
       "https://github.com/example/product/blob/main/README.md",
       "https://github.com/example/product?tab=readme-ov-file",
+      "https://github.com/example/product#readme",
+      "https://github.com:444/example/product",
+      "https://github.com//example/product",
+      "https://github.com/example//product",
+      "https://github.com/example/product//",
+      "https://github.com/%20/product",
+      "https://github.com/example/%20",
       "https://user:token@github.com/example/product",
       "file:///tmp/product",
     ]) {

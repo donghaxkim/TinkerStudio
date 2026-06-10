@@ -23,6 +23,19 @@ assert.equal(validManualRequest.durationCapSeconds, 12);
 assert.equal(validManualRequest.aspectRatio, "16:9");
 assert.equal("mode" in validManualRequest ? validManualRequest.mode : undefined, "manual-fixture");
 
+const manualRequestWithNonGithubRepo = CreateDemoRequestSchema.parse({
+  id: "manual-fixture-job-with-non-github-repo",
+  durationCapSeconds: 12,
+  aspectRatio: "16:9",
+  mode: "manual-fixture",
+  repoUrl: "https://gitlab.com/example/product",
+});
+
+assert.equal(
+  "repoUrl" in manualRequestWithNonGithubRepo ? manualRequestWithNonGithubRepo.repoUrl : undefined,
+  "https://gitlab.com/example/product",
+);
+
 const validAiUrlRequest = CreateDemoRequestSchema.parse({
   id: "ai-url-job",
   durationCapSeconds: 10,
@@ -59,6 +72,13 @@ for (const repoUrl of [
   "https://github.com/example/product/blob/main/README.md",
   "https://github.com/example/product/commit/abcdef123456",
   "https://github.com/example/product?tab=readme-ov-file",
+  "https://github.com/example/product#readme",
+  "https://github.com:444/example/product",
+  "https://github.com//example/product",
+  "https://github.com/example//product",
+  "https://github.com/example/product//",
+  "https://github.com/%20/product",
+  "https://github.com/example/%20",
   "https://user:token@github.com/example/product",
   "file:///tmp/product",
   "../product",

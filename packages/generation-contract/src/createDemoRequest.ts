@@ -16,24 +16,34 @@ const PublicUrlSchema = z.string().url().refine((value) => {
   }
 }, "URL must use http or https");
 
+const GithubOwnerSegmentPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
+const GithubRepoSegmentPattern = /^(?=.*[A-Za-z0-9])[A-Za-z0-9._-]+$/;
+
 const PublicGithubRepoUrlSchema = z.string().url().refine((value) => {
   try {
     const url = new URL(value);
-    const pathParts = url.pathname.split("/").filter(Boolean);
-    const repoName = pathParts[1]?.endsWith(".git") ? pathParts[1].slice(0, -4) : pathParts[1];
+    const pathMatch = /^\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+
+    if (pathMatch === null) {
+      return false;
+    }
+
+    const ownerName = decodeURIComponent(pathMatch[1]);
+    const repoPathSegment = decodeURIComponent(pathMatch[2]);
+    const repoName = repoPathSegment.endsWith(".git") ? repoPathSegment.slice(0, -4) : repoPathSegment;
 
     return (
       url.protocol === "https:" &&
       url.hostname === "github.com" &&
+      url.port === "" &&
       url.username === "" &&
       url.password === "" &&
       url.search === "" &&
       url.hash === "" &&
-      pathParts.length === 2 &&
-      pathParts[0] !== undefined &&
-      pathParts[0].trim().length > 0 &&
-      repoName !== undefined &&
-      repoName.trim().length > 0
+      GithubOwnerSegmentPattern.test(ownerName) &&
+      GithubRepoSegmentPattern.test(repoName) &&
+      repoName !== "." &&
+      repoName !== ".."
     );
   } catch {
     return false;
