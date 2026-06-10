@@ -11,12 +11,13 @@ const outputVideoPath = join(hyperframesDir, "output.mp4");
 const calls: Parameters<HyperframesCommandRun>[0][] = [];
 const runner: HyperframesCommandRun = async (command) => {
   calls.push(command);
-  return { status: 0, stdout: `${command.args.join(" ")} ok`, stderr: "" };
+  return { status: 0, stdout: `${command.args.join(" ")} ok`, stderr: `${command.args.join(" ")} warning` };
 };
 
 const result = await runHyperframesRender({ hyperframesDir, outputVideoPath, runCommand: runner });
 assert.equal(result.lintLogPath, join(hyperframesDir, "lint.log"));
 assert.equal(result.renderLogPath, join(hyperframesDir, "render.log"));
+assert.equal(result.outputVideoPath, outputVideoPath);
 assert.equal(calls.length, 2);
 assert.deepEqual(calls[0], { command: "npx", args: ["hyperframes", "lint"], cwd: hyperframesDir, timeoutMs: 120_000 });
 assert.deepEqual(calls[1], {
@@ -25,8 +26,12 @@ assert.deepEqual(calls[1], {
   cwd: hyperframesDir,
   timeoutMs: 600_000,
 });
-assert.match(await readFile(result.lintLogPath, "utf8"), /hyperframes lint ok/);
-assert.match(await readFile(result.renderLogPath, "utf8"), /hyperframes render --output/);
+const lintLog = await readFile(result.lintLogPath, "utf8");
+const renderLog = await readFile(result.renderLogPath, "utf8");
+assert.match(lintLog, /hyperframes lint ok/);
+assert.match(lintLog, /hyperframes lint warning/);
+assert.match(renderLog, /hyperframes render --output/);
+assert.match(renderLog, /hyperframes render --output .* warning/);
 
 await assert.rejects(
   () =>
