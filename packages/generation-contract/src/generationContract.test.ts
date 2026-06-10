@@ -302,6 +302,22 @@ assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
     renderer: "hyperframes",
+    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "playwright",
+    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "hyperframes",
     rendererResults: { hyperframes: { ...hyperframesRendererResult, extra: "not allowed" } },
   }).success,
   false,

@@ -67,6 +67,22 @@ export const ManualFixtureGenerationResultSchema = z
         message: "playwright result is required",
       });
     }
+
+    if (result.renderer === "hyperframes" && result.rendererResults.playwright !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["rendererResults", "playwright"],
+        message: "playwright result is not allowed for hyperframes renderer",
+      });
+    }
+
+    if (result.renderer === "playwright" && result.rendererResults.hyperframes !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["rendererResults", "hyperframes"],
+        message: "hyperframes result is not allowed for playwright renderer",
+      });
+    }
   });
 
 export const GenerationArtifactsSchema = z.object({
