@@ -97,7 +97,7 @@ await writeFile(
   fakeNpxPath,
   `#!/bin/sh
 printf "lint started\\n"
-( sleep 6; printf "close-only-output\\n" ) &
+( sleep 7; printf "close-only-output\\n" ) &
 trap "" TERM
 while :; do sleep 1; done
 `,
@@ -111,7 +111,7 @@ try {
       runHyperframesRender({
         hyperframesDir: defaultTimeoutDir,
         outputVideoPath: join(defaultTimeoutDir, "output.mp4"),
-        lintTimeoutMs: 200,
+        lintTimeoutMs: 1000,
       }),
     /timed out/i,
   );
