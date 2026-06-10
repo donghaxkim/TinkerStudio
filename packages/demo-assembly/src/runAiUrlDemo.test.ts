@@ -242,6 +242,7 @@ const repairedResult = await runAiUrlDemo({
   runHyperframes: async (input) => {
     renderAttempts += 1;
     if (renderAttempts === 1) {
+      await writeFile(join(input.hyperframesDir, "render.log"), "actual render stack trace\nmissing component export\n");
       throw new Error("Hyperframes render failed; see render.log");
     }
 
@@ -262,9 +263,53 @@ const repairedResult = await runAiUrlDemo({
 });
 
 assert.equal(renderAttempts, 2);
-assert.deepEqual(repairCalls, [{ failureStage: "render", logText: "Hyperframes render failed; see render.log" }]);
+assert.deepEqual(repairCalls, [{ failureStage: "render", logText: "actual render stack trace\nmissing component export\n" }]);
 assert.equal(repairedResult.rendererResults.hyperframes?.outputVideoPath, join(repairOutputRoot, "hyperframes", "output.mp4"));
 assert.equal(existsSync(join(repairOutputRoot, ".repo-scratch")), false);
+
+const negativeRepairAttemptsOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-negative-repairs-"));
+let negativeRepairRenderAttempts = 0;
+const negativeRepairAttemptsResult = await runAiUrlDemo({
+  outputRoot: negativeRepairAttemptsOutputRoot,
+  projectId: "ai-url-demo-negative-repairs-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "hyperframes",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  maxHyperframesRepairAttempts: -1,
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  generateHyperframes: async (input) => {
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+  },
+  runHyperframes: async (input) => {
+    negativeRepairRenderAttempts += 1;
+    await writeFile(input.outputVideoPath, "fake mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async () => {
+    throw new Error("repair should not run when repair attempts clamp to zero");
+  },
+  runCapture: async () => {
+    throw new Error("runCapture should not run for negative repair attempts test");
+  },
+});
+
+assert.equal(negativeRepairRenderAttempts, 1);
+assert.equal(
+  negativeRepairAttemptsResult.rendererResults.hyperframes?.outputVideoPath,
+  join(negativeRepairAttemptsOutputRoot, "hyperframes", "output.mp4"),
+);
 
 const result = await runAiUrlDemo({
   outputRoot,

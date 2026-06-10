@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   runPlaywrightCapture,
@@ -126,14 +126,35 @@ function classifyHyperframesFailure(error: unknown) {
   const lowerMessage = message.toLowerCase();
 
   if (lowerMessage.includes("render")) {
-    return { failureStage: "render", logText: message };
+    return { failureStage: "render", message };
   }
 
   if (lowerMessage.includes("lint")) {
-    return { failureStage: "lint", logText: message };
+    return { failureStage: "lint", message };
   }
 
-  return { failureStage: "validation", logText: message };
+  return { failureStage: "validation", message };
+}
+
+async function readHyperframesFailureLog(hyperframesDir: string, failureStage: string, fallback: string) {
+  if (failureStage !== "lint" && failureStage !== "render") {
+    return fallback;
+  }
+
+  try {
+    const logText = await readFile(join(hyperframesDir, `${failureStage}.log`), "utf8");
+    return logText.length > 0 ? logText : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeRepairAttempts(value: number | undefined) {
+  if (value === undefined) {
+    return 1;
+  }
+
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 1;
 }
 
 function mergeArtifactPaths(...artifactPathGroups: string[][]) {
@@ -164,7 +185,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const generateHyperframes = input.generateHyperframes ?? createOpencodeHyperframesGenerator();
   const repairHyperframes = input.repairHyperframes ?? createOpencodeHyperframesRepairer();
   const runHyperframes = input.runHyperframes ?? runHyperframesRender;
-  const maxHyperframesRepairAttempts = input.maxHyperframesRepairAttempts ?? 1;
+  const maxHyperframesRepairAttempts = normalizeRepairAttempts(input.maxHyperframesRepairAttempts);
 
   await rm(input.outputRoot, { recursive: true, force: true });
   await mkdir(input.outputRoot, { recursive: true });
@@ -233,7 +254,13 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
           throw error;
         }
 
-        await repairHyperframes({ repoCheckoutDirectory, hyperframesDir, ...classifyHyperframesFailure(error) });
+        const failure = classifyHyperframesFailure(error);
+        await repairHyperframes({
+          repoCheckoutDirectory,
+          hyperframesDir,
+          failureStage: failure.failureStage,
+          logText: await readHyperframesFailureLog(hyperframesDir, failure.failureStage, failure.message),
+        });
       }
     }
 

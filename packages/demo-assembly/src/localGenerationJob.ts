@@ -208,8 +208,10 @@ export async function runLocalGenerationJob(
       jobId,
       status: "completed",
       projectPath: demoResult.projectPath,
+      captureResultPath: demoResult.captureResultPath,
       outputDirectory,
       artifactPaths: demoResult.artifactPaths,
+      ...("renderer" in demoResult ? { renderer: demoResult.renderer, rendererResults: demoResult.rendererResults } : {}),
     });
 
     if (!("projectPath" in result)) {

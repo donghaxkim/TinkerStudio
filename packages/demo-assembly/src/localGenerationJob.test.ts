@@ -138,6 +138,20 @@ const aiUrlResult = await runLocalGenerationJob(
 assert.equal(aiUrlResult.jobId, "ai-url-job");
 assert.equal(aiUrlResult.status, "completed");
 assert.ok(aiUrlResult.projectPath.endsWith("generated/local-job/ai-url-job/demo-project.json"));
+assert.equal(
+  "captureResultPath" in aiUrlResult ? aiUrlResult.captureResultPath : undefined,
+  `${aiUrlResult.outputDirectory}/capture-result.json`,
+);
+assert.equal("renderer" in aiUrlResult ? aiUrlResult.renderer : undefined, "playwright");
+assert.deepEqual(
+  "rendererResults" in aiUrlResult ? aiUrlResult.rendererResults : undefined,
+  {
+    playwright: {
+      projectPath: aiUrlResult.projectPath,
+      captureResultPath: `${aiUrlResult.outputDirectory}/capture-result.json`,
+    },
+  },
+);
 assert.deepEqual(aiUrlResult.artifactPaths.map((artifactPath) => artifactPath.split("/").at(-1)), [
   "product-analysis.json",
   "storyboard.json",
