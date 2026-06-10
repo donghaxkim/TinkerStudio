@@ -44,6 +44,7 @@ const successfulAiUrlRunner: AiUrlDemoRunner = async (input) => {
   assert.equal(input.projectId, "ai-url-job");
   assert.ok(input.outputRoot.endsWith("generated/local-job/ai-url-job"));
   assert.equal(input.productUrl, "http://127.0.0.1:3000/");
+  assert.equal(input.repoUrl, "https://github.com/example/product");
   assert.equal(input.prompt, "Show the AI URL path.");
 
   const phases = ["analysis", "planning", "verification", "capture", "assembly"] as const;
@@ -113,6 +114,7 @@ const aiUrlResult = await runLocalGenerationJob(
     aspectRatio: "16:9",
     mode: "ai-url-planning",
     productUrl: "http://127.0.0.1:3000/",
+    repoUrl: "https://github.com/example/product",
     prompt: "Show the AI URL path.",
     outputDirectory: "generated/local-job/ai-url-job",
   },

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { CapturePlan, CaptureResult } from "@tinker/browser-capture";
-import type { ProductAnalysis } from "@tinker/product-analysis";
+import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { runAiUrlDemo, type AiUrlDemoPhase } from "./runAiUrlDemo.js";
 
 const outputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-"));
@@ -25,6 +26,20 @@ const productAnalysis: ProductAnalysis = {
     fontFamilies: ["Inter", "system-ui"],
   },
   screenshotPath: join(outputRoot, "product-analysis.png"),
+};
+
+const repoUrl = "https://github.com/example/product";
+const repoAnalysis: RepoAnalysis = {
+  repoUrl,
+  commit: "abcdef1",
+  productName: "Fixture Product",
+  summary: "Fixture Product turns source context into better product demos.",
+  features: ["Repo-aware planning"],
+  likelyRoutes: ["/"],
+  demoIdeas: ["Show repo-aware planning."],
+  importantTerms: ["storyboard"],
+  setupNotes: ["Source-only repo analysis."],
+  sourceHints: [{ path: "README.md", reason: "Product summary." }],
 };
 
 const capturePlan: CapturePlan = {
@@ -67,6 +82,7 @@ const result = await runAiUrlDemo({
   projectId: "ai-url-demo-test",
   createdAt: "2026-06-09T00:00:00.000Z",
   productUrl,
+  repoUrl,
   prompt,
   durationCapSeconds: 10,
   aspectRatio: "16:9",
@@ -81,12 +97,18 @@ const result = await runAiUrlDemo({
 
     return productAnalysis;
   },
+  analyzeRepo: async (url, options) => {
+    assert.equal(url, repoUrl);
+    assert.ok(options.checkoutDirectory.endsWith(".repo-scratch/checkout"));
+    return repoAnalysis;
+  },
   planner: async (input) => {
     assert.equal(input.productUrl, canonicalProductUrl);
     assert.equal(input.prompt, prompt);
     assert.equal(input.durationCapSeconds, 10);
     assert.equal(input.aspectRatio, "16:9");
     assert.deepEqual(input.analysis, productAnalysis);
+    assert.deepEqual(input.repoAnalysis, repoAnalysis);
 
     return {
       storyboard: {
@@ -120,6 +142,7 @@ assert.deepEqual(phases, ["analysis", "planning", "verification", "capture", "as
 const expectedPaths = [
   join(outputRoot, "demo-project.json"),
   join(outputRoot, "product-analysis.json"),
+  join(outputRoot, "repo-analysis.json"),
   join(outputRoot, "storyboard.json"),
   join(outputRoot, "capture-plan.json"),
   join(outputRoot, "capture-result.json"),
@@ -132,5 +155,44 @@ for (const path of expectedPaths) {
 const projectJson = JSON.parse(await readFile(join(outputRoot, "demo-project.json"), "utf8"));
 assert.equal(projectJson.metadata.productUrl, productUrl);
 assert.equal(projectJson.metadata.prompt, prompt);
+const repoAnalysisJson = JSON.parse(await readFile(join(outputRoot, "repo-analysis.json"), "utf8"));
+assert.deepEqual(repoAnalysisJson, repoAnalysis);
+assert.equal(projectJson.metadata.sourceRepoUrl, repoUrl);
+assert.equal(result.artifactPaths.includes(join(outputRoot, ".repo-scratch", "checkout")), false);
+assert.equal(existsSync(join(outputRoot, ".repo-scratch")), false);
+
+const noRepoOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-no-repo-"));
+let noRepoAnalyzerCalled = false;
+const noRepoResult = await runAiUrlDemo({
+  outputRoot: noRepoOutputRoot,
+  projectId: "ai-url-demo-no-repo-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async () => {
+    noRepoAnalyzerCalled = true;
+    throw new Error("repo analyzer should not run without repoUrl");
+  },
+  planner: async (input) => {
+    assert.equal(input.repoAnalysis, undefined);
+    return {
+      storyboard: {
+        title: "No Repo Demo",
+        durationCapSeconds: 10,
+        aspectRatio: "16:9",
+        beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
+      },
+      capturePlan,
+    };
+  },
+  runCapture: async () => captureResult,
+});
+
+assert.equal(noRepoAnalyzerCalled, false);
+assert.equal(noRepoResult.artifactPaths.includes(join(noRepoOutputRoot, "repo-analysis.json")), false);
+assert.equal(existsSync(join(noRepoOutputRoot, "repo-analysis.json")), false);
 
 console.log("run ai url demo tests passed");
