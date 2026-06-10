@@ -46,5 +46,38 @@ assert.throws(
   () => parseRepoAnalysis({ ...validAnalysis, sourceHints: [{ path: "/README.md", reason: "Absolute path." }] }, repoUrl),
   /sourceHints.0.path must be a relative repository path/,
 );
+assert.throws(
+  () => parseRepoAnalysis({ ...validAnalysis, sourceHints: [{ path: "..\\README.md", reason: "Escapes root." }] }, repoUrl),
+  /sourceHints.0.path must be a relative repository path/,
+);
+assert.throws(
+  () => parseRepoAnalysis({ ...validAnalysis, sourceHints: [{ path: "C:\\repo\\README.md", reason: "Windows absolute path." }] }, repoUrl),
+  /sourceHints.0.path must be a relative repository path/,
+);
+assert.throws(
+  () => parseRepoAnalysis({ ...validAnalysis, sourceHints: [{ path: "\\\\server\\share\\README.md", reason: "UNC absolute path." }] }, repoUrl),
+  /sourceHints.0.path must be a relative repository path/,
+);
+assert.throws(() => parseRepoAnalysis({ ...validAnalysis, sourceHints: ["README.md"] }, repoUrl), /sourceHints.0 must be an object/);
+assert.throws(
+  () => parseRepoAnalysis({ ...validAnalysis, sourceHints: [{ reason: "Missing path." }] }, repoUrl),
+  /sourceHints.0.path is required/,
+);
+assert.throws(
+  () => parseRepoAnalysis({ ...validAnalysis, sourceHints: [{ path: "README.md" }] }, repoUrl),
+  /sourceHints.0.reason is required/,
+);
+assert.throws(
+  () => parseRepoAnalysis({ ...validAnalysis, sourceHints: [{ path: "README.md", reason: "x".repeat(181) }] }, repoUrl),
+  /sourceHints.0.reason must be at most 180 characters/,
+);
+assert.throws(
+  () =>
+    parseRepoAnalysis(
+      { ...validAnalysis, sourceHints: Array.from({ length: 21 }, (_, index) => ({ path: `file-${index}.md`, reason: "Source hint." })) },
+      repoUrl,
+    ),
+  /sourceHints must contain at most 20 entries/,
+);
 
 console.log("analyze repo tests passed");

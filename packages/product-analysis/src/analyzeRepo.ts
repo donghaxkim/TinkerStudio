@@ -1,4 +1,4 @@
-import { isAbsolute, normalize, sep } from "node:path";
+import { posix, win32 } from "node:path";
 import type { RepoAnalysis } from "./types.js";
 
 type RepoAnalysisArrayField = "features" | "likelyRoutes" | "demoIdeas" | "importantTerms" | "setupNotes";
@@ -50,12 +50,12 @@ function parseStringArray(value: unknown, fieldName: RepoAnalysisArrayField) {
 }
 
 function isRelativeRepoPath(path: string) {
-  if (isAbsolute(path)) {
+  if (path.includes("\\") || posix.isAbsolute(path) || win32.isAbsolute(path)) {
     return false;
   }
 
-  const normalized = normalize(path);
-  return normalized !== "." && normalized !== ".." && !normalized.startsWith(`..${sep}`);
+  const normalized = posix.normalize(path);
+  return normalized !== "." && normalized !== ".." && !normalized.startsWith("../");
 }
 
 export function parseRepoAnalysis(value: unknown, expectedRepoUrl: string): RepoAnalysis {
