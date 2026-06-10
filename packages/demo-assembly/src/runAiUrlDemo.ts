@@ -16,6 +16,7 @@ import {
   type ProductAnalysis,
   type RepoAnalysis,
 } from "@tinker/product-analysis";
+import type { AiUrlRenderer } from "./aiUrlRenderer.js";
 import { compileProject } from "./compileProject.js";
 import { createEnvironmentAiUrlPlanner, createOpencodeAiUrlPlanner, type AiUrlPlanner, type AiUrlPlannerResult } from "./aiPlanning.js";
 import type { AspectRatio } from "./types.js";
@@ -38,6 +39,7 @@ export type RunAiUrlDemoInput = {
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
   repoUrl?: string;
+  renderer?: AiUrlRenderer;
   onPhase?: (phase: AiUrlDemoPhase) => void;
   analyzeWebsite?: AnalyzeWebsiteDependency;
   analyzeRepo?: AnalyzeRepoDependency;
@@ -85,14 +87,16 @@ async function cleanupRepoScratch(repoScratchDir: string | undefined, priorError
 }
 
 export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDemoResult> {
-  const captureOutputDir = join(input.outputRoot, "capture");
+  const renderer = input.renderer ?? "hyperframes";
+  const playwrightOutputRoot = join(input.outputRoot, "playwright");
+  const captureOutputDir = join(playwrightOutputRoot, "capture");
   const analyzeWebsite = input.analyzeWebsite ?? defaultAnalyzeWebsite;
   const analyzeRepo = input.analyzeRepo ?? defaultAnalyzeRepo;
   const planner = input.planner ?? (input.repoUrl === undefined ? createEnvironmentAiUrlPlanner() : createOpencodeAiUrlPlanner());
   const runCapture = input.runCapture ?? runPlaywrightCapture;
 
   await rm(input.outputRoot, { recursive: true, force: true });
-  await mkdir(captureOutputDir, { recursive: true });
+  await mkdir(input.outputRoot, { recursive: true });
 
   input.onPhase?.("analysis");
   const analysis = await analyzeWebsite(input.productUrl, {
@@ -122,80 +126,92 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     }
   }
 
-  input.onPhase?.("planning");
-  let plannerResult: AiUrlPlannerResult;
-  let plannerError: unknown;
-  try {
-    plannerResult = await planner({
-      productUrl: analysis.url,
+  async function runPlaywrightRenderer(): Promise<RunAiUrlDemoResult> {
+    await mkdir(captureOutputDir, { recursive: true });
+
+    input.onPhase?.("planning");
+    let plannerResult: AiUrlPlannerResult;
+    let plannerError: unknown;
+    try {
+      plannerResult = await planner({
+        productUrl: analysis.url,
+        prompt: input.prompt,
+        durationCapSeconds: input.durationCapSeconds,
+        aspectRatio: input.aspectRatio,
+        analysis,
+        ...(repoAnalysis === undefined ? {} : { repoAnalysis, repoCheckoutDirectory }),
+      });
+    } catch (error) {
+      plannerError = error;
+      throw error;
+    } finally {
+      await cleanupRepoScratch(repoScratchDir, plannerError);
+    }
+
+    const { storyboard, capturePlan } = plannerResult!;
+    const storyboardPath = join(playwrightOutputRoot, "storyboard.json");
+    await writeFile(storyboardPath, toPrettyJson(storyboard));
+
+    input.onPhase?.("verification");
+    const verification = verifyCapturePlan(capturePlan);
+    if (!verification.valid) {
+      throw new Error(`Generated capture plan failed verification: ${formatCapturePlanIssues(verification)}`);
+    }
+    const capturePlanPath = join(playwrightOutputRoot, "capture-plan.json");
+    await writeFile(capturePlanPath, toPrettyJson(capturePlan));
+
+    input.onPhase?.("capture");
+    const captureResult = await runCapture(capturePlan, { outputDir: captureOutputDir, headless: true });
+    const captureResultPath = join(playwrightOutputRoot, "capture-result.json");
+    await writeFile(captureResultPath, toPrettyJson(captureResult));
+
+    input.onPhase?.("assembly");
+    const project = compileProject({
+      projectId: input.projectId,
+      storyboard,
+      capturePlan,
+      captureResult,
+      outputRoot: playwrightOutputRoot,
+      createdAt: input.createdAt,
+      productUrl: input.productUrl,
+      ...(input.repoUrl === undefined ? {} : { sourceRepoUrl: input.repoUrl }),
       prompt: input.prompt,
-      durationCapSeconds: input.durationCapSeconds,
-      aspectRatio: input.aspectRatio,
-      analysis,
-      ...(repoAnalysis === undefined ? {} : { repoAnalysis, repoCheckoutDirectory }),
     });
-  } catch (error) {
-    plannerError = error;
-    throw error;
-  } finally {
-    await cleanupRepoScratch(repoScratchDir, plannerError);
+    const projectPath = join(playwrightOutputRoot, "demo-project.json");
+    await writeFile(projectPath, toPrettyJson(project));
+
+    const artifactPaths = [
+      productAnalysisPath,
+      ...(repoAnalysisPath ? [repoAnalysisPath] : []),
+      ...(analysis.screenshotPath ? [analysis.screenshotPath] : []),
+      storyboardPath,
+      capturePlanPath,
+      captureResultPath,
+      projectPath,
+      ...captureResult.clips.map((asset) => toCaptureAssetPath(captureOutputDir, asset)),
+      ...captureResult.screenshots.map((asset) => toCaptureAssetPath(captureOutputDir, asset)),
+      ...(captureResult.tracePath ? [captureResult.tracePath] : []),
+    ];
+
+    return {
+      projectPath,
+      captureResultPath,
+      outputRoot: input.outputRoot,
+      artifactPaths,
+      captureCounts: {
+        clips: captureResult.clips.length,
+        screenshots: captureResult.screenshots.length,
+        events: captureResult.events.length,
+        checkpoints: captureResult.checkpoints.length,
+      },
+    };
   }
 
-  const { storyboard, capturePlan } = plannerResult!;
-  const storyboardPath = join(input.outputRoot, "storyboard.json");
-  await writeFile(storyboardPath, toPrettyJson(storyboard));
-
-  input.onPhase?.("verification");
-  const verification = verifyCapturePlan(capturePlan);
-  if (!verification.valid) {
-    throw new Error(`Generated capture plan failed verification: ${formatCapturePlanIssues(verification)}`);
+  if (renderer === "playwright") {
+    return runPlaywrightRenderer();
   }
-  const capturePlanPath = join(input.outputRoot, "capture-plan.json");
-  await writeFile(capturePlanPath, toPrettyJson(capturePlan));
 
-  input.onPhase?.("capture");
-  const captureResult = await runCapture(capturePlan, { outputDir: captureOutputDir, headless: true });
-  const captureResultPath = join(input.outputRoot, "capture-result.json");
-  await writeFile(captureResultPath, toPrettyJson(captureResult));
-
-  input.onPhase?.("assembly");
-  const project = compileProject({
-    projectId: input.projectId,
-    storyboard,
-    capturePlan,
-    captureResult,
-    outputRoot: input.outputRoot,
-    createdAt: input.createdAt,
-    productUrl: input.productUrl,
-    ...(input.repoUrl === undefined ? {} : { sourceRepoUrl: input.repoUrl }),
-    prompt: input.prompt,
-  });
-  const projectPath = join(input.outputRoot, "demo-project.json");
-  await writeFile(projectPath, toPrettyJson(project));
-
-  const artifactPaths = [
-    productAnalysisPath,
-    ...(repoAnalysisPath ? [repoAnalysisPath] : []),
-    ...(analysis.screenshotPath ? [analysis.screenshotPath] : []),
-    storyboardPath,
-    capturePlanPath,
-    captureResultPath,
-    projectPath,
-    ...captureResult.clips.map((asset) => toCaptureAssetPath(captureOutputDir, asset)),
-    ...captureResult.screenshots.map((asset) => toCaptureAssetPath(captureOutputDir, asset)),
-    ...(captureResult.tracePath ? [captureResult.tracePath] : []),
-  ];
-
-  return {
-    projectPath,
-    captureResultPath,
-    outputRoot: input.outputRoot,
-    artifactPaths,
-    captureCounts: {
-      clips: captureResult.clips.length,
-      screenshots: captureResult.screenshots.length,
-      events: captureResult.events.length,
-      checkpoints: captureResult.checkpoints.length,
-    },
-  };
+  const rendererError = new Error("Hyperframes renderer is not implemented yet");
+  await cleanupRepoScratch(repoScratchDir, rendererError);
+  throw rendererError;
 }

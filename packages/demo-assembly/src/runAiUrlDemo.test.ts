@@ -8,6 +8,7 @@ import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { runAiUrlDemo, type AiUrlDemoPhase } from "./runAiUrlDemo.js";
 
 const outputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-"));
+const playwrightOutputRoot = join(outputRoot, "playwright");
 const productUrl = "http://127.0.0.1:3000/";
 const canonicalProductUrl = "http://127.0.0.1:3000/canonical";
 const prompt = "Show the hero and value proposition.";
@@ -83,6 +84,7 @@ const result = await runAiUrlDemo({
   createdAt: "2026-06-09T00:00:00.000Z",
   productUrl,
   repoUrl,
+  renderer: "playwright",
   prompt,
   durationCapSeconds: 10,
   aspectRatio: "16:9",
@@ -138,7 +140,7 @@ const result = await runAiUrlDemo({
   },
   runCapture: async (plan, options) => {
     assert.deepEqual(plan, capturePlan);
-    assert.deepEqual(options, { outputDir: join(outputRoot, "capture"), headless: true });
+    assert.deepEqual(options, { outputDir: join(outputRoot, "playwright", "capture"), headless: true });
 
     return captureResult;
   },
@@ -147,19 +149,19 @@ const result = await runAiUrlDemo({
 assert.deepEqual(phases, ["analysis", "planning", "verification", "capture", "assembly"]);
 
 const expectedPaths = [
-  join(outputRoot, "demo-project.json"),
+  join(playwrightOutputRoot, "demo-project.json"),
   join(outputRoot, "product-analysis.json"),
   join(outputRoot, "repo-analysis.json"),
-  join(outputRoot, "storyboard.json"),
-  join(outputRoot, "capture-plan.json"),
-  join(outputRoot, "capture-result.json"),
+  join(playwrightOutputRoot, "storyboard.json"),
+  join(playwrightOutputRoot, "capture-plan.json"),
+  join(playwrightOutputRoot, "capture-result.json"),
 ];
 
 for (const path of expectedPaths) {
   assert.ok(result.artifactPaths.includes(path), `Expected artifact path ${path}`);
 }
 
-const projectJson = JSON.parse(await readFile(join(outputRoot, "demo-project.json"), "utf8"));
+const projectJson = JSON.parse(await readFile(join(playwrightOutputRoot, "demo-project.json"), "utf8"));
 assert.equal(projectJson.metadata.productUrl, productUrl);
 assert.equal(projectJson.metadata.prompt, prompt);
 const repoAnalysisJson = JSON.parse(await readFile(join(outputRoot, "repo-analysis.json"), "utf8"));
@@ -264,6 +266,7 @@ const noRepoResult = await runAiUrlDemo({
   projectId: "ai-url-demo-no-repo-test",
   createdAt: "2026-06-09T00:00:00.000Z",
   productUrl,
+  renderer: "playwright",
   prompt,
   durationCapSeconds: 10,
   aspectRatio: "16:9",
