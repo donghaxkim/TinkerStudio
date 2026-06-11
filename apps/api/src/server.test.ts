@@ -147,6 +147,28 @@ describe("artifact indexing", () => {
       url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
       mediaType: "video/mp4",
     });
+
+    const unknownArtifact = artifacts.find((artifact) => artifact.relativePath === "hyperframes/notes.txt");
+    expect(unknownArtifact).toMatchObject({
+      kind: "other",
+      relativePath: "hyperframes/notes.txt",
+    });
+    expect(unknownArtifact?.url.endsWith("/hyperframes/notes.txt")).toBe(true);
+  });
+
+  it("excludes artifact paths outside the output root", async () => {
+    const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-artifacts-"));
+    const artifacts = indexArtifacts({
+      jobId: "job-test",
+      outputRoot,
+      artifactPaths: [
+        join(outputRoot, "hyperframes", "index.html"),
+        join(outputRoot, "..", "outside.txt"),
+      ],
+    });
+
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.relativePath).toBe("hyperframes/index.html");
   });
 });
 

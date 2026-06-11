@@ -21,6 +21,15 @@ export type CreateJobInput = {
 
 export type JobStore = ReturnType<typeof createJobStore>;
 
+function toApiRequest(input: CreateJobInput): ApiGenerationJob["request"] {
+  const { outputDirectory: _outputDirectory, renderer, id, ...request } = input.request;
+  return {
+    ...request,
+    id: id ?? input.id,
+    ...(renderer === "hyperframes" ? { renderer } : {}),
+  };
+}
+
 function snapshot(record: JobRecord): ApiGenerationJob {
   const { outputRoot: _outputRoot, ...job } = record;
   return ApiGenerationJobSchema.parse(job);
@@ -34,7 +43,7 @@ export function createJobStore() {
       const record: JobRecord = {
         id: input.id,
         status: "queued",
-        request: input.request,
+        request: toApiRequest(input),
         createdAt: input.now,
         updatedAt: input.now,
         progressEvents: [],
