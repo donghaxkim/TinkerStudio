@@ -112,6 +112,8 @@ export function parseRepoAnalysis(value: unknown, expectedRepoUrl: string): Repo
 
 const execFile = promisify(execFileCallback);
 const DEFAULT_OPENCODE_TIMEOUT_MS = 300_000;
+const TIMEOUT_KILL_GRACE_MS = 5_000;
+const TIMEOUT_CLOSE_FALLBACK_MS = 5_000;
 const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
 
 const GithubOwnerSegmentPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
@@ -287,17 +289,88 @@ export async function defaultRunOpencode(prompt: string, options: { cwd: string 
   const stdout = createRetainedOutput();
   const stderr = createRetainedOutput();
   result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
+    const detached = process.platform !== "win32";
     let timedOut = false;
+    let settled = false;
+    let killTimeout: ReturnType<typeof setTimeout> | undefined;
+    let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
     const child = spawn("opencode", ["run", "--pure", "--format", "json", "--dir", options.cwd, prompt], {
       cwd: options.cwd,
+      detached,
       env: sanitizedOpencodeEnv(),
       stdio: ["ignore", "pipe", "pipe"],
     });
 
     const timeout = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
+      killChild("SIGTERM");
+      killTimeout = setTimeout(() => {
+        killChild("SIGKILL");
+        closeFallbackTimeout = setTimeout(() => {
+          destroyStreams();
+          resolveOnce({ code: null, signal: null, timedOut });
+        }, TIMEOUT_CLOSE_FALLBACK_MS);
+      }, TIMEOUT_KILL_GRACE_MS);
     }, effectiveTimeoutMs);
+
+    function killChild(signal: NodeJS.Signals) {
+      if (detached && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, signal);
+          return;
+        } catch {
+          // Fall back to the direct child when process-group kill is unavailable.
+        }
+      }
+
+      try {
+        child.kill(signal);
+      } catch {
+        // The child may already have exited between timeout callbacks.
+      }
+    }
+
+    function clearTimers() {
+      clearTimeout(timeout);
+      if (killTimeout !== undefined) {
+        clearTimeout(killTimeout);
+      }
+      if (closeFallbackTimeout !== undefined) {
+        clearTimeout(closeFallbackTimeout);
+      }
+    }
+
+    function cleanupListeners() {
+      child.stdout.removeAllListeners("data");
+      child.stderr.removeAllListeners("data");
+      child.removeAllListeners("close");
+      child.removeAllListeners("error");
+    }
+
+    function destroyStreams() {
+      child.stdout.destroy();
+      child.stderr.destroy();
+    }
+
+    function resolveOnce(finalResult: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimers();
+      cleanupListeners();
+      resolve(finalResult);
+    }
+
+    function rejectOnce(error: Error) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimers();
+      cleanupListeners();
+      reject(error);
+    }
 
     child.stdout.on("data", (chunk) => {
       appendRetainedOutput(stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
@@ -308,12 +381,10 @@ export async function defaultRunOpencode(prompt: string, options: { cwd: string 
     });
 
     child.on("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
+      rejectOnce(error);
     });
-    child.on("exit", (code, signal) => {
-      clearTimeout(timeout);
-      resolve({ code, signal, timedOut });
+    child.on("close", (code, signal) => {
+      resolveOnce({ code, signal, timedOut });
     });
   });
 

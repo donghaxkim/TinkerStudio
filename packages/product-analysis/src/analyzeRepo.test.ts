@@ -224,6 +224,7 @@ try {
     fakeOpencodePath,
     [
       "#!/usr/bin/env node",
+      "const { spawn } = require('node:child_process');",
       "const { readFileSync, writeFileSync, writeSync } = require('node:fs');",
       "const { join } = require('node:path');",
       "writeFileSync(join(process.cwd(), 'opencode-args.json'), JSON.stringify(process.argv.slice(2), null, 2));",
@@ -231,6 +232,8 @@ try {
       "writeFileSync(join(process.cwd(), 'opencode-config-seen.json'), readFileSync(join(process.cwd(), 'opencode.json'), 'utf8'));",
       "writeSync(1, 'REPO_STDOUT_START_SHOULD_BE_TRUNCATED\\n' + 'o'.repeat(200000) + '\\nREPO_STDOUT_END_SHOULD_STAY\\n');",
       "writeSync(2, 'REPO_STDERR_START_SHOULD_BE_TRUNCATED\\n' + 'e'.repeat(200000) + '\\nREPO_STDERR_END_SHOULD_STAY\\n');",
+      "const delayed = spawn(process.execPath, ['-e', \"setTimeout(() => { process.stdout.write('REPO_CLOSE_FLUSHED_STDOUT\\\\n'); process.stderr.write('REPO_CLOSE_FLUSHED_STDERR\\\\n'); }, 75);\"], { stdio: ['ignore', 1, 2] });",
+      "delayed.unref();",
     ].join("\n"),
   );
   await chmod(fakeOpencodePath, 0o755);
@@ -244,6 +247,7 @@ try {
 
     const opencodeOutput = await defaultRunOpencode("fake repo prompt", { cwd: opencodeCheckoutDirectory });
     assert.match(opencodeOutput, /REPO_STDOUT_END_SHOULD_STAY/);
+    assert.match(opencodeOutput, /REPO_CLOSE_FLUSHED_STDOUT/);
   } finally {
     process.env.PATH = originalPath;
     delete process.env.TINKER_REPO_ANALYSIS_SHOULD_NOT_LEAK;
@@ -271,9 +275,53 @@ try {
   assert.doesNotMatch(repoStdoutLog, /REPO_STDOUT_START_SHOULD_BE_TRUNCATED/);
   assert.match(repoStderrLog, /truncated/i);
   assert.match(repoStderrLog, /REPO_STDERR_END_SHOULD_STAY/);
+  assert.match(repoStderrLog, /REPO_CLOSE_FLUSHED_STDERR/);
   assert.doesNotMatch(repoStderrLog, /REPO_STDERR_START_SHOULD_BE_TRUNCATED/);
   assert.ok(Buffer.byteLength(repoStdoutLog, "utf8") < 140_000);
   assert.ok(Buffer.byteLength(repoStderrLog, "utf8") < 140_000);
+
+  if (process.platform !== "win32") {
+    const timeoutBinDirectory = join(fixtureRoot, "timeout-bin");
+    const timeoutCheckoutDirectory = join(fixtureRoot, "timeout-checkout");
+    await mkdir(timeoutBinDirectory);
+    await mkdir(timeoutCheckoutDirectory);
+    const timeoutOpencodePath = join(timeoutBinDirectory, "opencode");
+    await writeFile(
+      timeoutOpencodePath,
+      [
+        "#!/usr/bin/env node",
+        "const { spawn } = require('node:child_process');",
+        "const { join } = require('node:path');",
+        "const signalPath = join(process.cwd(), 'grandchild-sigterm.txt');",
+        "const grandchild = spawn(process.execPath, ['-e', `const { writeFileSync } = require('node:fs'); process.on('SIGTERM', () => { writeFileSync(process.env.TINKER_SIGNAL_PATH, 'SIGTERM'); process.exit(0); }); setTimeout(() => process.exit(0), 5000);`], { env: { ...process.env, TINKER_SIGNAL_PATH: signalPath }, stdio: ['ignore', 1, 2] });",
+        "grandchild.unref();",
+        "process.on('SIGTERM', () => process.exit(0));",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    await chmod(timeoutOpencodePath, 0o755);
+
+    const timeoutOriginalPath = process.env.PATH;
+    const originalRepoTimeout = process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS;
+    try {
+      process.env.PATH = `${timeoutBinDirectory}${delimiter}${timeoutOriginalPath ?? ""}`;
+      process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS = "1000";
+
+      await assert.rejects(
+        () => defaultRunOpencode("timeout repo prompt", { cwd: timeoutCheckoutDirectory }),
+        /OpenCode repo analysis timed out after 1000ms/,
+      );
+    } finally {
+      process.env.PATH = timeoutOriginalPath;
+      if (originalRepoTimeout === undefined) {
+        delete process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS;
+      } else {
+        process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS = originalRepoTimeout;
+      }
+    }
+
+    assert.equal(await readFile(join(timeoutCheckoutDirectory, "grandchild-sigterm.txt"), "utf8"), "SIGTERM");
+  }
 
 } finally {
   await rm(fixtureRoot, { recursive: true, force: true });

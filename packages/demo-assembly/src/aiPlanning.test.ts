@@ -414,6 +414,7 @@ await writeFile(
   fakeOpencodePlannerPath,
   [
     "#!/usr/bin/env node",
+    "const { spawn } = require('node:child_process');",
     "const { readFileSync, writeFileSync } = require('node:fs');",
     "const { join } = require('node:path');",
     "writeFileSync(join(process.cwd(), 'opencode-args.json'), JSON.stringify(process.argv.slice(2), null, 2));",
@@ -421,6 +422,8 @@ await writeFile(
     "writeFileSync(join(process.cwd(), 'opencode-config-seen.json'), readFileSync(join(process.cwd(), 'opencode.json'), 'utf8'));",
     "process.stdout.write('AI_STDOUT_START_SHOULD_BE_TRUNCATED\\n' + 'o'.repeat(200000) + '\\nAI_STDOUT_END_SHOULD_STAY\\n');",
     "process.stderr.write('AI_STDERR_START_SHOULD_BE_TRUNCATED\\n' + 'e'.repeat(200000) + '\\nAI_STDERR_END_SHOULD_STAY\\n');",
+    "const delayed = spawn(process.execPath, ['-e', \"setTimeout(() => { process.stdout.write('AI_CLOSE_FLUSHED_STDOUT\\\\n'); process.stderr.write('AI_CLOSE_FLUSHED_STDERR\\\\n'); }, 75);\"], { stdio: ['ignore', 1, 2] });",
+    "delayed.unref();",
   ].join("\n"),
 );
 await chmod(fakeOpencodePlannerPath, 0o755);
@@ -434,6 +437,7 @@ try {
 
   const plannerOutput = await defaultRunAiPlannerOpencode("fake planner prompt", { cwd: opencodeRunnerRepo });
   assert.match(plannerOutput, /AI_STDOUT_END_SHOULD_STAY/);
+  assert.match(plannerOutput, /AI_CLOSE_FLUSHED_STDOUT/);
 } finally {
   process.env.PATH = originalPath;
   delete process.env.TINKER_AI_PLANNER_SHOULD_NOT_LEAK;
@@ -461,9 +465,54 @@ assert.match(plannerStdoutLog, /AI_STDOUT_END_SHOULD_STAY/);
 assert.doesNotMatch(plannerStdoutLog, /AI_STDOUT_START_SHOULD_BE_TRUNCATED/);
 assert.match(plannerStderrLog, /truncated/i);
 assert.match(plannerStderrLog, /AI_STDERR_END_SHOULD_STAY/);
+assert.match(plannerStderrLog, /AI_CLOSE_FLUSHED_STDERR/);
 assert.doesNotMatch(plannerStderrLog, /AI_STDERR_START_SHOULD_BE_TRUNCATED/);
 assert.ok(Buffer.byteLength(plannerStdoutLog, "utf8") < 140_000);
 assert.ok(Buffer.byteLength(plannerStderrLog, "utf8") < 140_000);
+
+if (process.platform !== "win32") {
+  const timeoutRunnerRoot = await mkdtemp(join(tmpdir(), "tinker-ai-planning-opencode-timeout-"));
+  const timeoutRunnerBin = join(timeoutRunnerRoot, "bin");
+  const timeoutRunnerRepo = join(timeoutRunnerRoot, "repo");
+  await mkdir(timeoutRunnerBin);
+  await mkdir(timeoutRunnerRepo);
+  const timeoutOpencodePath = join(timeoutRunnerBin, "opencode");
+  await writeFile(
+    timeoutOpencodePath,
+    [
+      "#!/usr/bin/env node",
+      "const { spawn } = require('node:child_process');",
+      "const { join } = require('node:path');",
+      "const signalPath = join(process.cwd(), 'grandchild-sigterm.txt');",
+      "const grandchild = spawn(process.execPath, ['-e', `const { writeFileSync } = require('node:fs'); process.on('SIGTERM', () => { writeFileSync(process.env.TINKER_SIGNAL_PATH, 'SIGTERM'); process.exit(0); }); setTimeout(() => process.exit(0), 5000);`], { env: { ...process.env, TINKER_SIGNAL_PATH: signalPath }, stdio: ['ignore', 1, 2] });",
+      "grandchild.unref();",
+      "process.on('SIGTERM', () => process.exit(0));",
+      "setInterval(() => {}, 1000);",
+    ].join("\n"),
+  );
+  await chmod(timeoutOpencodePath, 0o755);
+
+  const timeoutOriginalPath = process.env.PATH;
+  const originalPlannerTimeout = process.env.TINKER_AI_URL_PLANNER_OPENCODE_TIMEOUT_MS;
+  try {
+    process.env.PATH = `${timeoutRunnerBin}${delimiter}${timeoutOriginalPath ?? ""}`;
+    process.env.TINKER_AI_URL_PLANNER_OPENCODE_TIMEOUT_MS = "1000";
+
+    await assert.rejects(
+      () => defaultRunAiPlannerOpencode("timeout planner prompt", { cwd: timeoutRunnerRepo }),
+      /OpenCode demo planning timed out after 1000ms/,
+    );
+  } finally {
+    process.env.PATH = timeoutOriginalPath;
+    if (originalPlannerTimeout === undefined) {
+      delete process.env.TINKER_AI_URL_PLANNER_OPENCODE_TIMEOUT_MS;
+    } else {
+      process.env.TINKER_AI_URL_PLANNER_OPENCODE_TIMEOUT_MS = originalPlannerTimeout;
+    }
+  }
+
+  assert.equal(await readFile(join(timeoutRunnerRepo, "grandchild-sigterm.txt"), "utf8"), "SIGTERM");
+}
 
 const openAiPlanner = createEnvironmentAiUrlPlanner({
   endpoint: "https://planner.example/v1/chat/completions",
