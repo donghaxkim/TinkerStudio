@@ -13,3 +13,6 @@ agents.md
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# Design reference screenshots (scratch, not committed)
+.design-ref/
