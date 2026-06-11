@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
+import { chmod, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import {
   createEnvironmentAiUrlPlanner,
   createFixtureAiUrlPlanner,
+  createOpencodeAiUrlPlanner,
+  defaultRunAiPlannerOpencode,
   parseCapturePlanJson,
   parseStoryboardJson,
 } from "./aiPlanning.js";
 import {
   createEnvironmentAiUrlPlanner as exportedCreateEnvironmentAiUrlPlanner,
   createFixtureAiUrlPlanner as exportedCreateFixtureAiUrlPlanner,
+  createOpencodeAiUrlPlanner as exportedCreateOpencodeAiUrlPlanner,
   parseCapturePlanJson as exportedParseCapturePlanJson,
   parseStoryboardJson as exportedParseStoryboardJson,
   type AiUrlPlanner as ExportedAiUrlPlanner,
@@ -72,6 +78,7 @@ const capturePlanFixture = {
     { type: "goto", url: "http://127.0.0.1:3000/" },
     { type: "waitForSelector", selector: "[data-testid='hero']" },
     { type: "click", selector: "[data-testid='start-demo']" },
+    { type: "press", selector: "[data-testid='workspace-name']", key: "Enter" },
     { type: "pause", ms: 300 },
   ],
   expectedCheckpoints: [{ id: "hero", label: "Hero", selector: "[data-testid='hero']" }],
@@ -79,6 +86,7 @@ const capturePlanFixture = {
 
 assert.equal(exportedCreateEnvironmentAiUrlPlanner, createEnvironmentAiUrlPlanner);
 assert.equal(exportedCreateFixtureAiUrlPlanner, createFixtureAiUrlPlanner);
+assert.equal(exportedCreateOpencodeAiUrlPlanner, createOpencodeAiUrlPlanner);
 assert.equal(exportedParseCapturePlanJson, parseCapturePlanJson);
 assert.equal(exportedParseStoryboardJson, parseStoryboardJson);
 const exportedPlannerTypeCheck: ExportedAiUrlPlanner = createFixtureAiUrlPlanner();
@@ -89,6 +97,7 @@ const exportedPlannerInputTypeCheck: ExportedAiUrlPlannerInput = {
   aspectRatio: "16:9",
   analysis: productAnalysisFixture,
   repoAnalysis: repoAnalysisFixture,
+  repoCheckoutDirectory: "/tmp/repo-checkout",
 };
 void exportedPlannerTypeCheck;
 void exportedPlannerInputTypeCheck;
@@ -104,7 +113,7 @@ assert.equal(parsedStoryboard.beats.length, 2);
 const parsedCapturePlan = parseCapturePlanJson(JSON.stringify(capturePlanFixture));
 assert.equal(parsedCapturePlan.targetUrl, "http://127.0.0.1:3000/");
 assert.deepEqual(parsedCapturePlan.viewport, { width: 1280, height: 720 });
-assert.equal(parsedCapturePlan.steps.length, 4);
+assert.equal(parsedCapturePlan.steps.length, 5);
 assert.equal(parsedCapturePlan.expectedCheckpoints[0]?.id, "hero");
 
 assert.throws(() => parseStoryboardJson("{"), /Planner returned malformed storyboard JSON/);
@@ -339,6 +348,176 @@ await assert.rejects(
   /RepoAnalysis is invalid/,
 );
 assert.equal(invalidRepoFetchCalls, 0);
+
+const opencodeCalls: { prompt: string; cwd: string }[] = [];
+const opencodePlanner = createOpencodeAiUrlPlanner({
+  runOpencode: async (prompt, options) => {
+    opencodeCalls.push({ prompt, cwd: options.cwd });
+
+    return [
+      JSON.stringify({ type: "message", text: "planning" }),
+      JSON.stringify({ type: "message", text: JSON.stringify({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }) }),
+    ].join("\n");
+  },
+});
+
+const opencodeResult = await opencodePlanner({
+  productUrl: "http://127.0.0.1:3000/",
+  prompt: "Show a real workflow using a safe public sample URL.",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analysis: { ...productAnalysisFixture, inputs: [], buttons: ["About Us"] },
+  repoAnalysis: {
+    ...repoAnalysisFixture,
+    features: ["Paste a YouTube URL", "Generate highlight reels"],
+    demoIdeas: ["Search the web for a safe public long YouTube URL, paste it, and show generated highlights."],
+  },
+  repoCheckoutDirectory: "/tmp/repo-checkout",
+});
+
+assert.equal(opencodeResult.storyboard.title, "Fixture demo");
+assert.equal(opencodeResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
+assert.equal(opencodeCalls.length, 1);
+assert.equal(opencodeCalls[0]?.cwd, "/tmp/repo-checkout");
+assert.match(opencodeCalls[0]?.prompt ?? "", /primary demo planning agent/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /web research/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /safe public sample inputs/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /Feeling Lucky/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /generated-result controls/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /press step with key Enter/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /product workflow/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /homepage-only/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /Generate highlight reels/);
+
+await assert.rejects(
+  () =>
+    opencodePlanner({
+      productUrl: "http://127.0.0.1:3000/",
+      prompt: "Show the workflow.",
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analysis: productAnalysisFixture,
+      repoAnalysis: repoAnalysisFixture,
+    }),
+  /repoCheckoutDirectory is required/,
+);
+
+const opencodeRunnerRoot = await mkdtemp(join(tmpdir(), "tinker-ai-planning-opencode-"));
+const opencodeRunnerBin = join(opencodeRunnerRoot, "bin");
+const opencodeRunnerRepo = join(opencodeRunnerRoot, "repo");
+const opencodeRunnerOutsideConfig = join(opencodeRunnerRoot, "outside-opencode.json");
+await mkdir(opencodeRunnerBin);
+await mkdir(opencodeRunnerRepo);
+await writeFile(opencodeRunnerOutsideConfig, "outside config must stay untouched");
+await symlink(opencodeRunnerOutsideConfig, join(opencodeRunnerRepo, "opencode.json"));
+const fakeOpencodePlannerPath = join(opencodeRunnerBin, "opencode");
+await writeFile(
+  fakeOpencodePlannerPath,
+  [
+    "#!/usr/bin/env node",
+    "const { spawn } = require('node:child_process');",
+    "const { readFileSync, writeFileSync } = require('node:fs');",
+    "const { join } = require('node:path');",
+    "writeFileSync(join(process.cwd(), 'opencode-args.json'), JSON.stringify(process.argv.slice(2), null, 2));",
+    "writeFileSync(join(process.cwd(), 'opencode-env.json'), JSON.stringify(process.env, null, 2));",
+    "writeFileSync(join(process.cwd(), 'opencode-config-seen.json'), readFileSync(join(process.cwd(), 'opencode.json'), 'utf8'));",
+    "process.stdout.write('AI_STDOUT_START_SHOULD_BE_TRUNCATED\\n' + 'o'.repeat(200000) + '\\nAI_STDOUT_END_SHOULD_STAY\\n');",
+    "process.stderr.write('AI_STDERR_START_SHOULD_BE_TRUNCATED\\n' + 'e'.repeat(200000) + '\\nAI_STDERR_END_SHOULD_STAY\\n');",
+    "const delayed = spawn(process.execPath, ['-e', \"setTimeout(() => { process.stdout.write('AI_CLOSE_FLUSHED_STDOUT\\\\n'); process.stderr.write('AI_CLOSE_FLUSHED_STDERR\\\\n'); }, 75);\"], { stdio: ['ignore', 1, 2] });",
+    "delayed.unref();",
+  ].join("\n"),
+);
+await chmod(fakeOpencodePlannerPath, 0o755);
+
+const originalPath = process.env.PATH;
+const originalOpencodeConfig = process.env.OPENCODE_CONFIG;
+try {
+  process.env.PATH = `${opencodeRunnerBin}${delimiter}${originalPath ?? ""}`;
+  process.env.TINKER_AI_PLANNER_SHOULD_NOT_LEAK = "host-secret";
+  process.env.OPENCODE_CONFIG = join(opencodeRunnerRoot, "host-opencode.json");
+
+  const plannerOutput = await defaultRunAiPlannerOpencode("fake planner prompt", { cwd: opencodeRunnerRepo });
+  assert.match(plannerOutput, /AI_STDOUT_END_SHOULD_STAY/);
+  assert.match(plannerOutput, /AI_CLOSE_FLUSHED_STDOUT/);
+} finally {
+  process.env.PATH = originalPath;
+  delete process.env.TINKER_AI_PLANNER_SHOULD_NOT_LEAK;
+  if (originalOpencodeConfig === undefined) {
+    delete process.env.OPENCODE_CONFIG;
+  } else {
+    process.env.OPENCODE_CONFIG = originalOpencodeConfig;
+  }
+}
+
+const plannerOpencodeArgs = JSON.parse(await readFile(join(opencodeRunnerRepo, "opencode-args.json"), "utf8"));
+assert.equal(plannerOpencodeArgs.includes("--dangerously-skip-permissions"), false);
+assert.equal(await readFile(opencodeRunnerOutsideConfig, "utf8"), "outside config must stay untouched");
+const plannerOpencodeConfigStat = await lstat(join(opencodeRunnerRepo, "opencode.json"));
+assert.equal(plannerOpencodeConfigStat.isSymbolicLink(), false);
+assert.equal(plannerOpencodeConfigStat.isFile(), true);
+const plannerOpencodeEnv = JSON.parse(await readFile(join(opencodeRunnerRepo, "opencode-env.json"), "utf8"));
+assert.equal(plannerOpencodeEnv.TINKER_AI_PLANNER_SHOULD_NOT_LEAK, undefined);
+assert.equal(plannerOpencodeEnv.OPENCODE_CONFIG, undefined);
+const plannerOpencodeConfig = JSON.parse(await readFile(join(opencodeRunnerRepo, "opencode-config-seen.json"), "utf8"));
+assert.equal(plannerOpencodeConfig.permission.edit, "deny");
+assert.equal(plannerOpencodeConfig.permission.bash, "deny");
+assert.equal(plannerOpencodeConfig.permission.webfetch, "deny");
+assert.equal(plannerOpencodeConfig.permission.external_directory, "deny");
+const plannerStdoutLog = await readFile(join(opencodeRunnerRepo, ".tinker-opencode-demo-planner-output.jsonl"), "utf8");
+const plannerStderrLog = await readFile(join(opencodeRunnerRepo, ".tinker-opencode-demo-planner-error.log"), "utf8");
+assert.match(plannerStdoutLog, /truncated/i);
+assert.match(plannerStdoutLog, /AI_STDOUT_END_SHOULD_STAY/);
+assert.doesNotMatch(plannerStdoutLog, /AI_STDOUT_START_SHOULD_BE_TRUNCATED/);
+assert.match(plannerStderrLog, /truncated/i);
+assert.match(plannerStderrLog, /AI_STDERR_END_SHOULD_STAY/);
+assert.match(plannerStderrLog, /AI_CLOSE_FLUSHED_STDERR/);
+assert.doesNotMatch(plannerStderrLog, /AI_STDERR_START_SHOULD_BE_TRUNCATED/);
+assert.ok(Buffer.byteLength(plannerStdoutLog, "utf8") < 140_000);
+assert.ok(Buffer.byteLength(plannerStderrLog, "utf8") < 140_000);
+
+if (process.platform !== "win32") {
+  const timeoutRunnerRoot = await mkdtemp(join(tmpdir(), "tinker-ai-planning-opencode-timeout-"));
+  const timeoutRunnerBin = join(timeoutRunnerRoot, "bin");
+  const timeoutRunnerRepo = join(timeoutRunnerRoot, "repo");
+  await mkdir(timeoutRunnerBin);
+  await mkdir(timeoutRunnerRepo);
+  const timeoutOpencodePath = join(timeoutRunnerBin, "opencode");
+  await writeFile(
+    timeoutOpencodePath,
+    [
+      "#!/usr/bin/env node",
+      "const { spawn } = require('node:child_process');",
+      "const { join } = require('node:path');",
+      "const signalPath = join(process.cwd(), 'grandchild-sigterm.txt');",
+      "const grandchild = spawn(process.execPath, ['-e', `const { writeFileSync } = require('node:fs'); process.on('SIGTERM', () => { writeFileSync(process.env.TINKER_SIGNAL_PATH, 'SIGTERM'); process.exit(0); }); setTimeout(() => process.exit(0), 5000);`], { env: { ...process.env, TINKER_SIGNAL_PATH: signalPath }, stdio: ['ignore', 1, 2] });",
+      "grandchild.unref();",
+      "process.on('SIGTERM', () => process.exit(0));",
+      "setInterval(() => {}, 1000);",
+    ].join("\n"),
+  );
+  await chmod(timeoutOpencodePath, 0o755);
+
+  const timeoutOriginalPath = process.env.PATH;
+  const originalPlannerTimeout = process.env.TINKER_AI_URL_PLANNER_OPENCODE_TIMEOUT_MS;
+  try {
+    process.env.PATH = `${timeoutRunnerBin}${delimiter}${timeoutOriginalPath ?? ""}`;
+    process.env.TINKER_AI_URL_PLANNER_OPENCODE_TIMEOUT_MS = "1000";
+
+    await assert.rejects(
+      () => defaultRunAiPlannerOpencode("timeout planner prompt", { cwd: timeoutRunnerRepo }),
+      /OpenCode demo planning timed out after 1000ms/,
+    );
+  } finally {
+    process.env.PATH = timeoutOriginalPath;
+    if (originalPlannerTimeout === undefined) {
+      delete process.env.TINKER_AI_URL_PLANNER_OPENCODE_TIMEOUT_MS;
+    } else {
+      process.env.TINKER_AI_URL_PLANNER_OPENCODE_TIMEOUT_MS = originalPlannerTimeout;
+    }
+  }
+
+  assert.equal(await readFile(join(timeoutRunnerRepo, "grandchild-sigterm.txt"), "utf8"), "SIGTERM");
+}
 
 const openAiPlanner = createEnvironmentAiUrlPlanner({
   endpoint: "https://planner.example/v1/chat/completions",

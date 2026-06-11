@@ -193,6 +193,7 @@ export async function runLocalGenerationJob(
         createdAt: initialTime,
         productUrl: request.productUrl,
         ...(request.repoUrl === undefined ? {} : { repoUrl: request.repoUrl }),
+        renderer: request.renderer,
         prompt: request.prompt ?? "Make a short demo of the main value prop.",
         durationCapSeconds: request.durationCapSeconds,
         aspectRatio: request.aspectRatio,
@@ -207,8 +208,10 @@ export async function runLocalGenerationJob(
       jobId,
       status: "completed",
       projectPath: demoResult.projectPath,
+      captureResultPath: demoResult.captureResultPath,
       outputDirectory,
       artifactPaths: demoResult.artifactPaths,
+      ...("renderer" in demoResult ? { renderer: demoResult.renderer, rendererResults: demoResult.rendererResults } : {}),
     });
 
     if (!("projectPath" in result)) {

@@ -56,10 +56,10 @@ export type AnalyzeRepoFetchResult = {
 
 export type AnalyzeRepoFetch = (repoUrl: string, checkoutDirectory: string) => Promise<AnalyzeRepoFetchResult>;
 
+export type AnalyzeRepoOpencodeRun = (prompt: string, options: { cwd: string }) => Promise<string>;
+
 export type AnalyzeRepoOptions = {
   checkoutDirectory: string;
   fetchRepo?: AnalyzeRepoFetch;
-  maxFiles?: number;
-  maxTotalBytes?: number;
-  maxFileBytes?: number;
+  runOpencode?: AnalyzeRepoOpencodeRun;
 };

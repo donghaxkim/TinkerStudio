@@ -3,19 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
     }
   },
   "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && tsc -p tsconfig.json --noEmit",
-    "test": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && tsx src/compileProject.test.ts && tsx src/aiPlanning.test.ts && tsx src/runAiUrlDemo.test.ts && tsx src/localGenerationJob.test.ts && tsx src/fixtureSamples.test.ts",
+    "test": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && tsx src/compileProject.test.ts && tsx src/aiPlanning.test.ts && tsx src/runAiUrlDemo.test.ts && tsx src/localGenerationJob.test.ts && tsx src/fixtureSamples.test.ts && tsx src/hyperframesArtifacts.test.ts && tsx src/hyperframesRender.test.ts && tsx src/hyperframesPlanning.test.ts",
     "generate:manual-demo": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx scripts/generateManualDemo.ts",
     "generate:local-job": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && tsx scripts/generateLocalJob.ts",
     "generate:ai-url-fixture-job": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && tsx scripts/generateAiUrlFixtureJob.ts",

@@ -6,6 +6,8 @@ import {
   GenerationProgressEventSchema,
   GenerationResultSchema,
 } from "./index.js";
+import { parseCreateDemoRequest, safeParseCreateDemoRequest } from "./createDemoRequest.js";
+import sampleProject from "../../project-schema/fixtures/demo-project.sample.json";
 
 const validManualRequest = CreateDemoRequestSchema.parse({
   id: "manual-fixture-job",
@@ -42,12 +44,43 @@ const validAiUrlRequest = CreateDemoRequestSchema.parse({
   aspectRatio: "16:9",
   mode: "ai-url-planning",
   productUrl: "http://127.0.0.1:3000/",
+  repoUrl: "https://github.com/example/product",
   prompt: "Make a short demo of the main value prop.",
   outputDirectory: "generated/local-job/ai-url-job",
 });
 
 assert.equal("mode" in validAiUrlRequest ? validAiUrlRequest.mode : undefined, "ai-url-planning");
 assert.equal(validAiUrlRequest.productUrl, "http://127.0.0.1:3000/");
+
+const aiUrlBaseRequest = {
+  mode: "ai-url-planning",
+  productUrl: "https://example.com",
+  repoUrl: "https://github.com/example/product",
+  durationCapSeconds: 12,
+  aspectRatio: "16:9",
+} as const;
+
+const parsedDefaultRendererRequest = parseCreateDemoRequest(aiUrlBaseRequest);
+assert.equal("mode" in parsedDefaultRendererRequest ? parsedDefaultRendererRequest.mode : undefined, "ai-url-planning");
+assert.equal("renderer" in parsedDefaultRendererRequest ? parsedDefaultRendererRequest.renderer : undefined, "hyperframes");
+
+for (const renderer of ["hyperframes", "playwright", "both"] as const) {
+  const parsed = parseCreateDemoRequest({ ...aiUrlBaseRequest, renderer });
+  assert.equal("mode" in parsed ? parsed.mode : undefined, "ai-url-planning");
+  assert.equal("renderer" in parsed ? parsed.renderer : undefined, renderer);
+}
+
+assert.equal(
+  safeParseCreateDemoRequest({
+    mode: "ai-url-planning",
+    productUrl: "https://example.com",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+  }).success,
+  false,
+);
+
+assert.equal(safeParseCreateDemoRequest({ ...aiUrlBaseRequest, renderer: "remotion" }).success, false);
 
 for (const repoUrl of ["https://github.com/example/product", "https://github.com/example/product.git"]) {
   const request = CreateDemoRequestSchema.parse({
@@ -150,6 +183,7 @@ assert.equal(
     durationCapSeconds: 12,
     aspectRatio: "16:9",
     mode: "ai-url-planning",
+    repoUrl: "https://github.com/example/product",
     prompt: "Missing URL should fail.",
   }).success,
   false,
@@ -161,6 +195,7 @@ assert.equal(
     aspectRatio: "16:9",
     mode: "ai-url-planning",
     productUrl: "not a url",
+    repoUrl: "https://github.com/example/product",
     prompt: "Malformed URL should fail.",
   }).success,
   false,
@@ -173,6 +208,7 @@ for (const productUrl of ["file:///tmp/product.html", "data:text/html,<h1>Produc
       aspectRatio: "16:9",
       mode: "ai-url-planning",
       productUrl,
+      repoUrl: "https://github.com/example/product",
       prompt: "Non-public URL schemes should fail.",
     }).success,
     false,
@@ -228,6 +264,157 @@ const result = GenerationResultSchema.parse({
 });
 
 assert.equal("status" in result ? result.status : undefined, "completed");
+assert.equal(
+  GenerationResultSchema.safeParse({
+    jobId: "manual-fixture-job",
+    status: "completed",
+    projectPath: "generated/local-job/manual-fixture-job/demo-project.json",
+    outputDirectory: "generated/local-job/manual-fixture-job",
+    artifactPaths: ["generated/local-job/manual-fixture-job/capture-result.json"],
+    unexpected: "field",
+  }).success,
+  false,
+);
+
+assert.equal(
+  GenerationResultSchema.safeParse({
+    project: sampleProject,
+    warnings: [],
+    unexpected: "field",
+  }).success,
+  false,
+);
+
+assert.equal(
+  GenerationResultSchema.safeParse({
+    project: sampleProject,
+    artifacts: {
+      storyboardAssetId: "asset_storyboard_json",
+      unexpected: "field",
+    },
+    warnings: [],
+  }).success,
+  false,
+);
+
+const hyperframesRendererResult = {
+  outputVideoPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
+  generationManifestPath: "generated/local-job/ai-url-job/hyperframes/generation-manifest.json",
+  assetManifestPath: "generated/local-job/ai-url-job/hyperframes/asset-manifest.json",
+};
+const playwrightRendererResult = {
+  projectPath: "generated/local-job/ai-url-job/playwright/demo-project.json",
+  captureResultPath: "generated/local-job/ai-url-job/playwright/capture-result.json",
+};
+const aiUrlGenerationResult = {
+  jobId: "ai-url-job",
+  status: "completed",
+  projectPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
+  captureResultPath: "generated/local-job/ai-url-job/hyperframes/generation-manifest.json",
+  outputDirectory: "generated/local-job/ai-url-job",
+  artifactPaths: ["generated/local-job/ai-url-job/hyperframes/output.mp4"],
+};
+
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    rendererResults: { hyperframes: hyperframesRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "both",
+    rendererResults: { hyperframes: hyperframesRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "hyperframes",
+    rendererResults: { playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "hyperframes",
+    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "playwright",
+    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "hyperframes",
+    rendererResults: { hyperframes: { ...hyperframesRendererResult, extra: "not allowed" } },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    projectPath: "generated/local-job/ai-url-job/hyperframes/other.mp4",
+    renderer: "hyperframes",
+    rendererResults: { hyperframes: hyperframesRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    captureResultPath: "generated/local-job/ai-url-job/hyperframes/other-manifest.json",
+    renderer: "hyperframes",
+    rendererResults: { hyperframes: hyperframesRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "playwright",
+    rendererResults: { playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    projectPath: playwrightRendererResult.projectPath,
+    captureResultPath: "generated/local-job/ai-url-job/playwright/other-capture-result.json",
+    renderer: "playwright",
+    rendererResults: { playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    projectPath: "generated/local-job/ai-url-job/playwright/demo-project.json",
+    renderer: "both",
+    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "both",
+    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
+  }).success,
+  true,
+);
 
 for (const stage of ["validation", "analysis", "planning", "verification", "capture", "assembly", "unknown"] as const) {
   const failure = GenerationErrorSchema.parse({

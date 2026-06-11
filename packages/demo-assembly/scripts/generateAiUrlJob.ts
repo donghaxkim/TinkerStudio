@@ -1,13 +1,8 @@
 import { spawnSync } from "node:child_process";
 import type { CreateDemoRequest } from "@tinker/generation-contract";
+import { isAiUrlRenderer } from "../src/aiUrlRenderer.js";
 
 type LocalGenerationJobModule = typeof import("../src/localGenerationJob.js");
-
-const requiredPlannerEnv = [
-  "TINKER_AI_URL_PLANNER_ENDPOINT",
-  "TINKER_AI_URL_PLANNER_API_KEY",
-  "TINKER_AI_URL_PLANNER_MODEL",
-] as const;
 
 const aspectRatios = ["16:9", "9:16", "1:1"] as const satisfies readonly CreateDemoRequest["aspectRatio"][];
 const packagesToBuild = [
@@ -45,15 +40,18 @@ function buildRequiredPackages() {
   }
 }
 
-function missingPlannerEnv() {
-  return requiredPlannerEnv.filter((name) => !process.env[name]);
-}
-
 const productUrl = readArg("--url");
 const repoUrl = readArg("--repo");
+const rendererValue = readArg("--renderer") ?? "hyperframes";
 
 if (!productUrl) {
   console.error("--url is required");
+  process.exitCode = 1;
+} else if (!repoUrl) {
+  console.error("--repo is required for AI URL demo generation");
+  process.exitCode = 1;
+} else if (!isAiUrlRenderer(rendererValue)) {
+  console.error("--renderer must be one of hyperframes, playwright, both");
   process.exitCode = 1;
 } else {
   const id = readArg("--id") ?? "ai-url-local-job";
@@ -68,46 +66,40 @@ if (!productUrl) {
     console.error("--aspect-ratio must be one of 16:9, 9:16, 1:1");
     process.exitCode = 1;
   } else {
-    const missingEnv = missingPlannerEnv();
+    buildRequiredPackages();
 
-    if (missingEnv.length > 0) {
-      console.error(`Missing required environment variables: ${missingEnv.join(", ")}`);
-      process.exitCode = 1;
-    } else {
-      buildRequiredPackages();
+    const { LocalGenerationJobError, runLocalGenerationJob }: LocalGenerationJobModule = await import(
+      "../src/localGenerationJob.js"
+    );
 
-      const { LocalGenerationJobError, runLocalGenerationJob }: LocalGenerationJobModule = await import(
-        "../src/localGenerationJob.js"
-      );
+    const request: CreateDemoRequest = {
+      id,
+      durationCapSeconds,
+      aspectRatio: aspectRatioValue,
+      mode: "ai-url-planning",
+      productUrl,
+      repoUrl,
+      renderer: rendererValue,
+      outputDirectory: `generated/local-job/${id}`,
+      prompt,
+    };
 
-      const request: CreateDemoRequest = {
-        id,
-        durationCapSeconds,
-        aspectRatio: aspectRatioValue,
-        mode: "ai-url-planning",
-        productUrl,
-        ...(repoUrl === undefined ? {} : { repoUrl }),
-        outputDirectory: `generated/local-job/${id}`,
-        prompt,
-      };
+    try {
+      const result = await runLocalGenerationJob(request, {
+        onProgress: (event) => {
+          console.log(JSON.stringify(event));
+        },
+      });
 
-      try {
-        const result = await runLocalGenerationJob(request, {
-          onProgress: (event) => {
-            console.log(JSON.stringify(event));
-          },
-        });
-
-        console.log(JSON.stringify(result, null, 2));
-      } catch (error) {
-        if (error instanceof LocalGenerationJobError) {
-          console.error(JSON.stringify(error.generationError, null, 2));
-        } else {
-          console.error(error);
-        }
-
-        process.exitCode = 1;
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      if (error instanceof LocalGenerationJobError) {
+        console.error(JSON.stringify(error.generationError, null, 2));
+      } else {
+        console.error(error);
       }
+
+      process.exitCode = 1;
     }
   }
 }

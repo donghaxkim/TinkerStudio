@@ -4,7 +4,7 @@ import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { checkpointTarget, fullPageDocumentDimensions, locatorTarget, usableSelector } from "./playwrightCaptureInternals.js";
+import { checkpointTarget, fullPageDocumentDimensions, isAllowedCaptureUrl, locatorTarget, usableSelector } from "./playwrightCaptureInternals.js";
 import { runPlaywrightCapture } from "./playwrightCapture.js";
 import { CaptureError, type CapturePlan } from "./types.js";
 
@@ -62,6 +62,10 @@ try {
     kind: "selector",
     selector: "[data-testid='export-card']",
   });
+  assert.equal(isAllowedCaptureUrl("https://longcut.ai/analyze/demo", "https://www.longcut.ai/"), true);
+  assert.equal(isAllowedCaptureUrl("https://www.longcut.ai/analyze/demo", "https://longcut.ai/"), true);
+  assert.equal(isAllowedCaptureUrl("https://evil.example/analyze/demo", "https://www.longcut.ai/"), false);
+  assert.equal(isAllowedCaptureUrl("http://longcut.ai/analyze/demo", "https://www.longcut.ai/"), false);
 
   const captureServer = await startHtmlServer("<html><body><h1>Capture target</h1></body></html>");
   try {
@@ -89,6 +93,34 @@ try {
     await captureServer.close();
   }
 
+  const submitServer = await startHtmlServer(`
+    <html>
+      <body>
+        <form onsubmit="event.preventDefault(); document.querySelector('[data-testid=result]').textContent = 'Submitted';">
+          <input data-testid="sample-url" />
+        </form>
+        <main data-testid="result">Waiting</main>
+      </body>
+    </html>
+  `);
+  try {
+    const submitPlan: CapturePlan = {
+      targetUrl: submitServer.url,
+      viewport: { width: 640, height: 480 },
+      steps: [
+        { type: "goto", url: submitServer.url },
+        { type: "type", selector: "[data-testid='sample-url']", text: "https://www.youtube.com/watch?v=jGwO_UgTS7I" },
+        { type: "press", selector: "[data-testid='sample-url']", key: "Enter" },
+      ],
+      expectedCheckpoints: [{ id: "submitted", label: "Submitted", text: "Submitted" }],
+    };
+
+    const submitResult = await runPlaywrightCapture(submitPlan, { outputDir });
+    assert.equal(submitResult.checkpoints[0]?.passed, true);
+  } finally {
+    await submitServer.close();
+  }
+
   let offOriginRequestCount = 0;
   const offOriginServer = await startHtmlServer("<html><body><h1>Off origin</h1></body></html>", () => {
     offOriginRequestCount += 1;
@@ -96,8 +128,24 @@ try {
   const originServer = await startHtmlServer(
     `<html><body><a data-testid="leave-origin" href="${offOriginServer.url}">Leave</a><a data-testid="popup-origin" href="${offOriginServer.url}" target="_blank">Popup</a></body></html>`,
   );
+  const iframeServer = await startHtmlServer(
+    `<html><body><h1>Embedded player</h1><iframe title="player" src="${offOriginServer.url}"></iframe></body></html>`,
+  );
 
   try {
+    const iframeResult = await runPlaywrightCapture(
+      {
+        targetUrl: iframeServer.url,
+        viewport: { width: 640, height: 480 },
+        steps: [{ type: "goto", url: iframeServer.url }],
+        expectedCheckpoints: [{ id: "embedded-player", label: "Embedded player", text: "Embedded player" }],
+      },
+      { outputDir },
+    );
+    assert.equal(iframeResult.checkpoints[0]?.passed, true);
+    const iframeOffOriginRequestCount = offOriginRequestCount;
+    assert.ok(iframeOffOriginRequestCount > 0);
+
     await assert.rejects(
       () =>
         runPlaywrightCapture(
@@ -111,7 +159,7 @@ try {
         ),
       (error: unknown) => error instanceof CaptureError && /goto url must stay on target origin/.test(error.message),
     );
-    assert.equal(offOriginRequestCount, 0);
+    assert.equal(offOriginRequestCount, iframeOffOriginRequestCount);
 
     await assert.rejects(
       () =>
@@ -126,7 +174,7 @@ try {
         ),
       (error: unknown) => error instanceof CaptureError && /navigated away from target origin/.test(error.message),
     );
-    assert.equal(offOriginRequestCount, 0);
+    assert.equal(offOriginRequestCount, iframeOffOriginRequestCount);
 
     await assert.rejects(
       () =>
@@ -141,8 +189,9 @@ try {
         ),
       (error: unknown) => error instanceof CaptureError && /created a new page/.test(error.message),
     );
-    assert.equal(offOriginRequestCount, 0);
+    assert.equal(offOriginRequestCount, iframeOffOriginRequestCount);
   } finally {
+    await iframeServer.close();
     await originServer.close();
     await offOriginServer.close();
   }

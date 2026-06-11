@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { analyzeRepo, parseRepoAnalysis } from "./analyzeRepo.js";
+import { delimiter, join } from "node:path";
+import { analyzeRepo, defaultRunOpencode, parseRepoAnalysis } from "./analyzeRepo.js";
 import { analyzeRepo as exportedAnalyzeRepo, parseRepoAnalysis as exportedParseRepoAnalysis, type RepoAnalysis as ExportedRepoAnalysis } from "./index.js";
 
 const repoUrl = "https://github.com/example/product";
@@ -116,9 +116,30 @@ try {
       await symlink(outsideFile, join(checkout, "linked-secret.txt"));
       return { commit: "abcdef123456" };
     },
+    runOpencode: async (prompt, options) => {
+      commandsRun.push("opencode");
+      assert.match(prompt, /read-only repository research/);
+      assert.match(prompt, /Do not edit files/);
+      assert.match(prompt, /Return one JSON object only/);
+      assert.equal(options.cwd, checkoutDirectory);
+      return JSON.stringify({
+        type: "text",
+        text: JSON.stringify({
+          repoUrl,
+          productName: "Fixture Product",
+          summary: "Fixture Product turns product URLs and source context into editable demos.",
+          features: ["AI storyboard planning", "Deterministic browser capture"],
+          likelyRoutes: ["/", "/pricing"],
+          demoIdeas: ["Show a repo-informed hero-to-export workflow."],
+          importantTerms: ["Fixture Product", "storyboard", "capture plan"],
+          setupNotes: ["OpenCode inspected the cloned checkout without executing project scripts."],
+          sourceHints: [{ path: "README.md", reason: "Describes the product value proposition." }],
+        }),
+      });
+    },
   });
 
-  assert.deepEqual(commandsRun, ["fetch-only"]);
+  assert.deepEqual(commandsRun, ["fetch-only", "opencode"]);
   assert.equal(analysis.repoUrl, repoUrl);
   assert.equal(analysis.commit, "abcdef123456");
   assert.equal(analysis.productName, "Fixture Product");
@@ -129,7 +150,7 @@ try {
   assert.ok(analysis.likelyRoutes.includes("/pricing"));
   assert.ok(analysis.demoIdeas.length > 0);
   assert.ok(analysis.importantTerms.includes("Fixture Product"));
-  assert.ok(analysis.setupNotes.some((note) => note.includes("package.json")));
+  assert.ok(analysis.setupNotes.some((note) => note.includes("OpenCode")));
   assert.ok(analysis.sourceHints.some((hint) => hint.path === "README.md"));
   const serialized = JSON.stringify(analysis);
   assert.equal(serialized.includes("SHOULD_NOT_APPEAR"), false);
@@ -155,44 +176,160 @@ try {
     /Submodules are not supported/,
   );
 
-  await assert.rejects(
-    () =>
-      analyzeRepo(repoUrl, {
-        checkoutDirectory: join(fixtureRoot, "oversized-checkout"),
-        maxFiles: 1,
-        fetchRepo: async (_repoUrl, checkout) => {
-          await mkdir(checkout, { recursive: true });
-          await writeFile(join(checkout, "README.md"), "# One");
-          await writeFile(join(checkout, "app.tsx"), "export const value = true;");
-          return {};
-        },
-      }),
-    /Repository exceeds safe analysis file limit/,
-  );
-
-  const invalidLimitCases: Array<{ name: "maxFiles" | "maxTotalBytes" | "maxFileBytes"; value: number }> = [
-    { name: "maxFiles", value: 0 },
-    { name: "maxFiles", value: 1.5 },
-    { name: "maxTotalBytes", value: Number.NaN },
-    { name: "maxTotalBytes", value: Infinity },
-    { name: "maxFileBytes", value: -1 },
-  ];
-  for (const { name, value } of invalidLimitCases) {
-    let fetchCalled = false;
-    await assert.rejects(
-      () =>
-        analyzeRepo(repoUrl, {
-          checkoutDirectory: join(fixtureRoot, `invalid-${name}-${String(value)}`),
-          [name]: value,
-          fetchRepo: async () => {
-            fetchCalled = true;
-            throw new Error("fetch should not run for invalid limits");
-          },
+  const oversizedAnalysis = await analyzeRepo(repoUrl, {
+    checkoutDirectory: join(fixtureRoot, "oversized-checkout"),
+    fetchRepo: async (_repoUrl, checkout) => {
+      await mkdir(checkout, { recursive: true });
+      await writeFile(join(checkout, "README.md"), "# Large Product\n\nA large repo that needs agentic inspection.");
+      for (let index = 0; index < 81; index += 1) {
+        await writeFile(join(checkout, `file-${index}.ts`), `export const value${index} = true;`);
+      }
+      return { commit: "fedcba987654" };
+    },
+    runOpencode: async (prompt, options) => {
+      assert.match(prompt, /Return one JSON object only/);
+      assert.equal(options.cwd, join(fixtureRoot, "oversized-checkout"));
+      return [
+        JSON.stringify({ type: "text", text: '{"repoUrl":"https://github.com/example/product",' }),
+        JSON.stringify({ type: "text", text: '"productName":"Large Product",' }),
+        JSON.stringify({ type: "text", text: '"summary":"Large Product uses source-aware analysis to summarize oversized repositories.",' }),
+        JSON.stringify({ type: "text", text: `"features":[${Array.from({ length: 13 }, (_, index) => `"Feature ${index}"`).join(",")}],` }),
+        JSON.stringify({ type: "text", text: '"likelyRoutes":["/"],' }),
+        JSON.stringify({ type: "text", text: '"demoIdeas":["Show OpenCode producing repo context for an oversized repo."],' }),
+        JSON.stringify({ type: "text", text: '"importantTerms":["Large Product"],' }),
+        JSON.stringify({ type: "text", text: '"setupNotes":["OpenCode inspected the cloned checkout."],' }),
+        JSON.stringify({
+          type: "text",
+          text: `"sourceHints":[${Array.from(
+            { length: 21 },
+            (_, index) => `{"path":"file-${index}.md","reason":"Source evidence ${index}."}`,
+          ).join(",")}]}`,
         }),
-      new RegExp(`${name} must be a finite positive integer`),
-    );
-    assert.equal(fetchCalled, false);
+      ].join("\n");
+    },
+  });
+
+  assert.equal(oversizedAnalysis.repoUrl, repoUrl);
+  assert.equal(oversizedAnalysis.commit, "fedcba987654");
+  assert.equal(oversizedAnalysis.productName, "Large Product");
+  assert.equal(oversizedAnalysis.features.length, 12);
+  assert.equal(oversizedAnalysis.sourceHints.length, 20);
+
+  const fakeBinDirectory = join(fixtureRoot, "fake-bin");
+  const opencodeCheckoutDirectory = join(fixtureRoot, "opencode-checkout");
+  const opencodeOutsideConfig = join(fixtureRoot, "outside-opencode.json");
+  await mkdir(fakeBinDirectory);
+  await mkdir(opencodeCheckoutDirectory);
+  await writeFile(opencodeOutsideConfig, "outside config must stay untouched");
+  await symlink(opencodeOutsideConfig, join(opencodeCheckoutDirectory, "opencode.json"));
+  const fakeOpencodePath = join(fakeBinDirectory, "opencode");
+  await writeFile(
+    fakeOpencodePath,
+    [
+      "#!/usr/bin/env node",
+      "const { spawn } = require('node:child_process');",
+      "const { readFileSync, writeFileSync, writeSync } = require('node:fs');",
+      "const { join } = require('node:path');",
+      "writeFileSync(join(process.cwd(), 'opencode-args.json'), JSON.stringify(process.argv.slice(2), null, 2));",
+      "writeFileSync(join(process.cwd(), 'opencode-env.json'), JSON.stringify(process.env, null, 2));",
+      "writeFileSync(join(process.cwd(), 'opencode-config-seen.json'), readFileSync(join(process.cwd(), 'opencode.json'), 'utf8'));",
+      "writeSync(1, 'REPO_STDOUT_START_SHOULD_BE_TRUNCATED\\n' + 'o'.repeat(200000) + '\\nREPO_STDOUT_END_SHOULD_STAY\\n');",
+      "writeSync(2, 'REPO_STDERR_START_SHOULD_BE_TRUNCATED\\n' + 'e'.repeat(200000) + '\\nREPO_STDERR_END_SHOULD_STAY\\n');",
+      "const delayed = spawn(process.execPath, ['-e', \"setTimeout(() => { process.stdout.write('REPO_CLOSE_FLUSHED_STDOUT\\\\n'); process.stderr.write('REPO_CLOSE_FLUSHED_STDERR\\\\n'); }, 75);\"], { stdio: ['ignore', 1, 2] });",
+      "delayed.unref();",
+    ].join("\n"),
+  );
+  await chmod(fakeOpencodePath, 0o755);
+
+  const originalPath = process.env.PATH;
+  const originalOpencodeConfig = process.env.OPENCODE_CONFIG;
+  try {
+    process.env.PATH = `${fakeBinDirectory}${delimiter}${originalPath ?? ""}`;
+    process.env.TINKER_REPO_ANALYSIS_SHOULD_NOT_LEAK = "host-secret";
+    process.env.OPENCODE_CONFIG = join(fixtureRoot, "host-opencode.json");
+
+    const opencodeOutput = await defaultRunOpencode("fake repo prompt", { cwd: opencodeCheckoutDirectory });
+    assert.match(opencodeOutput, /REPO_STDOUT_END_SHOULD_STAY/);
+    assert.match(opencodeOutput, /REPO_CLOSE_FLUSHED_STDOUT/);
+  } finally {
+    process.env.PATH = originalPath;
+    delete process.env.TINKER_REPO_ANALYSIS_SHOULD_NOT_LEAK;
+    if (originalOpencodeConfig === undefined) {
+      delete process.env.OPENCODE_CONFIG;
+    } else {
+      process.env.OPENCODE_CONFIG = originalOpencodeConfig;
+    }
   }
+
+  const repoOpencodeArgs = JSON.parse(await readFile(join(opencodeCheckoutDirectory, "opencode-args.json"), "utf8"));
+  assert.equal(repoOpencodeArgs.includes("--dangerously-skip-permissions"), false);
+  assert.equal(await readFile(opencodeOutsideConfig, "utf8"), "outside config must stay untouched");
+  const repoOpencodeConfigStat = await lstat(join(opencodeCheckoutDirectory, "opencode.json"));
+  assert.equal(repoOpencodeConfigStat.isSymbolicLink(), false);
+  assert.equal(repoOpencodeConfigStat.isFile(), true);
+  const repoOpencodeEnv = JSON.parse(await readFile(join(opencodeCheckoutDirectory, "opencode-env.json"), "utf8"));
+  assert.equal(repoOpencodeEnv.TINKER_REPO_ANALYSIS_SHOULD_NOT_LEAK, undefined);
+  assert.equal(repoOpencodeEnv.OPENCODE_CONFIG, undefined);
+  const repoOpencodeConfig = JSON.parse(await readFile(join(opencodeCheckoutDirectory, "opencode-config-seen.json"), "utf8"));
+  assert.equal(repoOpencodeConfig.permission.edit, "deny");
+  assert.equal(repoOpencodeConfig.permission.bash, "deny");
+  assert.equal(repoOpencodeConfig.permission.webfetch, "deny");
+  assert.equal(repoOpencodeConfig.permission.external_directory, "deny");
+  const repoStdoutLog = await readFile(join(opencodeCheckoutDirectory, ".tinker-opencode-output.jsonl"), "utf8");
+  const repoStderrLog = await readFile(join(opencodeCheckoutDirectory, ".tinker-opencode-error.log"), "utf8");
+  assert.match(repoStdoutLog, /truncated/i);
+  assert.match(repoStdoutLog, /REPO_STDOUT_END_SHOULD_STAY/);
+  assert.doesNotMatch(repoStdoutLog, /REPO_STDOUT_START_SHOULD_BE_TRUNCATED/);
+  assert.match(repoStderrLog, /truncated/i);
+  assert.match(repoStderrLog, /REPO_STDERR_END_SHOULD_STAY/);
+  assert.match(repoStderrLog, /REPO_CLOSE_FLUSHED_STDERR/);
+  assert.doesNotMatch(repoStderrLog, /REPO_STDERR_START_SHOULD_BE_TRUNCATED/);
+  assert.ok(Buffer.byteLength(repoStdoutLog, "utf8") < 140_000);
+  assert.ok(Buffer.byteLength(repoStderrLog, "utf8") < 140_000);
+
+  if (process.platform !== "win32") {
+    const timeoutBinDirectory = join(fixtureRoot, "timeout-bin");
+    const timeoutCheckoutDirectory = join(fixtureRoot, "timeout-checkout");
+    await mkdir(timeoutBinDirectory);
+    await mkdir(timeoutCheckoutDirectory);
+    const timeoutOpencodePath = join(timeoutBinDirectory, "opencode");
+    await writeFile(
+      timeoutOpencodePath,
+      [
+        "#!/usr/bin/env node",
+        "const { spawn } = require('node:child_process');",
+        "const { join } = require('node:path');",
+        "const signalPath = join(process.cwd(), 'grandchild-sigterm.txt');",
+        "const grandchild = spawn(process.execPath, ['-e', `const { writeFileSync } = require('node:fs'); process.on('SIGTERM', () => { writeFileSync(process.env.TINKER_SIGNAL_PATH, 'SIGTERM'); process.exit(0); }); setTimeout(() => process.exit(0), 5000);`], { env: { ...process.env, TINKER_SIGNAL_PATH: signalPath }, stdio: ['ignore', 1, 2] });",
+        "grandchild.unref();",
+        "process.on('SIGTERM', () => process.exit(0));",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    await chmod(timeoutOpencodePath, 0o755);
+
+    const timeoutOriginalPath = process.env.PATH;
+    const originalRepoTimeout = process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS;
+    try {
+      process.env.PATH = `${timeoutBinDirectory}${delimiter}${timeoutOriginalPath ?? ""}`;
+      process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS = "1000";
+
+      await assert.rejects(
+        () => defaultRunOpencode("timeout repo prompt", { cwd: timeoutCheckoutDirectory }),
+        /OpenCode repo analysis timed out after 1000ms/,
+      );
+    } finally {
+      process.env.PATH = timeoutOriginalPath;
+      if (originalRepoTimeout === undefined) {
+        delete process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS;
+      } else {
+        process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS = originalRepoTimeout;
+      }
+    }
+
+    assert.equal(await readFile(join(timeoutCheckoutDirectory, "grandchild-sigterm.txt"), "utf8"), "SIGTERM");
+  }
+
 } finally {
   await rm(fixtureRoot, { recursive: true, force: true });
 }

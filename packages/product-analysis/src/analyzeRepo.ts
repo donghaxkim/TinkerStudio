@@ -1,9 +1,9 @@
-import { execFile as execFileCallback } from "node:child_process";
+import { execFile as execFileCallback, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { basename, dirname, extname, join, posix, relative, sep, win32 } from "node:path";
+import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { dirname, join, posix, win32 } from "node:path";
 import { promisify } from "node:util";
-import type { AnalyzeRepoOptions, RepoAnalysis } from "./types.js";
+import type { AnalyzeRepoOpencodeRun, AnalyzeRepoOptions, RepoAnalysis } from "./types.js";
 
 type RepoAnalysisArrayField = "features" | "likelyRoutes" | "demoIdeas" | "importantTerms" | "setupNotes";
 
@@ -111,20 +111,15 @@ export function parseRepoAnalysis(value: unknown, expectedRepoUrl: string): Repo
 }
 
 const execFile = promisify(execFileCallback);
-const DEFAULT_MAX_FILES = 80;
-const DEFAULT_MAX_TOTAL_BYTES = 300_000;
-const DEFAULT_MAX_FILE_BYTES = 24_000;
+const DEFAULT_OPENCODE_TIMEOUT_MS = 300_000;
+const TIMEOUT_KILL_GRACE_MS = 5_000;
+const TIMEOUT_CLOSE_FALLBACK_MS = 5_000;
+const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
 
 const GithubOwnerSegmentPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const GithubRepoSegmentPattern = /^(?=.*[A-Za-z0-9])[A-Za-z0-9._-]+$/;
-const ignoredDirectoryNames = new Set([".git", "node_modules", ".next", "dist", "build", "coverage", ".turbo", ".cache"]);
-const ignoredFileNames = new Set([".npmrc", ".yarnrc"]);
-const textExtensions = new Set([".md", ".mdx", ".txt", ".json", ".ts", ".tsx", ".js", ".jsx", ".css", ".html", ".yml", ".yaml"]);
 
-type CollectedSourceFile = {
-  path: string;
-  content: string;
-};
+type JsonRecord = Record<string, unknown>;
 
 function normalizeRepoUrl(repoUrl: string) {
   try {
@@ -208,90 +203,226 @@ function createIsolatedGitEnv(homeDirectory: string, configDirectory: string) {
   return env;
 }
 
-function shouldSkipPath(relativePath: string, directoryEntryName: string) {
-  if (directoryEntryName.toLowerCase().startsWith(".env") || ignoredDirectoryNames.has(directoryEntryName) || ignoredFileNames.has(directoryEntryName)) {
-    return true;
+type RetainedOutput = {
+  chunks: Buffer[];
+  retainedBytes: number;
+  omittedBytes: number;
+};
+
+function createRetainedOutput(): RetainedOutput {
+  return { chunks: [], retainedBytes: 0, omittedBytes: 0 };
+}
+
+function appendRetainedOutput(output: RetainedOutput, chunk: Buffer) {
+  output.chunks.push(chunk);
+  output.retainedBytes += chunk.length;
+
+  while (output.retainedBytes > LOG_STREAM_RETAIN_BYTES) {
+    const excessBytes = output.retainedBytes - LOG_STREAM_RETAIN_BYTES;
+    const firstChunk = output.chunks[0];
+    if (firstChunk === undefined) {
+      break;
+    }
+
+    if (firstChunk.length <= excessBytes) {
+      output.chunks.shift();
+      output.retainedBytes -= firstChunk.length;
+      output.omittedBytes += firstChunk.length;
+    } else {
+      output.chunks[0] = firstChunk.subarray(excessBytes);
+      output.retainedBytes -= excessBytes;
+      output.omittedBytes += excessBytes;
+    }
+  }
+}
+
+function retainedOutputToLog(name: "stdout" | "stderr", output: RetainedOutput) {
+  const text = Buffer.concat(output.chunks, output.retainedBytes).toString("utf8");
+
+  if (output.omittedBytes === 0) {
+    return text;
   }
 
-  const lowerPath = relativePath.toLowerCase();
-  return lowerPath.includes("secret") || lowerPath.includes("token") || /(^|[/._-])keys?([/._-]|$)/.test(lowerPath) || lowerPath.endsWith(".pem");
+  return `[${name} truncated: omitted ${output.omittedBytes} bytes; retained last ${output.retainedBytes} bytes]\n${text}`;
 }
 
-function priorityForPath(path: string) {
-  const lower = path.toLowerCase();
-  if (basename(lower).startsWith("readme")) return 0;
-  if (lower === "package.json") return 1;
-  if (lower.includes("docs/") || lower.includes("documentation/")) return 2;
-  if (lower.includes("app/") || lower.includes("pages/") || lower.includes("routes/")) return 3;
-  return 4;
+function sanitizedOpencodeEnv() {
+  const allowedNames = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR"]);
+  const env: NodeJS.ProcessEnv = {};
+
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined && allowedNames.has(name)) {
+      env[name] = value;
+    }
+  }
+
+  return env;
 }
 
-async function collectSourceFiles(root: string, options: Required<Pick<AnalyzeRepoOptions, "maxFiles" | "maxTotalBytes" | "maxFileBytes">>) {
+async function writeOpencodeRepoAnalysisConfig(cwd: string) {
+  await writeLocalOpencodeConfig(
+    cwd,
+    `${JSON.stringify(
+      {
+        $schema: "https://opencode.ai/config.json",
+        permission: {
+          edit: "deny",
+          bash: "deny",
+          webfetch: "deny",
+          external_directory: "deny",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+async function writeLocalOpencodeConfig(cwd: string, contents: string) {
+  const target = join(cwd, "opencode.json");
+
+  try {
+    await lstat(target);
+    await rm(target, { recursive: true, force: true });
+  } catch (error) {
+    if (!isRecord(error) || error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  await writeFile(target, contents, { flag: "wx" });
+}
+
+export async function defaultRunOpencode(prompt: string, options: { cwd: string }) {
+  const timeoutMs = Number(process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS ?? DEFAULT_OPENCODE_TIMEOUT_MS);
+  const effectiveTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_OPENCODE_TIMEOUT_MS;
+  const stdoutPath = join(options.cwd, ".tinker-opencode-output.jsonl");
+  const stderrPath = join(options.cwd, ".tinker-opencode-error.log");
+  await writeOpencodeRepoAnalysisConfig(options.cwd);
+
+  let result: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean };
+  const stdout = createRetainedOutput();
+  const stderr = createRetainedOutput();
+  result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
+    const detached = process.platform !== "win32";
+    let timedOut = false;
+    let settled = false;
+    let killTimeout: ReturnType<typeof setTimeout> | undefined;
+    let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
+    const child = spawn("opencode", ["run", "--pure", "--format", "json", "--dir", options.cwd, prompt], {
+      cwd: options.cwd,
+      detached,
+      env: sanitizedOpencodeEnv(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      killChild("SIGTERM");
+      killTimeout = setTimeout(() => {
+        killChild("SIGKILL");
+        closeFallbackTimeout = setTimeout(() => {
+          destroyStreams();
+          resolveOnce({ code: null, signal: null, timedOut });
+        }, TIMEOUT_CLOSE_FALLBACK_MS);
+      }, TIMEOUT_KILL_GRACE_MS);
+    }, effectiveTimeoutMs);
+
+    function killChild(signal: NodeJS.Signals) {
+      if (detached && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, signal);
+          return;
+        } catch {
+          // Fall back to the direct child when process-group kill is unavailable.
+        }
+      }
+
+      try {
+        child.kill(signal);
+      } catch {
+        // The child may already have exited between timeout callbacks.
+      }
+    }
+
+    function clearTimers() {
+      clearTimeout(timeout);
+      if (killTimeout !== undefined) {
+        clearTimeout(killTimeout);
+      }
+      if (closeFallbackTimeout !== undefined) {
+        clearTimeout(closeFallbackTimeout);
+      }
+    }
+
+    function cleanupListeners() {
+      child.stdout.removeAllListeners("data");
+      child.stderr.removeAllListeners("data");
+      child.removeAllListeners("close");
+      child.removeAllListeners("error");
+    }
+
+    function destroyStreams() {
+      child.stdout.destroy();
+      child.stderr.destroy();
+    }
+
+    function resolveOnce(finalResult: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimers();
+      cleanupListeners();
+      resolve(finalResult);
+    }
+
+    function rejectOnce(error: Error) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimers();
+      cleanupListeners();
+      reject(error);
+    }
+
+    child.stdout.on("data", (chunk) => {
+      appendRetainedOutput(stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+    });
+
+    child.stderr.on("data", (chunk) => {
+      appendRetainedOutput(stderr, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+    });
+
+    child.on("error", (error) => {
+      rejectOnce(error);
+    });
+    child.on("close", (code, signal) => {
+      resolveOnce({ code, signal, timedOut });
+    });
+  });
+
+  const stdoutText = retainedOutputToLog("stdout", stdout);
+  const stderrText = retainedOutputToLog("stderr", stderr);
+  await Promise.all([writeFile(stdoutPath, stdoutText), writeFile(stderrPath, stderrText)]);
+
+  if (result.timedOut) {
+    throw new Error(`OpenCode repo analysis timed out after ${effectiveTimeoutMs}ms`);
+  }
+
+  if (result.code !== 0) {
+    const suffix = stderrText.trim() ? `: ${cleanText(stderrText, 500)}` : "";
+    throw new Error(`OpenCode repo analysis failed with exit code ${result.code ?? "unknown"}${suffix}`);
+  }
+
+  return stdoutText;
+}
+
+function assertSupportedRepoShape(root: string) {
   if (existsSync(join(root, ".gitmodules"))) {
     throw new Error("Submodules are not supported for repo analysis");
   }
-
-  const candidates: string[] = [];
-
-  async function walk(directory: string) {
-    const entries = await readdir(directory, { withFileTypes: true });
-    entries.sort((a, b) => a.name.localeCompare(b.name));
-
-    for (const entry of entries) {
-      const fullPath = join(directory, entry.name);
-      const relativePath = relative(root, fullPath).split(sep).join("/");
-
-      if (shouldSkipPath(relativePath, entry.name)) {
-        continue;
-      }
-
-      const stats = await lstat(fullPath);
-      if (stats.isSymbolicLink()) {
-        continue;
-      }
-
-      if (stats.isDirectory()) {
-        await walk(fullPath);
-        continue;
-      }
-
-      if (!stats.isFile() || stats.size <= 0 || stats.size > options.maxFileBytes) {
-        continue;
-      }
-
-      const extension = extname(entry.name).toLowerCase();
-      if (!textExtensions.has(extension) && !entry.name.toLowerCase().startsWith("readme")) {
-        continue;
-      }
-
-      candidates.push(relativePath);
-      if (candidates.length > options.maxFiles) {
-        throw new Error("Repository exceeds safe analysis file limit");
-      }
-    }
-  }
-
-  await walk(root);
-  candidates.sort((a, b) => priorityForPath(a) - priorityForPath(b) || a.localeCompare(b));
-
-  if (candidates.length > options.maxFiles) {
-    throw new Error("Repository exceeds safe analysis file limit");
-  }
-
-  const files: CollectedSourceFile[] = [];
-  let totalBytes = 0;
-
-  for (const path of candidates) {
-    const content = await readFile(join(root, path), "utf8");
-    totalBytes += Buffer.byteLength(content, "utf8");
-    if (totalBytes > options.maxTotalBytes) {
-      throw new Error("Repository exceeds safe analysis byte limit");
-    }
-
-    files.push({ path, content });
-  }
-
-  return files;
 }
 
 function cleanText(value: string, maxLength: number) {
@@ -320,91 +451,179 @@ function uniqueBounded(values: string[], maxEntries: number, maxLength: number) 
   return result;
 }
 
-function inferProductName(files: CollectedSourceFile[]) {
-  for (const file of files) {
-    if (basename(file.path).toLowerCase().startsWith("readme")) {
-      const heading = file.content.match(/^#\s+(.+)$/m)?.[1];
-      if (heading) return cleanText(heading, 120);
-    }
+function buildOpencodeRepoAnalysisPrompt(repoUrl: string) {
+  return `You were dispatched as a subagent for read-only repository research. Skip process skills, planning workflows, implementation workflows, and code changes. Do not edit files. Inspect only README files, package.json, app/**/page.tsx, app/**/route.ts, and app/layout.tsx. Return one JSON object only for repoUrl ${repoUrl} with keys repoUrl, productName, summary, features, likelyRoutes, demoIdeas, importantTerms, setupNotes, sourceHints. sourceHints must be objects with path and reason fields.`;
+}
+
+function extractStringPayloads(value: unknown): string[] {
+  if (typeof value === "string") {
+    return [value];
   }
 
-  const packageJson = files.find((file) => file.path === "package.json");
-  if (packageJson) {
+  if (Array.isArray(value)) {
+    return value.flatMap(extractStringPayloads);
+  }
+
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  const directPayloads = [value.text, value.content, value.delta].filter((entry): entry is string => typeof entry === "string");
+  const nestedPayloads = [value.data, value.event, value.part, value.message].flatMap(extractStringPayloads);
+  return [...directPayloads, ...nestedPayloads];
+}
+
+function collectOpencodeText(output: string) {
+  const payloads: string[] = [];
+
+  for (const line of output.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
     try {
-      const parsed = JSON.parse(packageJson.content) as { name?: unknown };
-      if (typeof parsed.name === "string") return cleanText(parsed.name, 120);
+      payloads.push(...extractStringPayloads(JSON.parse(trimmed)));
     } catch {
-      return undefined;
+      payloads.push(trimmed);
     }
   }
 
-  return undefined;
+  return payloads.join("");
 }
 
-function inferFeatures(files: CollectedSourceFile[]) {
-  const bullets = files.flatMap((file) => Array.from(file.content.matchAll(/^\s*[-*]\s+(.+)$/gm), (match) => match[1] ?? ""));
-  return uniqueBounded(bullets, 12, 160);
+function findLastJsonObject(text: string) {
+  let lastObject: unknown;
+  let lastAnalysisObject: unknown;
+
+  for (let start = 0; start < text.length; start += 1) {
+    if (text[start] !== "{") {
+      continue;
+    }
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < text.length; index += 1) {
+      const char = text[index];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+      } else if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+
+        if (depth === 0) {
+          try {
+            lastObject = JSON.parse(text.slice(start, index + 1));
+            if (isRecord(lastObject) && typeof lastObject.repoUrl === "string") {
+              lastAnalysisObject = lastObject;
+            }
+          } catch {
+            // Continue scanning; earlier text may contain non-JSON braces.
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  if (isRecord(lastAnalysisObject)) {
+    return lastAnalysisObject;
+  }
+
+  if (!isRecord(lastObject)) {
+    throw new Error("OpenCode repo analysis did not return a JSON object");
+  }
+
+  return lastObject;
 }
 
-function inferRoutes(files: CollectedSourceFile[]) {
-  const routes = files.flatMap((file) => {
-    if (!file.path.match(/(^|\/)(app|pages|routes)\//)) return [];
-    const withoutPage = file.path.replace(/\/(page|index)\.[^.]+$/, "").replace(/\.[^.]+$/, "");
-    const parts = withoutPage.split("/").filter((part) => !["app", "pages", "routes", "src"].includes(part));
-    return [`/${parts.join("/")}`.replace(/\/+/g, "/")];
-  });
-
-  return uniqueBounded(routes.length > 0 ? routes : ["/"], 20, 160);
+function parseOpencodeRepoAnalysis(output: string, repoUrl: string, commit: string | undefined) {
+  const analysis = findLastJsonObject(collectOpencodeText(output));
+  return parseRepoAnalysis(normalizeOpencodeRepoAnalysis(analysis, commit), repoUrl);
 }
 
-function buildAnalysis(repoUrl: string, commit: string | undefined, files: CollectedSourceFile[]) {
-  const productName = inferProductName(files);
-  const combined = files.map((file) => file.content).join("\n");
-  const firstParagraph = combined.split(/\n\s*\n/).find((section) => cleanText(section, 1_200).length > 20);
-  const features = inferFeatures(files);
-  const likelyRoutes = inferRoutes(files);
-  const importantTerms = uniqueBounded([productName ?? "", ...features.flatMap((feature) => feature.match(/[A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+)*/g) ?? [])], 20, 80);
-  const sourceHints = files.slice(0, 20).map((file) => ({ path: file.path, reason: "Source evidence for repo context." }));
+function normalizeOpencodeStringArray(value: unknown, fieldName: RepoAnalysisArrayField) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
 
-  return parseRepoAnalysis(
-    {
-      repoUrl,
-      ...(commit ? { commit } : {}),
-      ...(productName ? { productName } : {}),
-      summary: cleanText(firstParagraph ?? `${productName ?? "This repository"} contains product source material for planning.`, 1_200),
-      features,
-      likelyRoutes,
-      demoIdeas: uniqueBounded(features.map((feature) => `Show ${feature} in the live product workflow.`), 8, 220),
-      importantTerms,
-      setupNotes: uniqueBounded(files.some((file) => file.path === "package.json") ? ["package.json is present; setup remains source-only and is not executed."] : [], 8, 220),
-      sourceHints,
-    },
-    repoUrl,
+  const limit = arrayLimits[fieldName];
+  return uniqueBounded(
+    value.flatMap((entry) => (typeof entry === "string" ? [entry] : [])),
+    limit.maxEntries,
+    limit.maxLength,
   );
 }
 
-function positiveIntegerLimit(value: number | undefined, fieldName: "maxFiles" | "maxTotalBytes" | "maxFileBytes", defaultValue: number) {
-  if (value === undefined) {
-    return defaultValue;
+function normalizeOpencodeSourceHints(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
   }
 
-  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
-    throw new Error(`${fieldName} must be a finite positive integer`);
+  const hints: RepoAnalysis["sourceHints"] = [];
+  const seen = new Set<string>();
+
+  for (const entry of value) {
+    if (!isRecord(entry) || typeof entry.path !== "string" || typeof entry.reason !== "string" || !isRelativeRepoPath(entry.path)) {
+      continue;
+    }
+
+    const path = entry.path.trim();
+    if (seen.has(path)) {
+      continue;
+    }
+
+    seen.add(path);
+    hints.push({ path, reason: cleanText(entry.reason, 180) });
+    if (hints.length >= 20) {
+      break;
+    }
   }
 
-  return value;
+  return hints;
+}
+
+function normalizeOpencodeRepoAnalysis(analysis: JsonRecord, commit: string | undefined) {
+  return {
+    ...analysis,
+    ...(typeof analysis.productName === "string" ? { productName: cleanText(analysis.productName, 120) } : {}),
+    ...(typeof analysis.summary === "string" ? { summary: cleanText(analysis.summary, 1_200) } : {}),
+    ...(commit ? { commit } : {}),
+    features: normalizeOpencodeStringArray(analysis.features, "features"),
+    likelyRoutes: normalizeOpencodeStringArray(analysis.likelyRoutes, "likelyRoutes"),
+    demoIdeas: normalizeOpencodeStringArray(analysis.demoIdeas, "demoIdeas"),
+    importantTerms: normalizeOpencodeStringArray(analysis.importantTerms, "importantTerms"),
+    setupNotes: normalizeOpencodeStringArray(analysis.setupNotes, "setupNotes"),
+    sourceHints: normalizeOpencodeSourceHints(analysis.sourceHints),
+  };
+}
+
+async function analyzeRepoWithOpencode(repoUrl: string, commit: string | undefined, checkoutDirectory: string, runOpencode: AnalyzeRepoOpencodeRun) {
+  const output = await runOpencode(buildOpencodeRepoAnalysisPrompt(repoUrl), { cwd: checkoutDirectory });
+  return parseOpencodeRepoAnalysis(output, repoUrl, commit);
 }
 
 export async function analyzeRepo(repoUrl: string, options: AnalyzeRepoOptions): Promise<RepoAnalysis> {
   const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
   const fetchRepo = options.fetchRepo ?? defaultFetchRepo;
-  const limits = {
-    maxFiles: positiveIntegerLimit(options.maxFiles, "maxFiles", DEFAULT_MAX_FILES),
-    maxTotalBytes: positiveIntegerLimit(options.maxTotalBytes, "maxTotalBytes", DEFAULT_MAX_TOTAL_BYTES),
-    maxFileBytes: positiveIntegerLimit(options.maxFileBytes, "maxFileBytes", DEFAULT_MAX_FILE_BYTES),
-  };
+  const runOpencode = options.runOpencode ?? defaultRunOpencode;
 
   const fetchResult = await fetchRepo(normalizedRepoUrl, options.checkoutDirectory);
-  const files = await collectSourceFiles(options.checkoutDirectory, limits);
-  return buildAnalysis(normalizedRepoUrl, fetchResult.commit, files);
+  assertSupportedRepoShape(options.checkoutDirectory);
+  return analyzeRepoWithOpencode(normalizedRepoUrl, fetchResult.commit, options.checkoutDirectory, runOpencode);
 }

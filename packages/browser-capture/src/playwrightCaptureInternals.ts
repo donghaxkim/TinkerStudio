@@ -15,6 +15,28 @@ export function checkpointTarget(checkpoint: { selector?: string; text?: string 
   return selector ? { kind: "selector", selector } : { kind: "text", text: checkpoint.text ?? "" };
 }
 
+function withoutWww(hostname: string) {
+  return hostname.startsWith("www.") ? hostname.slice(4) : hostname;
+}
+
+export function isAllowedCaptureUrl(candidateUrl: string, targetUrl: string) {
+  let candidate: URL;
+  let target: URL;
+
+  try {
+    candidate = new URL(candidateUrl);
+    target = new URL(targetUrl);
+  } catch {
+    return false;
+  }
+
+  return (
+    candidate.protocol === target.protocol &&
+    candidate.port === target.port &&
+    withoutWww(candidate.hostname) === withoutWww(target.hostname)
+  );
+}
+
 type DocumentElementMetrics = {
   scrollWidth: number;
   clientWidth: number;
