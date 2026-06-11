@@ -75,6 +75,48 @@ const successfulAiUrlRunner: AiUrlDemoRunner = async (input) => {
   assert.ok(input.outputRoot.endsWith("generated/local-job/ai-url-job"));
   assert.equal(input.productUrl, "http://127.0.0.1:3000/");
   assert.equal(input.repoUrl, "https://github.com/example/product");
+  assert.equal(input.renderer, "hyperframes");
+  assert.equal(input.prompt, "Show the AI URL path.");
+
+  const phases = ["analysis", "planning", "validation", "capture", "assembly"] as const;
+  for (const phase of phases) {
+    input.onPhase?.(phase);
+  }
+
+  return {
+    renderer: "hyperframes",
+    rendererResults: {
+      hyperframes: {
+        outputVideoPath: `${input.outputRoot}/hyperframes/output.mp4`,
+        generationManifestPath: `${input.outputRoot}/hyperframes/generation-manifest.json`,
+        assetManifestPath: `${input.outputRoot}/hyperframes/asset-manifest.json`,
+      },
+    },
+    projectPath: `${input.outputRoot}/hyperframes/output.mp4`,
+    captureResultPath: `${input.outputRoot}/hyperframes/generation-manifest.json`,
+    outputRoot: input.outputRoot,
+    artifactPaths: [
+      `${input.outputRoot}/product-analysis.json`,
+      `${input.outputRoot}/repo-analysis.json`,
+      `${input.outputRoot}/hyperframes/index.html`,
+      `${input.outputRoot}/hyperframes/asset-manifest.json`,
+      `${input.outputRoot}/hyperframes/generation-manifest.json`,
+      `${input.outputRoot}/hyperframes/output.mp4`,
+    ],
+    captureCounts: {
+      clips: 1,
+      screenshots: 0,
+      events: 0,
+      checkpoints: 0,
+    },
+  };
+};
+
+const successfulPlaywrightAiUrlRunner: AiUrlDemoRunner = async (input) => {
+  assert.equal(input.projectId, "ai-url-playwright-job");
+  assert.ok(input.outputRoot.endsWith("generated/local-job/ai-url-playwright-job"));
+  assert.equal(input.productUrl, "http://127.0.0.1:3000/");
+  assert.equal(input.repoUrl, "https://github.com/example/product");
   assert.equal(input.renderer, "playwright");
   assert.equal(input.prompt, "Show the AI URL path.");
 
@@ -153,7 +195,6 @@ const aiUrlResult = await runLocalGenerationJob(
     mode: "ai-url-planning",
     productUrl: "http://127.0.0.1:3000/",
     repoUrl: "https://github.com/example/product",
-    renderer: "playwright",
     prompt: "Show the AI URL path.",
     outputDirectory: "generated/local-job/ai-url-job",
   },
@@ -167,27 +208,29 @@ const aiUrlResult = await runLocalGenerationJob(
 
 assert.equal(aiUrlResult.jobId, "ai-url-job");
 assert.equal(aiUrlResult.status, "completed");
-assert.ok(aiUrlResult.projectPath.endsWith("generated/local-job/ai-url-job/demo-project.json"));
+assert.ok(aiUrlResult.projectPath.endsWith("generated/local-job/ai-url-job/hyperframes/output.mp4"));
 assert.equal(
   "captureResultPath" in aiUrlResult ? aiUrlResult.captureResultPath : undefined,
-  `${aiUrlResult.outputDirectory}/capture-result.json`,
+  `${aiUrlResult.outputDirectory}/hyperframes/generation-manifest.json`,
 );
-assert.equal("renderer" in aiUrlResult ? aiUrlResult.renderer : undefined, "playwright");
+assert.equal("renderer" in aiUrlResult ? aiUrlResult.renderer : undefined, "hyperframes");
 assert.deepEqual(
   "rendererResults" in aiUrlResult ? aiUrlResult.rendererResults : undefined,
   {
-    playwright: {
-      projectPath: aiUrlResult.projectPath,
-      captureResultPath: `${aiUrlResult.outputDirectory}/capture-result.json`,
+    hyperframes: {
+      outputVideoPath: aiUrlResult.projectPath,
+      generationManifestPath: `${aiUrlResult.outputDirectory}/hyperframes/generation-manifest.json`,
+      assetManifestPath: `${aiUrlResult.outputDirectory}/hyperframes/asset-manifest.json`,
     },
   },
 );
 assert.deepEqual(aiUrlResult.artifactPaths.map((artifactPath) => artifactPath.split("/").at(-1)), [
   "product-analysis.json",
-  "storyboard.json",
-  "capture-plan.json",
-  "capture-result.json",
-  "demo-project.json",
+  "repo-analysis.json",
+  "index.html",
+  "asset-manifest.json",
+  "generation-manifest.json",
+  "output.mp4",
 ]);
 assert.deepEqual(manualStatuses(aiUrlEvents), [
   "queued",
@@ -200,6 +243,56 @@ assert.deepEqual(manualStatuses(aiUrlEvents), [
   "completed",
 ]);
 assert.deepEqual(aiUrlEvents.map((event) => event.message), [
+  "Generation job queued",
+  "Generation job running",
+  "AI URL analysis started",
+  "AI URL planning started",
+  "AI URL validation started",
+  "AI URL capture started",
+  "AI URL assembly started",
+  "Generation job completed",
+]);
+
+const playwrightAiUrlEvents: GenerationProgressEvent[] = [];
+
+const playwrightAiUrlResult = await runLocalGenerationJob(
+  {
+    id: "ai-url-playwright-job",
+    durationCapSeconds: 10,
+    aspectRatio: "16:9",
+    mode: "ai-url-planning",
+    productUrl: "http://127.0.0.1:3000/",
+    repoUrl: "https://github.com/example/product",
+    renderer: "playwright",
+    prompt: "Show the AI URL path.",
+    outputDirectory: "generated/local-job/ai-url-playwright-job",
+  },
+  {
+    now: nextTime,
+    onProgress: (event) => playwrightAiUrlEvents.push(event),
+    runManualDemo: successfulManualRunner,
+    runAiUrlDemo: successfulPlaywrightAiUrlRunner,
+  },
+);
+
+assert.equal(playwrightAiUrlResult.jobId, "ai-url-playwright-job");
+assert.equal(playwrightAiUrlResult.status, "completed");
+assert.ok(playwrightAiUrlResult.projectPath.endsWith("generated/local-job/ai-url-playwright-job/demo-project.json"));
+assert.equal(
+  "captureResultPath" in playwrightAiUrlResult ? playwrightAiUrlResult.captureResultPath : undefined,
+  `${playwrightAiUrlResult.outputDirectory}/capture-result.json`,
+);
+assert.equal("renderer" in playwrightAiUrlResult ? playwrightAiUrlResult.renderer : undefined, "playwright");
+assert.deepEqual(
+  "rendererResults" in playwrightAiUrlResult ? playwrightAiUrlResult.rendererResults : undefined,
+  {
+    playwright: {
+      projectPath: playwrightAiUrlResult.projectPath,
+      captureResultPath: `${playwrightAiUrlResult.outputDirectory}/capture-result.json`,
+    },
+  },
+);
+assert.deepEqual(playwrightAiUrlEvents.map((event) => event.message), [
   "Generation job queued",
   "Generation job running",
   "AI URL analysis started",
