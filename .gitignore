@@ -10,3 +10,6 @@ generated/
 # Local per-person agent instructions. Do not commit personal AGENTS.md files.
 AGENTS.md
 agents.md
+
+# Playwright MCP scratch output
+.playwright-mcp/
