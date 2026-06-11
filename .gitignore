@@ -1,6 +1,7 @@
 node_modules/
 dist/
 generated/
+docs/
 docs/superpowers/plans/
 .worktrees/
 .DS_Store
