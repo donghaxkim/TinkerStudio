@@ -94,6 +94,65 @@ await assert.rejects(
 );
 assert.match(await readFile(join(rejectedRunnerDir, "lint.log"), "utf8"), /runner exploded/);
 
+const sanitizedEnvDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-sanitized-env-"));
+const sanitizedEnvBinDir = join(sanitizedEnvDir, "bin");
+await mkdir(sanitizedEnvBinDir);
+const sanitizedEnvFakeNpxPath = join(sanitizedEnvBinDir, "npx");
+await writeFile(
+  sanitizedEnvFakeNpxPath,
+  `#!/usr/bin/env node
+const { writeFileSync } = require("node:fs");
+const { join } = require("node:path");
+
+const step = process.argv.includes("lint") ? "lint" : "render";
+const report = {
+  hasPath: typeof process.env.PATH === "string" && process.env.PATH.length > 0,
+  leakedSecret: Object.prototype.hasOwnProperty.call(process.env, "TINKER_SECRET_SHOULD_NOT_LEAK"),
+};
+
+writeFileSync(join(process.cwd(), \`env-\${step}.json\`), JSON.stringify(report));
+
+if (!report.hasPath) {
+  process.stderr.write("PATH missing\\n");
+  process.exit(1);
+}
+
+if (report.leakedSecret) {
+  process.stderr.write("secret leaked\\n");
+  process.exit(1);
+}
+
+process.stdout.write(\`\${step} env ok\\n\`);
+`,
+);
+await chmod(sanitizedEnvFakeNpxPath, 0o755);
+const originalSanitizedEnvPath = process.env.PATH;
+const originalSecret = process.env.TINKER_SECRET_SHOULD_NOT_LEAK;
+process.env.PATH = `${sanitizedEnvBinDir}${delimiter}${originalSanitizedEnvPath ?? ""}`;
+process.env.TINKER_SECRET_SHOULD_NOT_LEAK = "secret should stay in parent";
+try {
+  await runHyperframesRender({ hyperframesDir: sanitizedEnvDir, outputVideoPath: join(sanitizedEnvDir, "output.mp4") });
+} finally {
+  if (originalSanitizedEnvPath === undefined) {
+    delete process.env.PATH;
+  } else {
+    process.env.PATH = originalSanitizedEnvPath;
+  }
+  if (originalSecret === undefined) {
+    delete process.env.TINKER_SECRET_SHOULD_NOT_LEAK;
+  } else {
+    process.env.TINKER_SECRET_SHOULD_NOT_LEAK = originalSecret;
+  }
+}
+assert.deepEqual(JSON.parse(await readFile(join(sanitizedEnvDir, "env-lint.json"), "utf8")), {
+  hasPath: true,
+  leakedSecret: false,
+});
+assert.deepEqual(JSON.parse(await readFile(join(sanitizedEnvDir, "env-render.json"), "utf8")), {
+  hasPath: true,
+  leakedSecret: false,
+});
+
 const defaultTimeoutDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-default-timeout-"));
 const fakeBinDir = join(defaultTimeoutDir, "bin");
 await mkdir(fakeBinDir);

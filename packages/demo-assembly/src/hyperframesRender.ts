@@ -115,10 +115,28 @@ function formatError(error: unknown) {
   return error instanceof Error ? (error.stack ?? error.message) : String(error);
 }
 
+function sanitizedHyperframesEnv() {
+  const allowedNames = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR"]);
+  const env: NodeJS.ProcessEnv = {};
+
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined && allowedNames.has(name)) {
+      env[name] = value;
+    }
+  }
+
+  return env;
+}
+
 async function defaultRunCommand(command: HyperframesCommand): Promise<HyperframesCommandResult> {
   return await new Promise((resolve, reject) => {
     const detached = process.platform !== "win32";
-    const child = spawn(command.command, command.args, { cwd: command.cwd, detached, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command.command, command.args, {
+      cwd: command.cwd,
+      detached,
+      env: sanitizedHyperframesEnv(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     const stdout = createRetainedOutput();
     const stderr = createRetainedOutput();
     let timedOut = false;
