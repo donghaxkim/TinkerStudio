@@ -16,8 +16,9 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   server.get("/health", async () => ({ ok: true }));
 
   server.setErrorHandler((error: FastifyError, _request, reply) => {
-    const statusCode = error.statusCode === 400 ? 400 : 500;
-    void reply.status(statusCode).send({ message: statusCode === 400 ? "Malformed JSON body" : "Internal server error" });
+    const isMalformedJsonBody = error.code === "FST_ERR_CTP_INVALID_JSON_BODY";
+    const statusCode = isMalformedJsonBody ? 400 : 500;
+    void reply.status(statusCode).send({ message: isMalformedJsonBody ? "Malformed JSON body" : "Internal server error" });
   });
 
   return server;
