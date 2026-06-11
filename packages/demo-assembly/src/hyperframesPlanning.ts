@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { cp, lstat, mkdir, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import type { AspectRatio } from "./types.js";
@@ -7,8 +7,28 @@ import type { AspectRatio } from "./types.js";
 export const DEFAULT_OPENCODE_TIMEOUT_MS = 600_000;
 const TIMEOUT_KILL_GRACE_MS = 5_000;
 const TIMEOUT_CLOSE_FALLBACK_MS = 5_000;
+const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
 const OPENCODE_SANDBOX_DIRECTORY = ".tinker-opencode-workspace";
 const REPOSITORY_SNAPSHOT_DIRECTORY = "repository";
+const REPO_SNAPSHOT_DENY_NAMES = new Set([
+  ".aws",
+  ".cache",
+  ".DS_Store",
+  ".git",
+  ".netrc",
+  ".next",
+  ".npmrc",
+  ".pypirc",
+  ".ssh",
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "temp",
+  "tmp",
+  OPENCODE_SANDBOX_DIRECTORY,
+]);
 
 export type HyperframesOpencodeRunOptions = {
   cwd: string;
@@ -63,18 +83,15 @@ async function isSafeNonSymlinkPath(source: string) {
 async function shouldCopyRepoSnapshotPath(source: string) {
   const name = basename(source);
 
-  if (
-    name === ".git" ||
-    name === "node_modules" ||
-    name === "dist" ||
-    name === "build" ||
-    name === ".DS_Store" ||
-    name === OPENCODE_SANDBOX_DIRECTORY
-  ) {
+  if (REPO_SNAPSHOT_DENY_NAMES.has(name)) {
     return false;
   }
 
   if (name === ".env" || name.startsWith(".env.")) {
+    return false;
+  }
+
+  if (name.endsWith(".log")) {
     return false;
   }
 
@@ -93,26 +110,7 @@ async function shouldCopyGeneratedOutputPath(source: string) {
 }
 
 function sanitizedOpencodeEnv() {
-  const allowedNames = new Set([
-    "PATH",
-    "HOME",
-    "USER",
-    "LOGNAME",
-    "SHELL",
-    "TMPDIR",
-    "ANTHROPIC_API_KEY",
-    "OPENAI_API_KEY",
-    "GEMINI_API_KEY",
-    "GOOGLE_API_KEY",
-    "GOOGLE_GENERATIVE_AI_API_KEY",
-    "MISTRAL_API_KEY",
-    "GROQ_API_KEY",
-    "OPENROUTER_API_KEY",
-    "XAI_API_KEY",
-    "DEEPSEEK_API_KEY",
-    "AZURE_OPENAI_API_KEY",
-    "AZURE_OPENAI_ENDPOINT",
-  ]);
+  const allowedNames = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR"]);
   const env: NodeJS.ProcessEnv = {};
 
   for (const [name, value] of Object.entries(process.env)) {
@@ -122,6 +120,49 @@ function sanitizedOpencodeEnv() {
   }
 
   return env;
+}
+
+type RetainedOutput = {
+  chunks: Buffer[];
+  retainedBytes: number;
+  omittedBytes: number;
+};
+
+function createRetainedOutput(): RetainedOutput {
+  return { chunks: [], retainedBytes: 0, omittedBytes: 0 };
+}
+
+function appendRetainedOutput(output: RetainedOutput, chunk: Buffer) {
+  output.chunks.push(chunk);
+  output.retainedBytes += chunk.length;
+
+  while (output.retainedBytes > LOG_STREAM_RETAIN_BYTES) {
+    const excessBytes = output.retainedBytes - LOG_STREAM_RETAIN_BYTES;
+    const firstChunk = output.chunks[0];
+    if (firstChunk === undefined) {
+      break;
+    }
+
+    if (firstChunk.length <= excessBytes) {
+      output.chunks.shift();
+      output.retainedBytes -= firstChunk.length;
+      output.omittedBytes += firstChunk.length;
+    } else {
+      output.chunks[0] = firstChunk.subarray(excessBytes);
+      output.retainedBytes -= excessBytes;
+      output.omittedBytes += excessBytes;
+    }
+  }
+}
+
+function retainedOutputToLog(name: "stdout" | "stderr", output: RetainedOutput) {
+  const text = Buffer.concat(output.chunks, output.retainedBytes).toString("utf8");
+
+  if (output.omittedBytes === 0) {
+    return text;
+  }
+
+  return `[${name} truncated: omitted ${output.omittedBytes} bytes; retained last ${output.retainedBytes} bytes]\n${text}`;
 }
 
 async function copyDirectoryEntries(
@@ -195,98 +236,112 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
   const sandboxDirectory = await prepareOpencodeSandbox(options);
 
   await mkdir(options.logDir, { recursive: true });
-  const stdoutFile = await open(stdoutPath, "w");
-  const stderrFile = await open(stderrPath, "w");
 
   let result: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean };
-  try {
-    result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
-      const detached = process.platform !== "win32";
-      let timedOut = false;
-      let settled = false;
-      let killTimeout: ReturnType<typeof setTimeout> | undefined;
-      let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
-      const child = spawn(
-        "opencode",
-        ["run", "--pure", "--format", "json", "--dir", sandboxDirectory, "--dangerously-skip-permissions", prompt],
-        { cwd: sandboxDirectory, detached, env: sanitizedOpencodeEnv(), stdio: ["ignore", stdoutFile.fd, stderrFile.fd] },
-      );
-      const timer = setTimeout(() => {
-        timedOut = true;
-        killChild("SIGTERM");
-        killTimeout = setTimeout(() => {
-          killChild("SIGKILL");
-          closeFallbackTimeout = setTimeout(() => {
-            resolveOnce({ code: null, signal: null, timedOut });
-          }, TIMEOUT_CLOSE_FALLBACK_MS);
-        }, TIMEOUT_KILL_GRACE_MS);
-      }, effectiveTimeoutMs);
-
-      function killChild(signal: NodeJS.Signals) {
-        if (detached && child.pid !== undefined) {
-          try {
-            process.kill(-child.pid, signal);
-            return;
-          } catch {
-            // Fall back to the direct child when process-group kill is unavailable.
-          }
-        }
-
-        try {
-          child.kill(signal);
-        } catch {
-          // The child may already have exited between timeout callbacks.
-        }
-      }
-
-      function clearTimers() {
-        clearTimeout(timer);
-        if (killTimeout !== undefined) {
-          clearTimeout(killTimeout);
-        }
-        if (closeFallbackTimeout !== undefined) {
-          clearTimeout(closeFallbackTimeout);
-        }
-      }
-
-      function cleanupListeners() {
-        child.removeAllListeners("close");
-        child.removeAllListeners("error");
-      }
-
-      function resolveOnce(finalResult: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }) {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimers();
-        cleanupListeners();
-        resolve(finalResult);
-      }
-
-      function rejectOnce(error: Error) {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimers();
-        cleanupListeners();
-        reject(error);
-      }
-
-      child.on("error", (error) => {
-        rejectOnce(new Error(`OpenCode Hyperframes generation failed to start: ${error.message}`, { cause: error }));
-      });
-
-      child.on("close", (code, signal) => {
-        resolveOnce({ code, signal, timedOut });
-      });
+  const stdout = createRetainedOutput();
+  const stderr = createRetainedOutput();
+  result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
+    const detached = process.platform !== "win32";
+    let timedOut = false;
+    let settled = false;
+    let killTimeout: ReturnType<typeof setTimeout> | undefined;
+    let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
+    const child = spawn("opencode", ["run", "--pure", "--format", "json", "--dir", sandboxDirectory, prompt], {
+      cwd: sandboxDirectory,
+      detached,
+      env: sanitizedOpencodeEnv(),
+      stdio: ["ignore", "pipe", "pipe"],
     });
-  } finally {
-    await Promise.all([stdoutFile.close(), stderrFile.close()]);
-  }
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killChild("SIGTERM");
+      killTimeout = setTimeout(() => {
+        killChild("SIGKILL");
+        closeFallbackTimeout = setTimeout(() => {
+          destroyStreams();
+          resolveOnce({ code: null, signal: null, timedOut });
+        }, TIMEOUT_CLOSE_FALLBACK_MS);
+      }, TIMEOUT_KILL_GRACE_MS);
+    }, effectiveTimeoutMs);
 
-  const stdout = await readFile(stdoutPath, "utf8");
+    function killChild(signal: NodeJS.Signals) {
+      if (detached && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, signal);
+          return;
+        } catch {
+          // Fall back to the direct child when process-group kill is unavailable.
+        }
+      }
+
+      try {
+        child.kill(signal);
+      } catch {
+        // The child may already have exited between timeout callbacks.
+      }
+    }
+
+    function clearTimers() {
+      clearTimeout(timer);
+      if (killTimeout !== undefined) {
+        clearTimeout(killTimeout);
+      }
+      if (closeFallbackTimeout !== undefined) {
+        clearTimeout(closeFallbackTimeout);
+      }
+    }
+
+    function cleanupListeners() {
+      child.stdout.removeAllListeners("data");
+      child.stderr.removeAllListeners("data");
+      child.removeAllListeners("close");
+      child.removeAllListeners("error");
+    }
+
+    function destroyStreams() {
+      child.stdout.destroy();
+      child.stderr.destroy();
+    }
+
+    function resolveOnce(finalResult: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimers();
+      cleanupListeners();
+      resolve(finalResult);
+    }
+
+    function rejectOnce(error: Error) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimers();
+      cleanupListeners();
+      reject(error);
+    }
+
+    child.on("error", (error) => {
+      rejectOnce(new Error(`OpenCode Hyperframes generation failed to start: ${error.message}`, { cause: error }));
+    });
+
+    child.stdout.on("data", (chunk) => {
+      appendRetainedOutput(stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+    });
+
+    child.stderr.on("data", (chunk) => {
+      appendRetainedOutput(stderr, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+    });
+
+    child.on("close", (code, signal) => {
+      resolveOnce({ code, signal, timedOut });
+    });
+  });
+
+  const stdoutText = retainedOutputToLog("stdout", stdout);
+  await Promise.all([writeFile(stdoutPath, stdoutText), writeFile(stderrPath, retainedOutputToLog("stderr", stderr))]);
 
   if (result.timedOut) {
     throw new Error(`OpenCode Hyperframes generation timed out after ${effectiveTimeoutMs}ms; see ${stderrPath}`);
@@ -299,7 +354,7 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
 
   await copySandboxOutputToHyperframesDirectory(sandboxDirectory, options.logDir);
 
-  return stdout;
+  return stdoutText;
 }
 
 function assertRequiredPath(value: string, name: string) {

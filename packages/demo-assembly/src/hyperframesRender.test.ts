@@ -19,10 +19,15 @@ assert.equal(result.lintLogPath, join(hyperframesDir, "lint.log"));
 assert.equal(result.renderLogPath, join(hyperframesDir, "render.log"));
 assert.equal(result.outputVideoPath, outputVideoPath);
 assert.equal(calls.length, 2);
-assert.deepEqual(calls[0], { command: "npx", args: ["hyperframes", "lint"], cwd: hyperframesDir, timeoutMs: 120_000 });
+assert.deepEqual(calls[0], {
+  command: "npx",
+  args: ["--yes", "--package", "hyperframes", "hyperframes", "lint"],
+  cwd: hyperframesDir,
+  timeoutMs: 120_000,
+});
 assert.deepEqual(calls[1], {
   command: "npx",
-  args: ["hyperframes", "render", "--output", outputVideoPath],
+  args: ["--yes", "--package", "hyperframes", "hyperframes", "render", "--output", outputVideoPath],
   cwd: hyperframesDir,
   timeoutMs: 600_000,
 });
@@ -58,7 +63,7 @@ await assert.rejects(
   /Hyperframes lint failed/,
 );
 assert.equal(lintFailureCalls.length, 1);
-assert.deepEqual(lintFailureCalls[0]?.args, ["hyperframes", "lint"]);
+assert.deepEqual(lintFailureCalls[0]?.args, ["--yes", "--package", "hyperframes", "hyperframes", "lint"]);
 assert.match(await readFile(join(lintFailureDir, "lint.log"), "utf8"), /lint stderr/);
 
 const timeoutDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-timeout-"));

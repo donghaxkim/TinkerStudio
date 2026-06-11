@@ -1,6 +1,6 @@
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, open, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix, win32 } from "node:path";
 import { promisify } from "node:util";
 import type { AnalyzeRepoOpencodeRun, AnalyzeRepoOptions, RepoAnalysis } from "./types.js";
@@ -112,6 +112,7 @@ export function parseRepoAnalysis(value: unknown, expectedRepoUrl: string): Repo
 
 const execFile = promisify(execFileCallback);
 const DEFAULT_OPENCODE_TIMEOUT_MS = 300_000;
+const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
 
 const GithubOwnerSegmentPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const GithubRepoSegmentPattern = /^(?=.*[A-Za-z0-9])[A-Za-z0-9._-]+$/;
@@ -200,63 +201,136 @@ function createIsolatedGitEnv(homeDirectory: string, configDirectory: string) {
   return env;
 }
 
-async function defaultRunOpencode(prompt: string, options: { cwd: string }) {
+type RetainedOutput = {
+  chunks: Buffer[];
+  retainedBytes: number;
+  omittedBytes: number;
+};
+
+function createRetainedOutput(): RetainedOutput {
+  return { chunks: [], retainedBytes: 0, omittedBytes: 0 };
+}
+
+function appendRetainedOutput(output: RetainedOutput, chunk: Buffer) {
+  output.chunks.push(chunk);
+  output.retainedBytes += chunk.length;
+
+  while (output.retainedBytes > LOG_STREAM_RETAIN_BYTES) {
+    const excessBytes = output.retainedBytes - LOG_STREAM_RETAIN_BYTES;
+    const firstChunk = output.chunks[0];
+    if (firstChunk === undefined) {
+      break;
+    }
+
+    if (firstChunk.length <= excessBytes) {
+      output.chunks.shift();
+      output.retainedBytes -= firstChunk.length;
+      output.omittedBytes += firstChunk.length;
+    } else {
+      output.chunks[0] = firstChunk.subarray(excessBytes);
+      output.retainedBytes -= excessBytes;
+      output.omittedBytes += excessBytes;
+    }
+  }
+}
+
+function retainedOutputToLog(name: "stdout" | "stderr", output: RetainedOutput) {
+  const text = Buffer.concat(output.chunks, output.retainedBytes).toString("utf8");
+
+  if (output.omittedBytes === 0) {
+    return text;
+  }
+
+  return `[${name} truncated: omitted ${output.omittedBytes} bytes; retained last ${output.retainedBytes} bytes]\n${text}`;
+}
+
+function sanitizedOpencodeEnv() {
+  const allowedNames = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR"]);
+  const env: NodeJS.ProcessEnv = {};
+
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined && allowedNames.has(name)) {
+      env[name] = value;
+    }
+  }
+
+  return env;
+}
+
+async function writeOpencodeRepoAnalysisConfig(cwd: string) {
+  await writeFile(
+    join(cwd, "opencode.json"),
+    `${JSON.stringify(
+      {
+        $schema: "https://opencode.ai/config.json",
+        permission: {
+          edit: "deny",
+          bash: "deny",
+          webfetch: "deny",
+          external_directory: "deny",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+export async function defaultRunOpencode(prompt: string, options: { cwd: string }) {
   const timeoutMs = Number(process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS ?? DEFAULT_OPENCODE_TIMEOUT_MS);
   const effectiveTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_OPENCODE_TIMEOUT_MS;
   const stdoutPath = join(options.cwd, ".tinker-opencode-output.jsonl");
   const stderrPath = join(options.cwd, ".tinker-opencode-error.log");
-  const stdoutFile = await open(stdoutPath, "w");
-  const stderrFile = await open(stderrPath, "w");
-
-  let filesClosed = false;
-  async function closeFiles() {
-    if (filesClosed) {
-      return;
-    }
-
-    filesClosed = true;
-    await Promise.all([stdoutFile.close(), stderrFile.close()]);
-  }
+  await writeOpencodeRepoAnalysisConfig(options.cwd);
 
   let result: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean };
-  try {
-    result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
-      let timedOut = false;
-      const child = spawn("opencode", ["run", "--pure", "--format", "json", "--dir", options.cwd, "--dangerously-skip-permissions", prompt], {
-        cwd: options.cwd,
-        stdio: ["ignore", stdoutFile.fd, stderrFile.fd],
-      });
-
-      const timeout = setTimeout(() => {
-        timedOut = true;
-        child.kill("SIGTERM");
-      }, effectiveTimeoutMs);
-
-      child.on("error", (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-      child.on("exit", (code, signal) => {
-        clearTimeout(timeout);
-        resolve({ code, signal, timedOut });
-      });
+  const stdout = createRetainedOutput();
+  const stderr = createRetainedOutput();
+  result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
+    let timedOut = false;
+    const child = spawn("opencode", ["run", "--pure", "--format", "json", "--dir", options.cwd, prompt], {
+      cwd: options.cwd,
+      env: sanitizedOpencodeEnv(),
+      stdio: ["ignore", "pipe", "pipe"],
     });
-  } finally {
-    await closeFiles();
-  }
 
-  const [stdout, stderr] = await Promise.all([readFile(stdoutPath, "utf8"), readFile(stderrPath, "utf8")]);
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, effectiveTimeoutMs);
+
+    child.stdout.on("data", (chunk) => {
+      appendRetainedOutput(stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+    });
+
+    child.stderr.on("data", (chunk) => {
+      appendRetainedOutput(stderr, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+    });
+
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("exit", (code, signal) => {
+      clearTimeout(timeout);
+      resolve({ code, signal, timedOut });
+    });
+  });
+
+  const stdoutText = retainedOutputToLog("stdout", stdout);
+  const stderrText = retainedOutputToLog("stderr", stderr);
+  await Promise.all([writeFile(stdoutPath, stdoutText), writeFile(stderrPath, stderrText)]);
 
   if (result.timedOut) {
     throw new Error(`OpenCode repo analysis timed out after ${effectiveTimeoutMs}ms`);
   }
 
   if (result.code !== 0) {
-    const suffix = stderr.trim() ? `: ${cleanText(stderr, 500)}` : "";
+    const suffix = stderrText.trim() ? `: ${cleanText(stderrText, 500)}` : "";
     throw new Error(`OpenCode repo analysis failed with exit code ${result.code ?? "unknown"}${suffix}`);
   }
 
-  return stdout;
+  return stdoutText;
 }
 
 function assertSupportedRepoShape(root: string) {

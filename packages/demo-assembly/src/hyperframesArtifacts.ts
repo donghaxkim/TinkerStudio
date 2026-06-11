@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 
@@ -48,6 +48,17 @@ export type ValidatedHyperframesArtifacts = {
   generationManifest: HyperframesGenerationManifest;
 };
 
+const FORBIDDEN_GENERATED_ARTIFACT_NAMES = new Set([
+  ".npmrc",
+  "bun.lock",
+  "bun.lockb",
+  "node_modules",
+  "package-lock.json",
+  "package.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+]);
+
 function formatZodIssues(error: z.ZodError) {
   return error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`).join("; ");
 }
@@ -67,6 +78,16 @@ async function readJson(path: string, malformedMessage: string) {
   }
 }
 
+async function assertNoForbiddenGeneratedArtifacts(hyperframesDir: string) {
+  const entries = await readdir(hyperframesDir, { recursive: true, withFileTypes: true });
+
+  for (const entry of entries) {
+    if (FORBIDDEN_GENERATED_ARTIFACT_NAMES.has(entry.name)) {
+      throw new Error(`forbidden generated Hyperframes artifact: ${entry.name}`);
+    }
+  }
+}
+
 export async function validateHyperframesArtifacts(
   input: ValidateHyperframesArtifactsInput,
 ): Promise<ValidatedHyperframesArtifacts> {
@@ -74,6 +95,7 @@ export async function validateHyperframesArtifacts(
   const indexPath = join(hyperframesDir, "index.html");
   const assetManifestPath = join(hyperframesDir, "asset-manifest.json");
   const generationManifestPath = join(hyperframesDir, "generation-manifest.json");
+  await assertNoForbiddenGeneratedArtifacts(hyperframesDir);
 
   try {
     await access(indexPath);

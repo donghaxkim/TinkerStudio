@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { analyzeRepo, parseRepoAnalysis } from "./analyzeRepo.js";
+import { delimiter, join } from "node:path";
+import { analyzeRepo, defaultRunOpencode, parseRepoAnalysis } from "./analyzeRepo.js";
 import { analyzeRepo as exportedAnalyzeRepo, parseRepoAnalysis as exportedParseRepoAnalysis, type RepoAnalysis as ExportedRepoAnalysis } from "./index.js";
 
 const repoUrl = "https://github.com/example/product";
@@ -214,6 +214,66 @@ try {
   assert.equal(oversizedAnalysis.productName, "Large Product");
   assert.equal(oversizedAnalysis.features.length, 12);
   assert.equal(oversizedAnalysis.sourceHints.length, 20);
+
+  const fakeBinDirectory = join(fixtureRoot, "fake-bin");
+  const opencodeCheckoutDirectory = join(fixtureRoot, "opencode-checkout");
+  await mkdir(fakeBinDirectory);
+  await mkdir(opencodeCheckoutDirectory);
+  const fakeOpencodePath = join(fakeBinDirectory, "opencode");
+  await writeFile(
+    fakeOpencodePath,
+    [
+      "#!/usr/bin/env node",
+      "const { readFileSync, writeFileSync, writeSync } = require('node:fs');",
+      "const { join } = require('node:path');",
+      "writeFileSync(join(process.cwd(), 'opencode-args.json'), JSON.stringify(process.argv.slice(2), null, 2));",
+      "writeFileSync(join(process.cwd(), 'opencode-env.json'), JSON.stringify(process.env, null, 2));",
+      "writeFileSync(join(process.cwd(), 'opencode-config-seen.json'), readFileSync(join(process.cwd(), 'opencode.json'), 'utf8'));",
+      "writeSync(1, 'REPO_STDOUT_START_SHOULD_BE_TRUNCATED\\n' + 'o'.repeat(200000) + '\\nREPO_STDOUT_END_SHOULD_STAY\\n');",
+      "writeSync(2, 'REPO_STDERR_START_SHOULD_BE_TRUNCATED\\n' + 'e'.repeat(200000) + '\\nREPO_STDERR_END_SHOULD_STAY\\n');",
+    ].join("\n"),
+  );
+  await chmod(fakeOpencodePath, 0o755);
+
+  const originalPath = process.env.PATH;
+  const originalOpencodeConfig = process.env.OPENCODE_CONFIG;
+  try {
+    process.env.PATH = `${fakeBinDirectory}${delimiter}${originalPath ?? ""}`;
+    process.env.TINKER_REPO_ANALYSIS_SHOULD_NOT_LEAK = "host-secret";
+    process.env.OPENCODE_CONFIG = join(fixtureRoot, "host-opencode.json");
+
+    const opencodeOutput = await defaultRunOpencode("fake repo prompt", { cwd: opencodeCheckoutDirectory });
+    assert.match(opencodeOutput, /REPO_STDOUT_END_SHOULD_STAY/);
+  } finally {
+    process.env.PATH = originalPath;
+    delete process.env.TINKER_REPO_ANALYSIS_SHOULD_NOT_LEAK;
+    if (originalOpencodeConfig === undefined) {
+      delete process.env.OPENCODE_CONFIG;
+    } else {
+      process.env.OPENCODE_CONFIG = originalOpencodeConfig;
+    }
+  }
+
+  const repoOpencodeArgs = JSON.parse(await readFile(join(opencodeCheckoutDirectory, "opencode-args.json"), "utf8"));
+  assert.equal(repoOpencodeArgs.includes("--dangerously-skip-permissions"), false);
+  const repoOpencodeEnv = JSON.parse(await readFile(join(opencodeCheckoutDirectory, "opencode-env.json"), "utf8"));
+  assert.equal(repoOpencodeEnv.TINKER_REPO_ANALYSIS_SHOULD_NOT_LEAK, undefined);
+  assert.equal(repoOpencodeEnv.OPENCODE_CONFIG, undefined);
+  const repoOpencodeConfig = JSON.parse(await readFile(join(opencodeCheckoutDirectory, "opencode-config-seen.json"), "utf8"));
+  assert.equal(repoOpencodeConfig.permission.edit, "deny");
+  assert.equal(repoOpencodeConfig.permission.bash, "deny");
+  assert.equal(repoOpencodeConfig.permission.webfetch, "deny");
+  assert.equal(repoOpencodeConfig.permission.external_directory, "deny");
+  const repoStdoutLog = await readFile(join(opencodeCheckoutDirectory, ".tinker-opencode-output.jsonl"), "utf8");
+  const repoStderrLog = await readFile(join(opencodeCheckoutDirectory, ".tinker-opencode-error.log"), "utf8");
+  assert.match(repoStdoutLog, /truncated/i);
+  assert.match(repoStdoutLog, /REPO_STDOUT_END_SHOULD_STAY/);
+  assert.doesNotMatch(repoStdoutLog, /REPO_STDOUT_START_SHOULD_BE_TRUNCATED/);
+  assert.match(repoStderrLog, /truncated/i);
+  assert.match(repoStderrLog, /REPO_STDERR_END_SHOULD_STAY/);
+  assert.doesNotMatch(repoStderrLog, /REPO_STDERR_START_SHOULD_BE_TRUNCATED/);
+  assert.ok(Buffer.byteLength(repoStdoutLog, "utf8") < 140_000);
+  assert.ok(Buffer.byteLength(repoStderrLog, "utf8") < 140_000);
 
 } finally {
   await rm(fixtureRoot, { recursive: true, force: true });

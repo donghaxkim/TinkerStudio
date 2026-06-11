@@ -257,7 +257,7 @@ export async function runHyperframesRender(input: RunHyperframesRenderInput): Pr
     "lint",
     {
       command: "npx",
-      args: ["hyperframes", "lint"],
+      args: ["--yes", "--package", "hyperframes", "hyperframes", "lint"],
       cwd: input.hyperframesDir,
       timeoutMs: effectiveTimeout(input.lintTimeoutMs, DEFAULT_LINT_TIMEOUT_MS),
       ...timeoutOptions,
@@ -270,7 +270,7 @@ export async function runHyperframesRender(input: RunHyperframesRenderInput): Pr
     "render",
     {
       command: "npx",
-      args: ["hyperframes", "render", "--output", input.outputVideoPath],
+      args: ["--yes", "--package", "hyperframes", "hyperframes", "render", "--output", input.outputVideoPath],
       cwd: input.hyperframesDir,
       timeoutMs: effectiveTimeout(input.renderTimeoutMs, DEFAULT_RENDER_TIMEOUT_MS),
       ...timeoutOptions,

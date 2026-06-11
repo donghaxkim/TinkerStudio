@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import {
   createEnvironmentAiUrlPlanner,
   createFixtureAiUrlPlanner,
   createOpencodeAiUrlPlanner,
+  defaultRunAiPlannerOpencode,
   parseCapturePlanJson,
   parseStoryboardJson,
 } from "./aiPlanning.js";
@@ -399,6 +403,67 @@ await assert.rejects(
     }),
   /repoCheckoutDirectory is required/,
 );
+
+const opencodeRunnerRoot = await mkdtemp(join(tmpdir(), "tinker-ai-planning-opencode-"));
+const opencodeRunnerBin = join(opencodeRunnerRoot, "bin");
+const opencodeRunnerRepo = join(opencodeRunnerRoot, "repo");
+await mkdir(opencodeRunnerBin);
+await mkdir(opencodeRunnerRepo);
+const fakeOpencodePlannerPath = join(opencodeRunnerBin, "opencode");
+await writeFile(
+  fakeOpencodePlannerPath,
+  [
+    "#!/usr/bin/env node",
+    "const { readFileSync, writeFileSync } = require('node:fs');",
+    "const { join } = require('node:path');",
+    "writeFileSync(join(process.cwd(), 'opencode-args.json'), JSON.stringify(process.argv.slice(2), null, 2));",
+    "writeFileSync(join(process.cwd(), 'opencode-env.json'), JSON.stringify(process.env, null, 2));",
+    "writeFileSync(join(process.cwd(), 'opencode-config-seen.json'), readFileSync(join(process.cwd(), 'opencode.json'), 'utf8'));",
+    "process.stdout.write('AI_STDOUT_START_SHOULD_BE_TRUNCATED\\n' + 'o'.repeat(200000) + '\\nAI_STDOUT_END_SHOULD_STAY\\n');",
+    "process.stderr.write('AI_STDERR_START_SHOULD_BE_TRUNCATED\\n' + 'e'.repeat(200000) + '\\nAI_STDERR_END_SHOULD_STAY\\n');",
+  ].join("\n"),
+);
+await chmod(fakeOpencodePlannerPath, 0o755);
+
+const originalPath = process.env.PATH;
+const originalOpencodeConfig = process.env.OPENCODE_CONFIG;
+try {
+  process.env.PATH = `${opencodeRunnerBin}${delimiter}${originalPath ?? ""}`;
+  process.env.TINKER_AI_PLANNER_SHOULD_NOT_LEAK = "host-secret";
+  process.env.OPENCODE_CONFIG = join(opencodeRunnerRoot, "host-opencode.json");
+
+  const plannerOutput = await defaultRunAiPlannerOpencode("fake planner prompt", { cwd: opencodeRunnerRepo });
+  assert.match(plannerOutput, /AI_STDOUT_END_SHOULD_STAY/);
+} finally {
+  process.env.PATH = originalPath;
+  delete process.env.TINKER_AI_PLANNER_SHOULD_NOT_LEAK;
+  if (originalOpencodeConfig === undefined) {
+    delete process.env.OPENCODE_CONFIG;
+  } else {
+    process.env.OPENCODE_CONFIG = originalOpencodeConfig;
+  }
+}
+
+const plannerOpencodeArgs = JSON.parse(await readFile(join(opencodeRunnerRepo, "opencode-args.json"), "utf8"));
+assert.equal(plannerOpencodeArgs.includes("--dangerously-skip-permissions"), false);
+const plannerOpencodeEnv = JSON.parse(await readFile(join(opencodeRunnerRepo, "opencode-env.json"), "utf8"));
+assert.equal(plannerOpencodeEnv.TINKER_AI_PLANNER_SHOULD_NOT_LEAK, undefined);
+assert.equal(plannerOpencodeEnv.OPENCODE_CONFIG, undefined);
+const plannerOpencodeConfig = JSON.parse(await readFile(join(opencodeRunnerRepo, "opencode-config-seen.json"), "utf8"));
+assert.equal(plannerOpencodeConfig.permission.edit, "deny");
+assert.equal(plannerOpencodeConfig.permission.bash, "deny");
+assert.equal(plannerOpencodeConfig.permission.webfetch, "deny");
+assert.equal(plannerOpencodeConfig.permission.external_directory, "deny");
+const plannerStdoutLog = await readFile(join(opencodeRunnerRepo, ".tinker-opencode-demo-planner-output.jsonl"), "utf8");
+const plannerStderrLog = await readFile(join(opencodeRunnerRepo, ".tinker-opencode-demo-planner-error.log"), "utf8");
+assert.match(plannerStdoutLog, /truncated/i);
+assert.match(plannerStdoutLog, /AI_STDOUT_END_SHOULD_STAY/);
+assert.doesNotMatch(plannerStdoutLog, /AI_STDOUT_START_SHOULD_BE_TRUNCATED/);
+assert.match(plannerStderrLog, /truncated/i);
+assert.match(plannerStderrLog, /AI_STDERR_END_SHOULD_STAY/);
+assert.doesNotMatch(plannerStderrLog, /AI_STDERR_START_SHOULD_BE_TRUNCATED/);
+assert.ok(Buffer.byteLength(plannerStdoutLog, "utf8") < 140_000);
+assert.ok(Buffer.byteLength(plannerStderrLog, "utf8") < 140_000);
 
 const openAiPlanner = createEnvironmentAiUrlPlanner({
   endpoint: "https://planner.example/v1/chat/completions",

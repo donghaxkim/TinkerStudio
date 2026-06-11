@@ -154,4 +154,44 @@ await assert.rejects(
   /asset outputPath must stay inside the Hyperframes directory/,
 );
 
+for (const forbiddenArtifactPath of [
+  "node_modules/.bin/hyperframes",
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "bun.lockb",
+  ".npmrc",
+]) {
+  const forbiddenRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-forbidden-artifact-"));
+  const forbiddenDir = join(forbiddenRoot, "hyperframes");
+  await mkdir(join(forbiddenDir, "assets"), { recursive: true });
+  await writeFile(join(forbiddenDir, "index.html"), "<html></html>\n");
+  await writeFile(join(forbiddenDir, "asset-manifest.json"), JSON.stringify({ assets: [] }));
+  await writeFile(
+    join(forbiddenDir, "generation-manifest.json"),
+    JSON.stringify({
+      renderer: "hyperframes",
+      productUrl: "https://example.com",
+      sourceRepoUrl: "https://github.com/example/product",
+      durationCapSeconds: 12,
+      aspectRatio: "16:9",
+      sourceGrounding: ["repo"],
+      outputVideoPath: "output.mp4",
+    }),
+  );
+  await mkdir(join(forbiddenDir, forbiddenArtifactPath, ".."), { recursive: true });
+  await writeFile(join(forbiddenDir, forbiddenArtifactPath), "forbidden\n");
+
+  await assert.rejects(
+    () =>
+      validateHyperframesArtifacts({
+        hyperframesDir: forbiddenDir,
+        productUrl: "https://example.com",
+        repoUrl: "https://github.com/example/product",
+      }),
+    /forbidden generated Hyperframes artifact/,
+  );
+}
+
 console.log("hyperframes artifact tests passed");

@@ -152,12 +152,33 @@ await mkdir(repoCheckoutDirectory);
 await mkdir(join(repoCheckoutDirectory, ".git"));
 await mkdir(join(repoCheckoutDirectory, "node_modules"));
 await mkdir(join(repoCheckoutDirectory, "src"));
+await mkdir(join(repoCheckoutDirectory, ".aws"));
+await mkdir(join(repoCheckoutDirectory, ".ssh"));
+await mkdir(join(repoCheckoutDirectory, ".next"));
+await mkdir(join(repoCheckoutDirectory, ".turbo"));
+await mkdir(join(repoCheckoutDirectory, "coverage"));
+await mkdir(join(repoCheckoutDirectory, ".cache"));
+await mkdir(join(repoCheckoutDirectory, "tmp"));
+await mkdir(join(repoCheckoutDirectory, "temp"));
 await writeFile(join(repoCheckoutDirectory, "README.md"), "repo readme");
 await writeFile(join(repoCheckoutDirectory, "src", "app.ts"), "export const app = true;\n");
 await writeFile(join(repoCheckoutDirectory, ".env"), "SECRET=host-secret\n");
 await writeFile(join(repoCheckoutDirectory, ".env.local"), "LOCAL_SECRET=host-local-secret\n");
+await writeFile(join(repoCheckoutDirectory, ".npmrc"), "//registry.npmjs.org/:_authToken=secret\n");
+await writeFile(join(repoCheckoutDirectory, ".pypirc"), "password = secret\n");
+await writeFile(join(repoCheckoutDirectory, ".netrc"), "machine example.com password secret\n");
+await writeFile(join(repoCheckoutDirectory, "debug.log"), "debug details\n");
+await writeFile(join(repoCheckoutDirectory, "npm-debug.log"), "npm debug details\n");
 await writeFile(join(repoCheckoutDirectory, ".git", "HEAD"), "ref: refs/heads/main\n");
 await writeFile(join(repoCheckoutDirectory, "node_modules", "ignored.js"), "module.exports = true;\n");
+await writeFile(join(repoCheckoutDirectory, ".aws", "credentials"), "aws_secret_access_key=secret\n");
+await writeFile(join(repoCheckoutDirectory, ".ssh", "id_rsa"), "private key\n");
+await writeFile(join(repoCheckoutDirectory, ".next", "cache"), "next cache\n");
+await writeFile(join(repoCheckoutDirectory, ".turbo", "cache"), "turbo cache\n");
+await writeFile(join(repoCheckoutDirectory, "coverage", "coverage-final.json"), "{}\n");
+await writeFile(join(repoCheckoutDirectory, ".cache", "cache-entry"), "cache\n");
+await writeFile(join(repoCheckoutDirectory, "tmp", "scratch"), "scratch\n");
+await writeFile(join(repoCheckoutDirectory, "temp", "scratch"), "scratch\n");
 await writeFile(join(repoCheckoutDirectory, ".tinker-opencode-old.log"), "old log\n");
 await symlink(tmpdir(), join(repoCheckoutDirectory, "host-tmp-link"));
 
@@ -166,13 +187,14 @@ await writeFile(
   fakeOpencodePath,
   [
     "#!/usr/bin/env node",
-    "const { writeFileSync } = require('node:fs');",
+    "const { writeFileSync, writeSync } = require('node:fs');",
     "const { join } = require('node:path');",
     "writeFileSync(join(process.cwd(), 'opencode-cwd.txt'), process.cwd());",
+    "writeFileSync(join(process.cwd(), 'opencode-args.json'), JSON.stringify(process.argv.slice(2), null, 2));",
     "writeFileSync(join(process.cwd(), 'opencode-env.json'), JSON.stringify(process.env, null, 2));",
     "writeFileSync(join(process.cwd(), 'index.html'), '<!doctype html><title>Generated</title>');",
-    "process.stdout.write('jsonl output\\n');",
-    "process.stderr.write('SECRET_STDERR_SHOULD_STAY_IN_LOG\\n');",
+    "writeSync(1, 'STDOUT_START_SHOULD_BE_TRUNCATED\\n' + 'o'.repeat(200000) + '\\nSTDOUT_END_SHOULD_STAY\\n');",
+    "writeSync(2, 'STDERR_START_SHOULD_BE_TRUNCATED\\n' + 'e'.repeat(200000) + '\\nSECRET_STDERR_SHOULD_STAY_IN_LOG\\n');",
     "process.exit(7);",
   ].join("\n"),
 );
@@ -221,9 +243,24 @@ await assert.rejects(() => access(join(sandboxDir, "repository", ".git", "HEAD")
 await assert.rejects(() => access(join(sandboxDir, "repository", "node_modules", "ignored.js")));
 await assert.rejects(() => access(join(sandboxDir, "repository", ".env")));
 await assert.rejects(() => access(join(sandboxDir, "repository", ".env.local")));
+await assert.rejects(() => access(join(sandboxDir, "repository", ".npmrc")));
+await assert.rejects(() => access(join(sandboxDir, "repository", ".pypirc")));
+await assert.rejects(() => access(join(sandboxDir, "repository", ".netrc")));
+await assert.rejects(() => access(join(sandboxDir, "repository", ".aws", "credentials")));
+await assert.rejects(() => access(join(sandboxDir, "repository", ".ssh", "id_rsa")));
+await assert.rejects(() => access(join(sandboxDir, "repository", ".next", "cache")));
+await assert.rejects(() => access(join(sandboxDir, "repository", ".turbo", "cache")));
+await assert.rejects(() => access(join(sandboxDir, "repository", "coverage", "coverage-final.json")));
+await assert.rejects(() => access(join(sandboxDir, "repository", ".cache", "cache-entry")));
+await assert.rejects(() => access(join(sandboxDir, "repository", "tmp", "scratch")));
+await assert.rejects(() => access(join(sandboxDir, "repository", "temp", "scratch")));
+await assert.rejects(() => access(join(sandboxDir, "repository", "debug.log")));
+await assert.rejects(() => access(join(sandboxDir, "repository", "npm-debug.log")));
 await assert.rejects(() => access(join(sandboxDir, "repository", ".tinker-opencode-old.log")));
 await assert.rejects(() => access(join(sandboxDir, "repository", "host-tmp-link")));
 assert.equal(await readFile(join(sandboxDir, "opencode-cwd.txt"), "utf8"), await realpath(sandboxDir));
+const opencodeArgs = JSON.parse(await readFile(join(sandboxDir, "opencode-args.json"), "utf8"));
+assert.equal(opencodeArgs.includes("--dangerously-skip-permissions"), false);
 const opencodeConfig = JSON.parse(await readFile(join(sandboxDir, "opencode.json"), "utf8"));
 assert.equal(opencodeConfig.permission.edit, "allow");
 assert.equal(opencodeConfig.permission.bash, "deny");
@@ -232,5 +269,15 @@ assert.equal(opencodeConfig.permission.external_directory, "deny");
 const spawnedEnv = JSON.parse(await readFile(join(sandboxDir, "opencode-env.json"), "utf8"));
 assert.equal(spawnedEnv.TINKER_SHOULD_NOT_LEAK, undefined);
 assert.equal(spawnedEnv.OPENCODE_CONFIG, undefined);
+const stdoutLog = await readFile(join(hyperframesDir, ".tinker-opencode-hyperframes-output.jsonl"), "utf8");
+const stderrLog = await readFile(join(hyperframesDir, ".tinker-opencode-hyperframes-error.log"), "utf8");
+assert.match(stdoutLog, /truncated/i);
+assert.match(stdoutLog, /STDOUT_END_SHOULD_STAY/);
+assert.doesNotMatch(stdoutLog, /STDOUT_START_SHOULD_BE_TRUNCATED/);
+assert.match(stderrLog, /truncated/i);
+assert.match(stderrLog, /SECRET_STDERR_SHOULD_STAY_IN_LOG/);
+assert.doesNotMatch(stderrLog, /STDERR_START_SHOULD_BE_TRUNCATED/);
+assert.ok(Buffer.byteLength(stdoutLog, "utf8") < 140_000);
+assert.ok(Buffer.byteLength(stderrLog, "utf8") < 140_000);
 
 console.log("hyperframes planning tests passed");
