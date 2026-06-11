@@ -226,12 +226,12 @@ await writeFile(
   fakeOpencodePath,
   [
     "#!/usr/bin/env node",
-    "const { existsSync, readFileSync, writeFileSync, writeSync } = require('node:fs');",
+    "const { existsSync, writeFileSync, writeSync } = require('node:fs');",
     "const { join } = require('node:path');",
     "writeFileSync(join(process.cwd(), 'opencode-cwd.txt'), process.cwd());",
     "writeFileSync(join(process.cwd(), 'opencode-args.json'), JSON.stringify(process.argv.slice(2), null, 2));",
     "writeFileSync(join(process.cwd(), 'opencode-env.json'), JSON.stringify(process.env, null, 2));",
-    "writeFileSync(join(process.cwd(), 'opencode-config-check.json'), readFileSync(join(process.cwd(), 'opencode.json'), 'utf8'));",
+    "writeFileSync(join(process.cwd(), 'opencode-config-check.json'), JSON.stringify({ hasLocalConfig: existsSync(join(process.cwd(), 'opencode.json')) }, null, 2));",
     "writeFileSync(join(process.cwd(), 'snapshot-checks.json'), JSON.stringify({",
     "  readme: existsSync(join(process.cwd(), 'repository', 'README.md')),",
     "  packageJson: existsSync(join(process.cwd(), 'repository', 'package.json')),",
@@ -331,11 +331,8 @@ assert.equal(snapshotChecks.hostTmpLink, false);
 assert.equal((await readFile(join(hyperframesDir, "opencode-cwd.txt"), "utf8")).endsWith(".tinker-opencode-workspace"), true);
 const opencodeArgs = JSON.parse(await readFile(join(hyperframesDir, "opencode-args.json"), "utf8"));
 assert.equal(opencodeArgs.includes("--dangerously-skip-permissions"), false);
-const opencodeConfig = JSON.parse(await readFile(join(hyperframesDir, "opencode-config-check.json"), "utf8"));
-assert.equal(opencodeConfig.permission.edit, "allow");
-assert.equal(opencodeConfig.permission.bash, "deny");
-assert.equal(opencodeConfig.permission.webfetch, "deny");
-assert.equal(opencodeConfig.permission.external_directory, "deny");
+const opencodeConfigCheck = JSON.parse(await readFile(join(hyperframesDir, "opencode-config-check.json"), "utf8"));
+assert.equal(opencodeConfigCheck.hasLocalConfig, false);
 const spawnedEnv = JSON.parse(await readFile(join(hyperframesDir, "opencode-env.json"), "utf8"));
 assert.equal(spawnedEnv.TINKER_SHOULD_NOT_LEAK, undefined);
 assert.equal(spawnedEnv.OPENCODE_CONFIG, undefined);
