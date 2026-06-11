@@ -366,10 +366,10 @@ function buildGeneratePrompt(input: GenerateHyperframesProjectInput) {
     {
       task: "Create a Hyperframes project for a polished repo-backed product demo.",
       instructions: [
-        "The source repo snapshot is under repository/ in the OpenCode working directory. Inspect repository/ files, package scripts, source routes, product copy, and component styles before generating files.",
-        "Write all generated Hyperframes output files inside the OpenCode working directory. Do not write outside this output boundary.",
+        "The source repo snapshot is under repository/ in the agent working directory. Inspect repository/ files, package scripts, source routes, product copy, and component styles before generating files.",
+        "Write all generated Hyperframes output files inside the agent working directory. Do not write outside this output boundary.",
         "Do not write generated files into repository/. Treat repository/ as read-only source evidence.",
-        "Create index.html, asset-manifest.json, and generation-manifest.json in the OpenCode working directory.",
+        "Create index.html, asset-manifest.json, and generation-manifest.json in the agent working directory.",
         "Use website screenshots for visual fidelity, and use repo evidence to identify real components, copy, routes, and interaction flows.",
         "Do not invent alternate UI chrome when screenshots or source files show the production interface; match the observed product styling first.",
         "Do not include secrets, API keys, tokens, private environment values, or credentials in generated files.",
@@ -424,8 +424,8 @@ function buildRepairPrompt(input: RepairHyperframesProjectInput) {
     {
       task: "Fix only the generated Hyperframes project files after a failed validation, lint, or render step.",
       instructions: [
-        "The source repo snapshot is under repository/ in the OpenCode working directory. Use it only as read-only source evidence.",
-        "Modify only generated Hyperframes output files inside the OpenCode working directory. Do not write outside this output boundary.",
+        "The source repo snapshot is under repository/ in the agent working directory. Use it only as read-only source evidence.",
+        "Modify only generated Hyperframes output files inside the agent working directory. Do not write outside this output boundary.",
         "Do not write generated files into repository/.",
         "Preserve index.html, asset-manifest.json, generation-manifest.json, and the original demo intent.",
         "Keep generation-manifest.json outputVideoPath set to output.mp4.",
