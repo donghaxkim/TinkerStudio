@@ -1,0 +1,26 @@
+{
+  "name": "@tinker/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "types": "./dist/main.d.ts",
+  "scripts": {
+    "build": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/demo-assembly build && tsc -p tsconfig.json",
+    "dev": "tsx src/main.ts",
+    "test": "vitest run",
+    "typecheck": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/demo-assembly build && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@tinker/demo-assembly": "workspace:*",
+    "@tinker/generation-contract": "workspace:*",
+    "fastify": "^5.8.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.20",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.6"
+  }
+}
