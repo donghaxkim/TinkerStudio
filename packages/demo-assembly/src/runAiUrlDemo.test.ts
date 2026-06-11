@@ -728,38 +728,33 @@ try {
 assert.equal(cleanupMaskRejection, maskedRepoAnalysisError);
 
 const noRepoOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-no-repo-"));
-let noRepoAnalyzerCalled = false;
-const noRepoResult = await runAiUrlDemo({
-  outputRoot: noRepoOutputRoot,
-  projectId: "ai-url-demo-no-repo-test",
-  createdAt: "2026-06-09T00:00:00.000Z",
-  productUrl,
-  renderer: "playwright",
-  prompt,
-  durationCapSeconds: 10,
-  aspectRatio: "16:9",
-  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
-  analyzeRepo: async () => {
-    noRepoAnalyzerCalled = true;
-    throw new Error("repo analyzer should not run without repoUrl");
-  },
-  planner: async (input) => {
-    assert.equal(input.repoAnalysis, undefined);
-    return {
-      storyboard: {
-        title: "No Repo Demo",
-        durationCapSeconds: 10,
-        aspectRatio: "16:9",
-        beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
+let noRepoWebsiteAnalyzerCalled = false;
+let noRepoPlannerCalled = false;
+await assert.rejects(
+  () =>
+    runAiUrlDemo({
+      outputRoot: noRepoOutputRoot,
+      projectId: "ai-url-demo-no-repo-test",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      productUrl,
+      renderer: "playwright",
+      prompt,
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analyzeWebsite: async () => {
+        noRepoWebsiteAnalyzerCalled = true;
+        return { ...productAnalysis, screenshotPath: undefined };
       },
-      capturePlan,
-    };
-  },
-  runCapture: async () => captureResult,
-});
+      planner: async () => {
+        noRepoPlannerCalled = true;
+        throw new Error("planner should not run without repoUrl");
+      },
+      runCapture: async () => captureResult,
+    }),
+  /repoUrl is required for AI URL demo generation/,
+);
 
-assert.equal(noRepoAnalyzerCalled, false);
-assert.equal(noRepoResult.artifactPaths.includes(join(noRepoOutputRoot, "repo-analysis.json")), false);
-assert.equal(existsSync(join(noRepoOutputRoot, "repo-analysis.json")), false);
+assert.equal(noRepoWebsiteAnalyzerCalled, false);
+assert.equal(noRepoPlannerCalled, false);
 
 console.log("run ai url demo tests passed");

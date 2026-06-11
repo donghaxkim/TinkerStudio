@@ -18,7 +18,7 @@ import {
 } from "@tinker/product-analysis";
 import type { AiUrlRenderer } from "./aiUrlRenderer.js";
 import { compileProject } from "./compileProject.js";
-import { createEnvironmentAiUrlPlanner, createOpencodeAiUrlPlanner, type AiUrlPlanner, type AiUrlPlannerResult } from "./aiPlanning.js";
+import { createOpencodeAiUrlPlanner, type AiUrlPlanner, type AiUrlPlannerResult } from "./aiPlanning.js";
 import { validateHyperframesArtifacts } from "./hyperframesArtifacts.js";
 import {
   createOpencodeHyperframesGenerator,
@@ -187,11 +187,15 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     throw new Error(`Unknown AI URL renderer: ${String(renderer)}`);
   }
 
+  if (input.repoUrl === undefined) {
+    throw new Error("repoUrl is required for AI URL demo generation");
+  }
+
   const playwrightOutputRoot = join(input.outputRoot, "playwright");
   const captureOutputDir = join(playwrightOutputRoot, "capture");
   const analyzeWebsite = input.analyzeWebsite ?? defaultAnalyzeWebsite;
   const analyzeRepo = input.analyzeRepo ?? defaultAnalyzeRepo;
-  const planner = input.planner ?? (input.repoUrl === undefined ? createEnvironmentAiUrlPlanner() : createOpencodeAiUrlPlanner());
+  const planner = input.planner ?? createOpencodeAiUrlPlanner();
   const runCapture = input.runCapture ?? runPlaywrightCapture;
   const generateHyperframes = input.generateHyperframes ?? createOpencodeHyperframesGenerator();
   const repairHyperframes = input.repairHyperframes ?? createOpencodeHyperframesRepairer();
