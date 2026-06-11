@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const DEFAULT_LINT_TIMEOUT_MS = 120_000;
@@ -116,7 +116,7 @@ function formatError(error: unknown) {
 }
 
 async function sanitizedHyperframesEnv(hyperframesDir: string) {
-  const runnerRoot = join(dirname(hyperframesDir), ".tinker-hyperframes-runner");
+  const runnerRoot = hyperframesRunnerRoot(hyperframesDir);
   const runnerHome = join(runnerRoot, "home");
   const npmCache = join(runnerRoot, "npm-cache");
   const npmUserconfig = join(runnerRoot, "npmrc");
@@ -138,6 +138,14 @@ async function sanitizedHyperframesEnv(hyperframesDir: string) {
   env.NPM_CONFIG_USERCONFIG = npmUserconfig;
 
   return env;
+}
+
+function hyperframesRunnerRoot(hyperframesDir: string) {
+  return join(dirname(hyperframesDir), ".tinker-hyperframes-runner");
+}
+
+async function removeHyperframesRunnerRoot(hyperframesDir: string) {
+  await rm(hyperframesRunnerRoot(hyperframesDir), { recursive: true, force: true });
 }
 
 async function defaultRunCommand(command: HyperframesCommand): Promise<HyperframesCommandResult> {
@@ -283,32 +291,46 @@ export async function runHyperframesRender(input: RunHyperframesRenderInput): Pr
   const lintLogPath = join(input.hyperframesDir, "lint.log");
   const renderLogPath = join(input.hyperframesDir, "render.log");
   const timeoutOptions = timeoutOptionFields(input);
+  let commandError: unknown;
 
-  await runAndLogCommand(
-    "lint",
-    {
-      command: "npx",
-      args: ["--yes", "--package", "hyperframes", "hyperframes", "lint"],
-      cwd: input.hyperframesDir,
-      timeoutMs: effectiveTimeout(input.lintTimeoutMs, DEFAULT_LINT_TIMEOUT_MS),
-      ...timeoutOptions,
-    },
-    lintLogPath,
-    runCommand,
-  );
+  try {
+    await runAndLogCommand(
+      "lint",
+      {
+        command: "npx",
+        args: ["--yes", "--package", "hyperframes", "hyperframes", "lint"],
+        cwd: input.hyperframesDir,
+        timeoutMs: effectiveTimeout(input.lintTimeoutMs, DEFAULT_LINT_TIMEOUT_MS),
+        ...timeoutOptions,
+      },
+      lintLogPath,
+      runCommand,
+    );
 
-  await runAndLogCommand(
-    "render",
-    {
-      command: "npx",
-      args: ["--yes", "--package", "hyperframes", "hyperframes", "render", "--output", input.outputVideoPath],
-      cwd: input.hyperframesDir,
-      timeoutMs: effectiveTimeout(input.renderTimeoutMs, DEFAULT_RENDER_TIMEOUT_MS),
-      ...timeoutOptions,
-    },
-    renderLogPath,
-    runCommand,
-  );
+    await runAndLogCommand(
+      "render",
+      {
+        command: "npx",
+        args: ["--yes", "--package", "hyperframes", "hyperframes", "render", "--output", input.outputVideoPath],
+        cwd: input.hyperframesDir,
+        timeoutMs: effectiveTimeout(input.renderTimeoutMs, DEFAULT_RENDER_TIMEOUT_MS),
+        ...timeoutOptions,
+      },
+      renderLogPath,
+      runCommand,
+    );
 
-  return { lintLogPath, renderLogPath, outputVideoPath: input.outputVideoPath };
+    return { lintLogPath, renderLogPath, outputVideoPath: input.outputVideoPath };
+  } catch (error) {
+    commandError = error;
+    throw error;
+  } finally {
+    try {
+      await removeHyperframesRunnerRoot(input.hyperframesDir);
+    } catch (error) {
+      if (commandError === undefined) {
+        throw error;
+      }
+    }
+  }
 }

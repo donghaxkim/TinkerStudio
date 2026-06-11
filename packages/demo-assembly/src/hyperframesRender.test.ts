@@ -9,6 +9,15 @@ function isPathInside(parent: string, child: string) {
   return relativePath !== "" && !relativePath.startsWith("..") && !isAbsolute(relativePath);
 }
 
+async function pathExists(path: string) {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const hyperframesDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-render-"));
 await mkdir(hyperframesDir, { recursive: true });
 const outputVideoPath = join(hyperframesDir, "output.mp4");
@@ -43,6 +52,20 @@ assert.match(lintLog, /hyperframes lint warning/);
 assert.match(renderLog, /hyperframes render --output/);
 assert.match(renderLog, /hyperframes render --output .* warning/);
 
+const cleanupSuccessRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-cleanup-success-"));
+const cleanupSuccessDir = join(cleanupSuccessRoot, "hyperframes");
+const cleanupSuccessRunnerRoot = join(cleanupSuccessRoot, ".tinker-hyperframes-runner");
+await mkdir(cleanupSuccessDir);
+await mkdir(cleanupSuccessRunnerRoot, { recursive: true });
+await runHyperframesRender({
+  hyperframesDir: cleanupSuccessDir,
+  outputVideoPath: join(cleanupSuccessDir, "output.mp4"),
+  runCommand: runner,
+});
+assert.equal(await pathExists(cleanupSuccessRunnerRoot), false);
+assert.equal(await pathExists(join(cleanupSuccessDir, "lint.log")), true);
+assert.equal(await pathExists(join(cleanupSuccessDir, "render.log")), true);
+
 await assert.rejects(
   () =>
     runHyperframesRender({
@@ -70,6 +93,45 @@ await assert.rejects(
 assert.equal(lintFailureCalls.length, 1);
 assert.deepEqual(lintFailureCalls[0]?.args, ["--yes", "--package", "hyperframes", "hyperframes", "lint"]);
 assert.match(await readFile(join(lintFailureDir, "lint.log"), "utf8"), /lint stderr/);
+
+const cleanupLintFailureRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-cleanup-lint-failure-"));
+const cleanupLintFailureDir = join(cleanupLintFailureRoot, "hyperframes");
+const cleanupLintFailureRunnerRoot = join(cleanupLintFailureRoot, ".tinker-hyperframes-runner");
+await mkdir(cleanupLintFailureDir);
+await mkdir(cleanupLintFailureRunnerRoot, { recursive: true });
+await assert.rejects(
+  () =>
+    runHyperframesRender({
+      hyperframesDir: cleanupLintFailureDir,
+      outputVideoPath: join(cleanupLintFailureDir, "output.mp4"),
+      runCommand: async () => ({ status: 1, stdout: "lint stdout", stderr: "lint stderr" }),
+    }),
+  /Hyperframes lint failed/,
+);
+assert.equal(await pathExists(cleanupLintFailureRunnerRoot), false);
+assert.equal(await pathExists(join(cleanupLintFailureDir, "lint.log")), true);
+
+const cleanupRenderFailureRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-cleanup-render-failure-"));
+const cleanupRenderFailureDir = join(cleanupRenderFailureRoot, "hyperframes");
+const cleanupRenderFailureRunnerRoot = join(cleanupRenderFailureRoot, ".tinker-hyperframes-runner");
+await mkdir(cleanupRenderFailureDir);
+await mkdir(cleanupRenderFailureRunnerRoot, { recursive: true });
+await assert.rejects(
+  () =>
+    runHyperframesRender({
+      hyperframesDir: cleanupRenderFailureDir,
+      outputVideoPath: join(cleanupRenderFailureDir, "output.mp4"),
+      runCommand: async (command) => ({
+        status: command.args.includes("render") ? 1 : 0,
+        stdout: command.args.includes("render") ? "render stdout" : "lint stdout",
+        stderr: command.args.includes("render") ? "render stderr" : "lint stderr",
+      }),
+    }),
+  /Hyperframes render failed/,
+);
+assert.equal(await pathExists(cleanupRenderFailureRunnerRoot), false);
+assert.equal(await pathExists(join(cleanupRenderFailureDir, "lint.log")), true);
+assert.equal(await pathExists(join(cleanupRenderFailureDir, "render.log")), true);
 
 const timeoutDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-timeout-"));
 await assert.rejects(
@@ -187,8 +249,7 @@ for (const value of [lintEnv.home, lintEnv.npmCache, lintEnv.npmUserconfig, rend
   assert.equal(isPathInside(sanitizedEnvDir, value), false);
   assert.equal(isPathInside(dirname(sanitizedEnvDir), value), true);
 }
-assert.ok((await stat(expectedRunnerHome)).isDirectory());
-assert.ok((await stat(expectedNpmCache)).isDirectory());
+assert.equal(await pathExists(expectedRunnerRoot), false);
 
 const defaultTimeoutDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-default-timeout-"));
 const fakeBinDir = join(defaultTimeoutDir, "bin");
