@@ -113,7 +113,19 @@ function buildHyperframesAgentCommand(prompt: string, sandboxDirectory: string):
 
   return {
     executable: "opencode",
-    args: ["run", "--pure", "--format", "json", "--dir", sandboxDirectory, prompt],
+    args: [
+      "run",
+      "--pure",
+      "--format",
+      "json",
+      "--dir",
+      sandboxDirectory,
+      "--model",
+      "openai/gpt-5.5-fast",
+      "--variant",
+      "high",
+      prompt,
+    ],
     label: "OpenCode",
   };
 }

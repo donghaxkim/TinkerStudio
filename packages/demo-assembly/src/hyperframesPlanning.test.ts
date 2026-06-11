@@ -361,9 +361,20 @@ assert.equal(snapshotChecks.oldTinkerLog, false);
 assert.equal(snapshotChecks.hostTmpLink, false);
 assert.equal((await readFile(join(hyperframesDir, "opencode-cwd.txt"), "utf8")).endsWith(".tinker-opencode-workspace"), true);
 const opencodeArgs = JSON.parse(await readFile(join(hyperframesDir, "opencode-args.json"), "utf8"));
-assert.deepEqual(opencodeArgs.slice(0, 6), ["run", "--pure", "--format", "json", "--dir", sandboxDir]);
-assert.match(opencodeArgs[6] ?? "", /Create a Hyperframes project/);
-assert.equal(opencodeArgs.length, 7);
+assert.deepEqual(opencodeArgs.slice(0, 10), [
+  "run",
+  "--pure",
+  "--format",
+  "json",
+  "--dir",
+  sandboxDir,
+  "--model",
+  "openai/gpt-5.5-fast",
+  "--variant",
+  "high",
+]);
+assert.match(opencodeArgs[10] ?? "", /Create a Hyperframes project/);
+assert.equal(opencodeArgs.length, 11);
 assert.equal(opencodeArgs.includes("--permission-mode"), false);
 assert.equal(opencodeArgs.includes("--dangerously-skip-permissions"), false);
 assert.equal(opencodeArgs.includes("--allow-dangerously-skip-permissions"), false);
