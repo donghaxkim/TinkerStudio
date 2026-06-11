@@ -154,6 +154,36 @@ await assert.rejects(
   /asset outputPath must stay inside the Hyperframes directory/,
 );
 
+for (const outputVideoPath of ["package.json", "Node_Modules/.bin/hyperframes"]) {
+  const invalidOutputRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-output-contract-"));
+  const invalidOutputDir = join(invalidOutputRoot, "hyperframes");
+  await mkdir(invalidOutputDir, { recursive: true });
+  await writeFile(join(invalidOutputDir, "index.html"), "<html></html>\n");
+  await writeFile(join(invalidOutputDir, "asset-manifest.json"), JSON.stringify({ assets: [] }));
+  await writeFile(
+    join(invalidOutputDir, "generation-manifest.json"),
+    JSON.stringify({
+      renderer: "hyperframes",
+      productUrl: "https://example.com",
+      sourceRepoUrl: "https://github.com/example/product",
+      durationCapSeconds: 12,
+      aspectRatio: "16:9",
+      sourceGrounding: ["repo"],
+      outputVideoPath,
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      validateHyperframesArtifacts({
+        hyperframesDir: invalidOutputDir,
+        productUrl: "https://example.com",
+        repoUrl: "https://github.com/example/product",
+      }),
+    /outputVideoPath must be output\.mp4/,
+  );
+}
+
 for (const forbiddenArtifactPath of [
   "node_modules/.bin/hyperframes",
   "Node_Modules/.bin/hyperframes",

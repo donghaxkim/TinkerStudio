@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const DEFAULT_LINT_TIMEOUT_MS = 120_000;
@@ -115,8 +115,14 @@ function formatError(error: unknown) {
   return error instanceof Error ? (error.stack ?? error.message) : String(error);
 }
 
-function sanitizedHyperframesEnv() {
-  const allowedNames = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR"]);
+async function sanitizedHyperframesEnv(hyperframesDir: string) {
+  const runnerHome = join(hyperframesDir, ".tinker-hyperframes-runner-home");
+  const npmCache = join(hyperframesDir, ".tinker-hyperframes-npm-cache");
+  const npmUserconfig = join(hyperframesDir, ".tinker-hyperframes-npmrc");
+  await mkdir(runnerHome, { recursive: true });
+  await mkdir(npmCache, { recursive: true });
+
+  const allowedNames = new Set(["PATH", "USER", "LOGNAME", "SHELL", "TMPDIR"]);
   const env: NodeJS.ProcessEnv = {};
 
   for (const [name, value] of Object.entries(process.env)) {
@@ -125,16 +131,21 @@ function sanitizedHyperframesEnv() {
     }
   }
 
+  env.HOME = runnerHome;
+  env.NPM_CONFIG_CACHE = npmCache;
+  env.NPM_CONFIG_USERCONFIG = npmUserconfig;
+
   return env;
 }
 
 async function defaultRunCommand(command: HyperframesCommand): Promise<HyperframesCommandResult> {
+  const env = await sanitizedHyperframesEnv(command.cwd);
   return await new Promise((resolve, reject) => {
     const detached = process.platform !== "win32";
     const child = spawn(command.command, command.args, {
       cwd: command.cwd,
       detached,
-      env: sanitizedHyperframesEnv(),
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout = createRetainedOutput();

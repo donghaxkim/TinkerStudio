@@ -143,6 +143,9 @@ export async function validateHyperframesArtifacts(
   }
   const outputVideoPath = join(hyperframesDir, generationManifest.outputVideoPath);
   assertInside(hyperframesDir, outputVideoPath, "outputVideoPath must stay inside the Hyperframes directory");
+  if (generationManifest.outputVideoPath !== "output.mp4") {
+    throw new Error("Hyperframes generation-manifest.json outputVideoPath must be output.mp4");
+  }
 
   return {
     indexPath,
