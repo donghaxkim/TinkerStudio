@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import type { AspectRatio } from "./types.js";
 
-export const DEFAULT_OPENCODE_TIMEOUT_MS = 600_000;
+export const DEFAULT_OPENCODE_TIMEOUT_MS = 1_800_000;
 const TIMEOUT_KILL_GRACE_MS = 5_000;
 const TIMEOUT_CLOSE_FALLBACK_MS = 5_000;
 const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
@@ -88,7 +88,7 @@ function selectHyperframesAgent(value = process.env.TINKER_HYPERFRAMES_AGENT): H
   const normalized = (value ?? "").trim();
 
   if (normalized === "") {
-    return "opencode";
+    return "claude";
   }
 
   if (normalized === "opencode" || normalized === "claude") {
