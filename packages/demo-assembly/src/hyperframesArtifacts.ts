@@ -82,7 +82,7 @@ async function assertNoForbiddenGeneratedArtifacts(hyperframesDir: string) {
   const entries = await readdir(hyperframesDir, { recursive: true, withFileTypes: true });
 
   for (const entry of entries) {
-    if (FORBIDDEN_GENERATED_ARTIFACT_NAMES.has(entry.name)) {
+    if (FORBIDDEN_GENERATED_ARTIFACT_NAMES.has(entry.name.toLowerCase())) {
       throw new Error(`forbidden generated Hyperframes artifact: ${entry.name}`);
     }
   }

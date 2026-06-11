@@ -156,9 +156,12 @@ await assert.rejects(
 
 for (const forbiddenArtifactPath of [
   "node_modules/.bin/hyperframes",
+  "Node_Modules/.bin/hyperframes",
   "package.json",
+  "Package.json",
   "package-lock.json",
   "pnpm-lock.yaml",
+  "PNPM-lock.yaml",
   "yarn.lock",
   "bun.lockb",
   ".npmrc",
