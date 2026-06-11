@@ -79,7 +79,7 @@ const storyboardSchema = z
             startHint: finiteNumber.nonnegative().optional(),
             endHint: finiteNumber.nonnegative().optional(),
           })
-          .strict(),
+          .strip(),
       )
       .min(1),
   })
