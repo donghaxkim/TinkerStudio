@@ -158,10 +158,10 @@ async function readHyperframesFailureLog(hyperframesDir: string, failureStage: s
 
 function normalizeRepairAttempts(value: number | undefined) {
   if (value === undefined) {
-    return 1;
+    return 2;
   }
 
-  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 1;
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 2;
 }
 
 function mergeArtifactPaths(...artifactPathGroups: string[][]) {

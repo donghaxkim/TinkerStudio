@@ -86,6 +86,13 @@ assert.match(calls[0]?.prompt ?? "", /outputVideoPath/);
 const generatePrompt = JSON.parse(calls[0]?.prompt ?? "{}");
 assert.equal(generatePrompt.requiredGenerationManifest.schema.renderer, "hyperframes");
 assert.deepEqual(generatePrompt.requiredGenerationManifest.schema.sourceGrounding, ["repo", "website-analysis"]);
+assert.deepEqual(generatePrompt.requiredHyperframesComposition.rootAttributes, {
+  "data-composition-id": "stable composition id used by window.__timelines",
+  "data-width": "numeric pixel width matching aspectRatio",
+  "data-height": "numeric pixel height matching aspectRatio",
+  "data-start": "0",
+});
+assert.equal(generatePrompt.requiredHyperframesComposition.timelineRegistry, "window.__timelines[compositionId]");
 assert.ok(Array.isArray(generatePrompt.requiredAssetManifest.schema.assets));
 assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.id, "string");
 assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.type, "string");
@@ -143,6 +150,14 @@ assert.match(repairCalls[0]?.prompt ?? "", /source repo snapshot is under reposi
 assert.match(repairCalls[0]?.prompt ?? "", /Modify only generated Hyperframes output files inside the OpenCode working directory/);
 assert.match(repairCalls[0]?.prompt ?? "", /failureStage/);
 assert.match(repairCalls[0]?.prompt ?? "", /line 1/);
+const repairPrompt = JSON.parse(repairCalls[0]?.prompt ?? "{}");
+assert.deepEqual(repairPrompt.requiredHyperframesComposition.rootAttributes, {
+  "data-composition-id": "stable composition id used by window.__timelines",
+  "data-width": "numeric pixel width matching aspectRatio",
+  "data-height": "numeric pixel height matching aspectRatio",
+  "data-start": "0",
+});
+assert.equal(repairPrompt.requiredHyperframesComposition.timelineRegistry, "window.__timelines[compositionId]");
 
 const repairCleanupRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-repair-cleanup-"));
 const repairCleanupRepo = join(repairCleanupRoot, "repo");

@@ -600,6 +600,77 @@ await runAiUrlDemo({
 assert.deepEqual(validationRendererTextRepairStages, ["validation"]);
 assert.equal(validationRendererTextRenderAttempts, 1);
 
+const validationThenLintRepairOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-validation-then-lint-"));
+const validationThenLintRepairStages: string[] = [];
+let validationThenLintRenderAttempts = 0;
+await runAiUrlDemo({
+  outputRoot: validationThenLintRepairOutputRoot,
+  projectId: "ai-url-demo-validation-then-lint-repair-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "hyperframes",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  generateHyperframes: async (input) => {
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+    await writeFile(
+      join(input.hyperframesDir, "generation-manifest.json"),
+      `${JSON.stringify(
+        {
+          renderer: "hyperframes",
+          productUrl: canonicalProductUrl,
+          sourceRepoUrl: repoUrl,
+          durationCapSeconds: 10,
+          aspectRatio: "16:9",
+          sourceGrounding: ["repo", "website-analysis"],
+          outputVideoPath: "output.mp4",
+          evidence: "invalid extra key that should be repaired first",
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  },
+  runHyperframes: async (input) => {
+    validationThenLintRenderAttempts += 1;
+    if (validationThenLintRenderAttempts === 1) {
+      await writeFile(join(input.hyperframesDir, "lint.log"), "root_missing_composition_id\nmissing_timeline_registry\n");
+      throw new Error("Hyperframes lint failed; see lint.log");
+    }
+
+    await writeFile(input.outputVideoPath, "fake repaired mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async (input) => {
+    validationThenLintRepairStages.push(input.failureStage);
+    if (input.failureStage === "validation") {
+      assert.match(input.logText, /evidence/);
+      await writeValidHyperframesArtifacts(input.hyperframesDir);
+      return;
+    }
+
+    assert.equal(input.failureStage, "lint");
+    assert.match(input.logText, /root_missing_composition_id/);
+  },
+  runCapture: async () => {
+    throw new Error("runCapture should not run for validation-then-lint repair test");
+  },
+});
+
+assert.deepEqual(validationThenLintRepairStages, ["validation", "lint"]);
+assert.equal(validationThenLintRenderAttempts, 2);
+
 const negativeRepairAttemptsOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-negative-repairs-"));
 let negativeRepairRenderAttempts = 0;
 const negativeRepairAttemptsResult = await runAiUrlDemo({
