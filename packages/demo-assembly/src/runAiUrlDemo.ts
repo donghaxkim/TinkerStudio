@@ -1,4 +1,4 @@
-import { access, mkdir, open, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, open, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   runPlaywrightCapture,
@@ -32,6 +32,7 @@ import type { AspectRatio } from "./types.js";
 export type AiUrlDemoPhase = "analysis" | "planning" | "validation" | "verification" | "capture" | "assembly";
 
 const MAX_HYPERFRAMES_REPAIR_LOG_BYTES = 20_000;
+const PRODUCT_ANALYSIS_SCREENSHOT_FILE_NAME = "product-analysis.png";
 
 type AnalyzeWebsiteDependency = (url: string, options: AnalyzeWebsiteOptions) => Promise<ProductAnalysis>;
 type AnalyzeRepoDependency = (repoUrl: string, options: AnalyzeRepoOptions) => Promise<RepoAnalysis>;
@@ -180,6 +181,16 @@ function combineCaptureCounts(...counts: RunAiUrlDemoResult["captureCounts"][]):
   );
 }
 
+async function prepareHyperframesWebsiteAnalysis(analysis: ProductAnalysis, hyperframesDir: string) {
+  if (analysis.screenshotPath === undefined) {
+    return analysis;
+  }
+
+  await cp(analysis.screenshotPath, join(hyperframesDir, PRODUCT_ANALYSIS_SCREENSHOT_FILE_NAME));
+
+  return { ...analysis, screenshotPath: PRODUCT_ANALYSIS_SCREENSHOT_FILE_NAME };
+}
+
 export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDemoResult> {
   const renderer = input.renderer ?? "hyperframes";
 
@@ -208,7 +219,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   input.onPhase?.("analysis");
   const analysis = await analyzeWebsite(input.productUrl, {
     outputDirectory: input.outputRoot,
-    screenshotFileName: "product-analysis.png",
+    screenshotFileName: PRODUCT_ANALYSIS_SCREENSHOT_FILE_NAME,
     headless: true,
   });
   const productAnalysisPath = join(input.outputRoot, "product-analysis.json");
@@ -240,6 +251,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
 
     const hyperframesDir = join(input.outputRoot, "hyperframes");
     await mkdir(hyperframesDir, { recursive: true });
+    const hyperframesWebsiteAnalysis = await prepareHyperframesWebsiteAnalysis(analysis, hyperframesDir);
 
     input.onPhase?.("planning");
     await generateHyperframes({
@@ -248,7 +260,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       prompt: input.prompt,
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
-      websiteAnalysis: analysis,
+      websiteAnalysis: hyperframesWebsiteAnalysis,
       repoAnalysis,
       repoCheckoutDirectory,
       hyperframesDir,

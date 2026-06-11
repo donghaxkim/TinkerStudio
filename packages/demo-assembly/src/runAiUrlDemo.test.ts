@@ -193,6 +193,50 @@ assert.equal(
 );
 assert.equal(existsSync(join(defaultRendererOutputRoot, ".repo-scratch")), false);
 
+const hyperframesScreenshotOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-hyperframes-screenshot-"));
+let hyperframesScreenshotGeneratorCalled = false;
+await runAiUrlDemo({
+  outputRoot: hyperframesScreenshotOutputRoot,
+  projectId: "ai-url-demo-hyperframes-screenshot-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "hyperframes",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async () => {
+    const screenshotPath = join(hyperframesScreenshotOutputRoot, "product-analysis.png");
+    await writeFile(screenshotPath, "fake png\n");
+    return { ...productAnalysis, screenshotPath };
+  },
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  generateHyperframes: async (input) => {
+    hyperframesScreenshotGeneratorCalled = true;
+    assert.equal(input.websiteAnalysis.screenshotPath, "product-analysis.png");
+    assert.equal(existsSync(join(input.hyperframesDir, "product-analysis.png")), true);
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+  },
+  runHyperframes: async (input) => {
+    await writeFile(input.outputVideoPath, "fake mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async () => {
+    throw new Error("repair should not run for Hyperframes screenshot handoff test");
+  },
+  runCapture: async () => {
+    throw new Error("runCapture should not run for Hyperframes screenshot handoff test");
+  },
+});
+assert.equal(hyperframesScreenshotGeneratorCalled, true);
+
 const mismatchedHyperframesOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-hyperframes-output-mismatch-"));
 await assert.rejects(
   () =>
