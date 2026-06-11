@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      "@tinker/motion": fileURLToPath(new URL("../motion/src/index.ts", import.meta.url)),
       "@tinker/project-schema": fileURLToPath(new URL("../project-schema/src/index.ts", import.meta.url)),
       "@tinker/rendering": fileURLToPath(new URL("../rendering/src/index.ts", import.meta.url)),
     },

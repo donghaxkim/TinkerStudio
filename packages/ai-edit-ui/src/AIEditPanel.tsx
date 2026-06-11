@@ -1,12 +1,16 @@
+import { useEffect } from "react";
 import type { DemoProject } from "@tinker/project-schema";
 import type { EditorCommand, SelectedRange } from "@tinker/editor";
 import { selectProjectSlice } from "@tinker/editor";
 import { OperationPreviewList } from "./OperationPreviewList.js";
 import { useAIEditFlow } from "./useAIEditFlow.js";
 
+export type AIEditPreviewSource = "none" | "auto-zoom" | "ai";
+
 export type AIEditPanelProps = {
   project: DemoProject;
   selectedRange?: SelectedRange;
+  previewSource?: AIEditPreviewSource;
   onPreviewProjectChange?: (project: DemoProject | undefined) => void;
   onAccept?: (project: DemoProject, command: EditorCommand) => void;
   onReject?: () => void;
@@ -20,6 +24,7 @@ function formatRange(range: SelectedRange | undefined) {
 export function AIEditPanel({
   project,
   selectedRange,
+  previewSource,
   onPreviewProjectChange,
   onAccept,
   onReject,
@@ -32,6 +37,13 @@ export function AIEditPanel({
     onReject,
   });
   const slice = selectedRange && selectedRange.end > selectedRange.start ? selectProjectSlice(project, selectedRange) : undefined;
+  const { clearStalePreview, status } = flow;
+
+  useEffect(() => {
+    if (status === "preview" && previewSource !== undefined && previewSource !== "ai") {
+      clearStalePreview();
+    }
+  }, [clearStalePreview, previewSource, status]);
 
   return (
     <aside
@@ -59,7 +71,7 @@ export function AIEditPanel({
 
       {slice ? (
         <p style={{ margin: 0, color: "#94a3b8" }}>
-          Context: {slice.clips.length} clips, {slice.captions.length} captions, {slice.zooms.length} zooms, {slice.callouts.length} callouts.
+          Context: {slice.clips.length} clips, {slice.zooms.length} zooms, {slice.cursorEvents.length} cursor events.
         </p>
       ) : (
         <p style={{ margin: 0, color: "#fbbf24" }}>Select a non-empty timeline range to enable AI edits.</p>

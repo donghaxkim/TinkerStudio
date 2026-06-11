@@ -19,6 +19,12 @@ export type ProjectValidationIssue = {
   message: string;
 };
 
+export const MAX_DEMO_PROJECT_JSON_BYTES = 5 * 1024 * 1024;
+
+export function getUtf8ByteLength(value: string) {
+  return new TextEncoder().encode(value).byteLength;
+}
+
 export function formatProjectValidationIssues(issues: ProjectValidationIssue[]): string[] {
   return issues.map((issue) => {
     const path = issue.path.length > 0 ? issue.path.join(".") : "project";
@@ -44,6 +50,16 @@ export function serializeDemoProject(project: DemoProject): SerializeDemoProject
 
 export function deserializeDemoProjectJson(json: string): DeserializeDemoProjectJsonResult {
   let parsed: unknown;
+
+  if (getUtf8ByteLength(json) > MAX_DEMO_PROJECT_JSON_BYTES) {
+    return {
+      ok: false,
+      error: {
+        message: "Project JSON is too large",
+        issues: [`DemoProject JSON must be ${MAX_DEMO_PROJECT_JSON_BYTES} bytes or less`],
+      },
+    };
+  }
 
   try {
     parsed = JSON.parse(json) as unknown;

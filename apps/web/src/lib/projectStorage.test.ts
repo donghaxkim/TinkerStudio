@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadSampleProject } from "../fixtures/loadSampleProject.js";
 import {
   LOCAL_PROJECT_STORAGE_KEY,
+  clearProjectStorage,
   createProjectJsonDownload,
   loadProjectFromStorage,
   saveProjectToStorage,
@@ -81,5 +82,13 @@ describe("projectStorage", () => {
     expect(download.filename).toBe("sample-product-demo-demo-project-sample.json");
     expect(download.mimeType).toBe("application/json");
     expect(JSON.parse(download.contents)).toEqual(sampleProject);
+  });
+
+  it("clears the saved project snapshot", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(LOCAL_PROJECT_STORAGE_KEY, "{}");
+
+    expect(clearProjectStorage(storage)).toEqual({ ok: true });
+    expect(storage.getItem(LOCAL_PROJECT_STORAGE_KEY)).toBeNull();
   });
 });

@@ -27,6 +27,7 @@ export type UseAIEditFlowResult = {
   acceptProposal: () => void;
   rejectProposal: () => void;
   reset: () => void;
+  clearStalePreview: () => void;
 };
 
 function resultErrorMessage(result: ApplyEditOperationsResult) {
@@ -58,6 +59,13 @@ export function useAIEditFlow({
     setError(undefined);
     onPreviewProjectChange?.(undefined);
   }, [onPreviewProjectChange]);
+
+  const clearStalePreview = useCallback(() => {
+    setStatus("idle");
+    setProposal(undefined);
+    setPreviewResult(undefined);
+    setError(undefined);
+  }, []);
 
   const generateProposal = useCallback(async () => {
     if (!selectedRange || selectedRange.end <= selectedRange.start) {
@@ -146,10 +154,12 @@ export function useAIEditFlow({
       acceptProposal,
       rejectProposal,
       reset,
+      clearStalePreview,
     }),
     [
       acceptProposal,
       canGenerate,
+      clearStalePreview,
       error,
       generateProposal,
       previewResult,

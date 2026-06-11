@@ -1,7 +1,7 @@
 import type { DemoProject } from "@tinker/project-schema";
 
-export type TimelineItemKind = "clip" | "caption" | "zoom" | "callout";
-export type TimelineRowKind = "track" | "captions" | "zooms" | "callouts";
+export type TimelineItemKind = "clip" | "zoom";
+export type TimelineRowKind = "track" | "zooms";
 
 export type TimelineItem = {
   id: string;
@@ -41,19 +41,6 @@ export function buildTimelineRows(project: DemoProject): TimelineRow[] {
   return [
     ...trackRows,
     {
-      id: "captions",
-      kind: "captions",
-      label: "Captions",
-      items: project.captions.map((caption, index) => ({
-        id: caption.id,
-        kind: "caption",
-        label: caption.text || formatFallbackLabel("caption", index),
-        start: caption.start,
-        end: caption.end,
-        rowId: "captions",
-      })),
-    },
-    {
       id: "zooms",
       kind: "zooms",
       label: "Zooms",
@@ -64,19 +51,6 @@ export function buildTimelineRows(project: DemoProject): TimelineRow[] {
         start: zoom.start,
         end: zoom.end,
         rowId: "zooms",
-      })),
-    },
-    {
-      id: "callouts",
-      kind: "callouts",
-      label: "Callouts",
-      items: project.callouts.map((callout, index) => ({
-        id: callout.id,
-        kind: "callout",
-        label: callout.text || formatFallbackLabel("callout", index),
-        start: callout.start,
-        end: callout.end,
-        rowId: "callouts",
       })),
     },
   ];

@@ -1,0 +1,43 @@
+{
+  "id": "storyboard_sample_tinker",
+  "title": "Tinker Generate to Editor Demo",
+  "durationCapSeconds": 45,
+  "aspectRatio": "16:9",
+  "beats": [
+    {
+      "id": "intro",
+      "type": "hook",
+      "startHint": 0,
+      "endHint": 6,
+      "goal": "Introduce Tinker as a product demo studio for builders."
+    },
+    {
+      "id": "create-demo",
+      "type": "screen_capture",
+      "startHint": 6,
+      "endHint": 18,
+      "goal": "Show the Create Demo form using repo URL, product URL, prompt, duration, and aspect ratio."
+    },
+    {
+      "id": "generation-progress",
+      "type": "feature",
+      "startHint": 18,
+      "endHint": 28,
+      "goal": "Show progress through analysis, storyboard, capture, assembly, validation, and completion."
+    },
+    {
+      "id": "editor",
+      "type": "proof",
+      "startHint": 28,
+      "endHint": 40,
+      "goal": "Show the editable preview, timeline overlays, selected range, and AI edit panel."
+    },
+    {
+      "id": "export",
+      "type": "cta",
+      "startHint": 40,
+      "endHint": 45,
+      "goal": "Show export readiness and save/load controls."
+    }
+  ]
+}

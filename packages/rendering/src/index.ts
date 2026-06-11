@@ -9,7 +9,6 @@ export type {
   RenderLayerKind,
   RenderOutput,
   RenderTimeline,
-  TextRenderLayer,
   ZoomRenderLayer,
 } from "./renderFinal.js";
 export { buildFinalRenderPlan } from "./renderFinal.js";

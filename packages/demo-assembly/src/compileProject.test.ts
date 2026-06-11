@@ -18,7 +18,6 @@ const input: CompileProjectInput = {
         id: "hook",
         type: "hook",
         goal: "Introduce the product promise.",
-        narration: "Generate polished product demos without perfect manual takes.",
         startHint: 0,
         endHint: 4,
       },
@@ -79,7 +78,6 @@ assert.equal(project.tracks[0]?.clips[0]?.sourceEnd, 12);
 assert.equal(project.cursorEvents.length, 3);
 assert.equal(project.zooms.length, 1);
 assert.equal(project.zooms[0]?.id, "zoom-3");
-assert.equal(project.captions.length, 1);
 assert.equal(project.metadata.productUrl, "http://127.0.0.1:4173/");
 
 const clampedProject = DemoProjectSchema.parse(
@@ -93,7 +91,6 @@ const clampedProject = DemoProjectSchema.parse(
   }),
 );
 
-assert.equal(clampedProject.captions[0]?.start, 0);
 assert.equal(clampedProject.cursorEvents.length, 2);
 
 const shortCaptureProject = DemoProjectSchema.parse(

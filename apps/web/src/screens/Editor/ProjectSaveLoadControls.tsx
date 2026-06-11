@@ -1,6 +1,6 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 import type { DemoProject } from "@tinker/project-schema";
-import { deserializeDemoProjectJson, type ProjectPersistenceError } from "@tinker/editor";
+import { deserializeDemoProjectJson, MAX_DEMO_PROJECT_JSON_BYTES, type ProjectPersistenceError } from "@tinker/editor";
 import {
   createProjectJsonDownload,
   loadProjectFromStorage,
@@ -50,6 +50,13 @@ function fileReadError(error: unknown): ProjectPersistenceError {
   };
 }
 
+function projectFileTooLargeError(): ProjectPersistenceError {
+  return {
+    message: "Project JSON is too large",
+    issues: [`DemoProject JSON must be ${MAX_DEMO_PROJECT_JSON_BYTES} bytes or less`],
+  };
+}
+
 export function ProjectSaveLoadControls({ project, onProjectLoaded }: ProjectSaveLoadControlsProps) {
   const [status, setStatus] = useState<ProjectPersistenceStatus>({ kind: "idle" });
   const download = useMemo(() => createProjectJsonDownload(project), [project]);
@@ -82,6 +89,11 @@ export function ProjectSaveLoadControls({ project, onProjectLoaded }: ProjectSav
     event.currentTarget.value = "";
 
     if (!file) return;
+
+    if (file.size > MAX_DEMO_PROJECT_JSON_BYTES) {
+      setStatus({ kind: "error", error: projectFileTooLargeError() });
+      return;
+    }
 
     let contents: string;
 

@@ -60,9 +60,7 @@ function allEntityIds(project: DemoProject) {
     ...project.assets.map((asset) => asset.id),
     ...project.tracks.map((track) => track.id),
     ...project.tracks.flatMap((track) => track.clips.map((clip) => clip.id)),
-    ...project.captions.map((caption) => caption.id),
     ...project.zooms.map((zoom) => zoom.id),
-    ...project.callouts.map((callout) => callout.id),
     ...project.aiEditHistory.map((edit) => edit.id),
   ]);
 }
@@ -115,16 +113,8 @@ function rangeIsWithin(inner: TimedEntity, outer: TimedEntity) {
 }
 
 function findTimedEntity(project: DemoProject, operation: Extract<AIEditOperation, { type: "remove_entity" }>) {
-  if (operation.entityType === "caption") {
-    return project.captions.find((caption) => caption.id === operation.id);
-  }
-
   if (operation.entityType === "zoom") {
     return project.zooms.find((zoom) => zoom.id === operation.id);
-  }
-
-  if (operation.entityType === "callout") {
-    return project.callouts.find((callout) => callout.id === operation.id);
   }
 
   for (const track of project.tracks) {
@@ -136,18 +126,8 @@ function findTimedEntity(project: DemoProject, operation: Extract<AIEditOperatio
 }
 
 function removeEntity(project: MutableProject, operation: Extract<AIEditOperation, { type: "remove_entity" }>) {
-  if (operation.entityType === "caption") {
-    project.captions = project.captions.filter((caption) => caption.id !== operation.id);
-    return;
-  }
-
   if (operation.entityType === "zoom") {
     project.zooms = project.zooms.filter((zoom) => zoom.id !== operation.id);
-    return;
-  }
-
-  if (operation.entityType === "callout") {
-    project.callouts = project.callouts.filter((callout) => callout.id !== operation.id);
     return;
   }
 
@@ -247,36 +227,6 @@ export function applyEditOperations(
           end: operation.end,
           target: operation.target,
           easing: operation.easing,
-        },
-      ];
-      continue;
-    }
-
-    if (operation.type === "add_callout") {
-      project.callouts = [
-        ...project.callouts,
-        {
-          id: nextId("callout"),
-          start: operation.start,
-          end: operation.end,
-          text: operation.text,
-          position: operation.position,
-          target: operation.target,
-          style: { variant: "label" },
-        },
-      ];
-      continue;
-    }
-
-    if (operation.type === "add_caption") {
-      project.captions = [
-        ...project.captions,
-        {
-          id: nextId("caption"),
-          start: operation.start,
-          end: operation.end,
-          text: operation.text,
-          style: { position: "bottom" },
         },
       ];
       continue;

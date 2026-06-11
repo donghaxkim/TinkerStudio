@@ -8,9 +8,12 @@ export { Timeline } from "./timeline/Timeline.js";
 export type { TimelineProps } from "./timeline/Timeline.js";
 export type { ActivePreviewOverlays } from "./preview/activeOverlays.js";
 export { getActivePreviewOverlays } from "./preview/activeOverlays.js";
+export type { PreviewMotionState } from "./preview/previewMotionState.js";
+export { buildPreviewMotionState } from "./preview/previewMotionState.js";
 export { Preview } from "./preview/Preview.js";
 export type { PreviewProps } from "./preview/Preview.js";
-export { getAssetById, getPrimaryClip, isBrowserRenderableMedia } from "./project/assetResolver.js";
+export type { AssetResolutionIssue, AssetResolutionIssueCode, BrowserAssetResolution } from "./project/assetResolver.js";
+export { getAssetById, getPrimaryClip, isBrowserRenderableMedia, resolveBrowserPreviewAsset } from "./project/assetResolver.js";
 export type {
   DeserializeDemoProjectJsonResult,
   ProjectPersistenceError,
@@ -20,6 +23,7 @@ export type {
 export {
   deserializeDemoProjectJson,
   formatProjectValidationIssues,
+  MAX_DEMO_PROJECT_JSON_BYTES,
   serializeDemoProject,
 } from "./project/projectPersistence.js";
 export type {
@@ -30,6 +34,8 @@ export type {
   ApplyEditOperationsResult,
 } from "./applyEditOperations.js";
 export { applyEditOperations } from "./applyEditOperations.js";
+export type { AcceptAutoZoomSuggestionsResult, AutoZoomSuggestionState } from "./autoZoomSuggestionFlow.js";
+export { acceptAutoZoomSuggestions, buildAutoZoomSuggestionState } from "./autoZoomSuggestionFlow.js";
 export type { ProjectSlice, ProjectSliceClip } from "./selectProjectSlice.js";
 export { normalizeProjectSliceRange, selectProjectSlice } from "./selectProjectSlice.js";
 export type { EditorCommand, EditorCommandType, EditorHistory, HistoryStepResult } from "./editorHistory.js";
@@ -39,5 +45,13 @@ export {
   redoEditorCommand,
   undoEditorCommand,
 } from "./editorHistory.js";
+export type {
+  ApplyManualEditOperationOptions,
+  ApplyManualEditOperationResult,
+  ManualEditOperation,
+  ManualEditOperationsError,
+} from "./manualEditOperations.js";
+export { applyManualEditOperation } from "./manualEditOperations.js";
 export type { PrepareMp4ExportResult } from "./export/prepareMp4Export.js";
 export { prepareMp4Export } from "./export/prepareMp4Export.js";
+export * from "./motion/index.js";

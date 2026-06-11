@@ -1,9 +1,7 @@
-import type { Callout, Caption, CursorEvent, DemoProject, ZoomKeyframe } from "@tinker/project-schema";
+import type { CursorEvent, DemoProject, ZoomKeyframe } from "@tinker/project-schema";
 
 export type ActivePreviewOverlays = {
-  captions: Caption[];
   zooms: ZoomKeyframe[];
-  callouts: Callout[];
   cursorEvents: CursorEvent[];
   latestCursor?: CursorEvent;
 };
@@ -33,9 +31,7 @@ export function getActivePreviewOverlays(
   const sortedCursorEvents = [...project.cursorEvents].sort((left, right) => left.time - right.time);
 
   return {
-    captions: project.captions.filter((caption) => isActiveRange(caption, time)),
     zooms: project.zooms.filter((zoom) => isActiveRange(zoom, time)),
-    callouts: project.callouts.filter((callout) => isActiveRange(callout, time)),
     cursorEvents: sortedCursorEvents.filter((event) => Math.abs(event.time - time) <= cursorEventToleranceSeconds),
     latestCursor: findLatestCursorEvent(sortedCursorEvents, time),
   };

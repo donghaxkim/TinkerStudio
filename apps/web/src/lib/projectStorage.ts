@@ -85,6 +85,15 @@ export function loadProjectFromStorage(
   return deserializeDemoProjectJson(json);
 }
 
+export function clearProjectStorage(storage: Storage = getDefaultStorage()) {
+  try {
+    storage.removeItem(LOCAL_PROJECT_STORAGE_KEY);
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: storageError(error) };
+  }
+}
+
 export function createProjectJsonDownload(project: DemoProject): ProjectJsonDownloadResult {
   const serialized = serializeDemoProject(project);
 

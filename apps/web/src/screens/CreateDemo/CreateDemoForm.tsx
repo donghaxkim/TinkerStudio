@@ -15,8 +15,6 @@ export function CreateDemoForm({ disabled = false, onSubmit }: CreateDemoFormPro
   const [prompt, setPrompt] = useState("");
   const [durationCapSeconds, setDurationCapSeconds] = useState(60);
   const [aspectRatio, setAspectRatio] = useState<CreateDemoRequest["aspectRatio"]>("16:9");
-  const [narrationEnabled, setNarrationEnabled] = useState(false);
-  const [narrationStyle, setNarrationStyle] = useState("");
 
   return (
     <form
@@ -30,7 +28,6 @@ export function CreateDemoForm({ disabled = false, onSubmit }: CreateDemoFormPro
           prompt,
           durationCapSeconds,
           aspectRatio,
-          narration: narrationEnabled || narrationStyle ? { enabled: narrationEnabled, style: narrationStyle || undefined } : undefined,
         });
       }}
     >
@@ -61,16 +58,6 @@ export function CreateDemoForm({ disabled = false, onSubmit }: CreateDemoFormPro
           <option value="9:16">9:16</option>
           <option value="1:1">1:1</option>
         </select>
-      </label>
-
-      <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <input type="checkbox" checked={narrationEnabled} disabled={disabled} onChange={(event) => setNarrationEnabled(event.target.checked)} />
-        Enable narration
-      </label>
-
-      <label style={fieldStyle}>
-        Narration style
-        <input style={inputStyle} value={narrationStyle} disabled={disabled} onChange={(event) => setNarrationStyle(event.target.value)} placeholder="confident founder" />
       </label>
 
       <button type="submit" disabled={disabled} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #2563eb", background: disabled ? "#334155" : "#2563eb", color: "white", fontWeight: 800 }}>

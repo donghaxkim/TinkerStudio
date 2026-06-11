@@ -144,6 +144,9 @@ importers:
 
   packages/editor:
     dependencies:
+      '@tinker/motion':
+        specifier: workspace:*
+        version: link:../motion
       '@tinker/project-schema':
         specifier: workspace:*
         version: link:../project-schema
@@ -204,6 +207,19 @@ importers:
         specifier: ^3.2.4
         version: 3.2.6(@types/node@22.19.20)(jsdom@27.4.0)(tsx@4.22.4)
 
+  packages/motion:
+    dependencies:
+      '@tinker/project-schema':
+        specifier: workspace:*
+        version: link:../project-schema
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.6(@types/node@22.19.20)(jsdom@27.4.0)(tsx@4.22.4)
+
   packages/product-analysis:
     dependencies:
       '@tinker/browser-capture':
@@ -238,6 +254,9 @@ importers:
 
   packages/rendering:
     dependencies:
+      '@tinker/motion':
+        specifier: workspace:*
+        version: link:../motion
       '@tinker/project-schema':
         specifier: workspace:*
         version: link:../project-schema

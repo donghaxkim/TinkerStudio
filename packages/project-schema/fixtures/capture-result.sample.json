@@ -1,0 +1,87 @@
+{
+  "clips": [
+    {
+      "id": "capture-video-main",
+      "type": "video",
+      "uri": "videos/main.webm",
+      "source": "captured",
+      "mimeType": "video/webm",
+      "duration": 45,
+      "width": 1920,
+      "height": 1080
+    }
+  ],
+  "screenshots": [
+    {
+      "id": "screenshot-final",
+      "type": "image",
+      "uri": "screenshots/final.png",
+      "source": "captured",
+      "mimeType": "image/png",
+      "width": 1920,
+      "height": 1080
+    }
+  ],
+  "events": [
+    {
+      "type": "click",
+      "time": 7.5,
+      "x": 360,
+      "y": 190,
+      "label": "Enter repo URL"
+    },
+    {
+      "type": "click",
+      "time": 13.2,
+      "x": 420,
+      "y": 548,
+      "label": "Create demo"
+    },
+    {
+      "type": "zoomTarget",
+      "time": 18.5,
+      "x": 1220,
+      "y": 150,
+      "width": 520,
+      "height": 560,
+      "label": "Generation progress"
+    },
+    {
+      "type": "click",
+      "time": 31.4,
+      "x": 1180,
+      "y": 860,
+      "label": "Generate mock proposal"
+    },
+    {
+      "type": "zoomTarget",
+      "time": 35.5,
+      "x": 80,
+      "y": 760,
+      "width": 980,
+      "height": 260,
+      "label": "Timeline overlays"
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "create-demo-visible",
+      "label": "Create Demo form is visible",
+      "passed": true
+    },
+    {
+      "id": "editor-visible",
+      "label": "Editor timeline is visible",
+      "passed": true
+    }
+  ],
+  "metadata": {
+    "startedAt": "2026-06-10T00:00:00.000Z",
+    "completedAt": "2026-06-10T00:00:45.000Z",
+    "targetUrl": "https://example.test/tinker-demo",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    }
+  }
+}

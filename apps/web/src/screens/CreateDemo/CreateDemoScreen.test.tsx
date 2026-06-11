@@ -17,9 +17,6 @@ function fillValidForm() {
   fireEvent.change(screen.getByLabelText("Duration cap"), {
     target: { value: "60" },
   });
-  fireEvent.change(screen.getByLabelText("Narration style"), {
-    target: { value: "confident founder" },
-  });
 }
 
 describe("CreateDemoScreen", () => {
@@ -31,8 +28,8 @@ describe("CreateDemoScreen", () => {
     expect(screen.getByLabelText("Demo prompt")).toBeInTheDocument();
     expect(screen.getByLabelText("Duration cap")).toBeInTheDocument();
     expect(screen.getByLabelText("Aspect ratio")).toBeInTheDocument();
-    expect(screen.getByLabelText("Enable narration")).toBeInTheDocument();
-    expect(screen.getByLabelText("Narration style")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Enable narration")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Narration style")).not.toBeInTheDocument();
 
     for (const label of [
       "Queued",

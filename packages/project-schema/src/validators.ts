@@ -63,7 +63,6 @@ export const AspectRatioSchema = z.enum(["16:9", "9:16", "1:1"]);
 
 export const AssetTypeSchema = z.enum([
   "video",
-  "audio",
   "image",
   "svg",
   "json",
@@ -106,7 +105,7 @@ export const ClipSchema = z.object({
     .default({ x: 0, y: 0, scale: 1, rotation: 0 }),
 });
 
-export const TrackTypeSchema = z.enum(["video", "audio", "overlay"]);
+export const TrackTypeSchema = z.enum(["video", "overlay"]);
 
 export const TrackSchema = z.object({
   id: z.string().min(1),
@@ -115,21 +114,6 @@ export const TrackSchema = z.object({
   locked: z.boolean().default(false),
   hidden: z.boolean().default(false),
   clips: z.array(ClipSchema).default([]),
-});
-
-export const CaptionSchema = z.object({
-  id: z.string().min(1),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  text: z.string().min(1),
-  style: z
-    .object({
-      position: z.enum(["bottom", "center", "top"]).default("bottom"),
-      fontSize: z.number().positive().optional(),
-      color: z.string().optional(),
-      backgroundColor: z.string().optional(),
-    })
-    .default({ position: "bottom" }),
 });
 
 export const RectSchema = z.object({
@@ -175,29 +159,6 @@ export const CursorEventSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-export const CalloutPositionSchema = z.enum([
-  "top-left",
-  "top-right",
-  "bottom-left",
-  "bottom-right",
-  "center",
-]);
-
-export const CalloutSchema = z.object({
-  id: z.string().min(1),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  text: z.string().min(1),
-  position: CalloutPositionSchema.default("top-right"),
-  target: RectSchema.optional(),
-  style: z
-    .object({
-      variant: z.enum(["label", "arrow", "spotlight"]).default("label"),
-      color: z.string().optional(),
-    })
-    .default({ variant: "label" }),
-});
-
 export const AddZoomOperationSchema = z.object({
   type: z.literal("add_zoom"),
   start: z.number().nonnegative(),
@@ -206,32 +167,14 @@ export const AddZoomOperationSchema = z.object({
   easing: z.enum(["linear", "easeIn", "easeOut", "easeInOut"]).default("easeInOut"),
 });
 
-export const AddCalloutOperationSchema = z.object({
-  type: z.literal("add_callout"),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  text: z.string().min(1),
-  position: CalloutPositionSchema.default("top-right"),
-  target: RectSchema.optional(),
-});
-
-export const AddCaptionOperationSchema = z.object({
-  type: z.literal("add_caption"),
-  start: z.number().nonnegative(),
-  end: z.number().positive(),
-  text: z.string().min(1),
-});
-
 export const RemoveEntityOperationSchema = z.object({
   type: z.literal("remove_entity"),
-  entityType: z.enum(["caption", "zoom", "callout", "clip"]),
+  entityType: z.enum(["zoom", "clip"]),
   id: z.string().min(1),
 });
 
 export const AIEditOperationSchema = z.discriminatedUnion("type", [
   AddZoomOperationSchema,
-  AddCalloutOperationSchema,
-  AddCaptionOperationSchema,
   RemoveEntityOperationSchema,
 ]);
 
@@ -261,10 +204,8 @@ export const DemoProjectSchema = z
     updatedAt: z.string().datetime(),
     assets: z.array(AssetSchema),
     tracks: z.array(TrackSchema),
-    captions: z.array(CaptionSchema).default([]),
     zooms: z.array(ZoomKeyframeSchema).default([]),
     cursorEvents: z.array(CursorEventSchema).default([]),
-    callouts: z.array(CalloutSchema).default([]),
     aiEditHistory: z.array(AIEditSchema).default([]),
     metadata: z
       .object({
@@ -275,14 +216,13 @@ export const DemoProjectSchema = z
       })
       .default({ notes: [] }),
   })
+  .strict()
   .superRefine((project, ctx) => {
     const assetIds = new Set(project.assets.map((asset) => asset.id));
 
     validateUniqueIds(ctx, project.assets, ["assets"]);
     validateUniqueIds(ctx, project.tracks, ["tracks"]);
-    validateUniqueIds(ctx, project.captions, ["captions"]);
     validateUniqueIds(ctx, project.zooms, ["zooms"]);
-    validateUniqueIds(ctx, project.callouts, ["callouts"]);
     validateUniqueIds(ctx, project.aiEditHistory, ["aiEditHistory"]);
 
     const clips = project.tracks.flatMap((track, trackIndex) =>
@@ -311,22 +251,10 @@ export const DemoProjectSchema = z
       }
     });
 
-    project.captions.forEach((caption, index) => {
-      const path = ["captions", index];
-      validateOrderedRange(ctx, caption, path);
-      validateRangeWithinDuration(ctx, caption, project.duration, path);
-    });
-
     project.zooms.forEach((zoom, index) => {
       const path = ["zooms", index];
       validateOrderedRange(ctx, zoom, path);
       validateRangeWithinDuration(ctx, zoom, project.duration, path);
-    });
-
-    project.callouts.forEach((callout, index) => {
-      const path = ["callouts", index];
-      validateOrderedRange(ctx, callout, path);
-      validateRangeWithinDuration(ctx, callout, project.duration, path);
     });
 
     project.cursorEvents.forEach((event, index) => {

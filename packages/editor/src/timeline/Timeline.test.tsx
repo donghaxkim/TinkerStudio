@@ -8,11 +8,9 @@ describe("Timeline", () => {
     render(<Timeline project={sampleProject} currentTime={0} width={900} onSeek={() => undefined} />);
 
     expect(screen.getByText("Main capture")).toBeInTheDocument();
-    expect(screen.getByText("Narration")).toBeInTheDocument();
     expect(screen.getByText("Browser flow")).toBeInTheDocument();
-    expect(screen.getByText("Turn product flows into polished demo videos.")).toBeInTheDocument();
     expect(screen.getByText("Zoom 1")).toBeInTheDocument();
-    expect(screen.getByText("Real-time analytics")).toBeInTheDocument();
+    expect(screen.queryByText("Narration")).not.toBeInTheDocument();
   });
 
   it("click-to-seek maps lane clicks to time", () => {

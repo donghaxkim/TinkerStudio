@@ -9,14 +9,6 @@ function describeOperation(operation: AIEditOperation) {
     return `Add zoom ${operation.start.toFixed(1)}s–${operation.end.toFixed(1)}s`;
   }
 
-  if (operation.type === "add_callout") {
-    return `Add callout “${operation.text}” ${operation.start.toFixed(1)}s–${operation.end.toFixed(1)}s`;
-  }
-
-  if (operation.type === "add_caption") {
-    return `Add caption “${operation.text}” ${operation.start.toFixed(1)}s–${operation.end.toFixed(1)}s`;
-  }
-
   return `Remove ${operation.entityType} ${operation.id}`;
 }
 
