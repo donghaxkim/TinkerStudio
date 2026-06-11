@@ -810,7 +810,6 @@ const result = await runAiUrlDemo({
             id: "hook",
             type: "hook",
             goal: "Introduce Fixture Product.",
-            narration: "Build demos faster with Fixture Product.",
             startHint: 0,
             endHint: 4,
           },

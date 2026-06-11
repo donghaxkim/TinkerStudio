@@ -18,14 +18,26 @@ describe("generation contract validators", () => {
       prompt: "Show the analytics workflow",
       durationCapSeconds: 60,
       aspectRatio: "16:9",
-      narration: { enabled: true, style: "confident", voiceId: "demo-voice" },
     });
 
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.productUrl).toBe("http://localhost:5173");
-      expect("narration" in result.data ? result.data.narration?.enabled : undefined).toBe(true);
+      expect("narration" in result.data).toBe(false);
     }
+  });
+
+  it("rejects narration fields outside the core MVP scope", () => {
+    const result = safeParseCreateDemoRequest({
+      repoUrl: "https://github.com/example/product",
+      productUrl: "http://localhost:5173",
+      prompt: "Show the analytics workflow",
+      durationCapSeconds: 60,
+      aspectRatio: "16:9",
+      narration: { enabled: true, style: "confident", voiceId: "demo-voice" },
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("accepts public GitHub repo roots for AI URL planning", () => {

@@ -13,21 +13,18 @@ describe("selectProjectSlice", () => {
         targetRange: { start: 11.5, end: 18 },
       }),
     );
-    expect(slice.clips.map((clip) => clip.id)).toEqual(["clip_capture_001", "clip_narration_001"]);
+    expect(slice.clips.map((clip) => clip.id)).toEqual(["clip_capture_001"]);
     expect(slice.clips[0]).toEqual(expect.objectContaining({ trackId: "track_video_main", trackName: "Main capture" }));
     expect(slice.zooms.map((zoom) => zoom.id)).toEqual(["zoom_001"]);
-    expect(slice.callouts.map((callout) => callout.id)).toEqual(["callout_001"]);
     expect(slice.cursorEvents).toHaveLength(2);
   });
 
   it("excludes entities outside the selected range", () => {
     const slice = selectProjectSlice(sampleProject, { start: 30, end: 35 });
 
-    expect(slice.captions).toEqual([]);
     expect(slice.zooms).toEqual([]);
-    expect(slice.callouts).toEqual([]);
     expect(slice.cursorEvents).toEqual([]);
-    expect(slice.clips.map((clip) => clip.id)).toEqual(["clip_capture_001", "clip_narration_001"]);
+    expect(slice.clips.map((clip) => clip.id)).toEqual(["clip_capture_001"]);
   });
 
   it("handles empty ranges safely", () => {
@@ -35,9 +32,7 @@ describe("selectProjectSlice", () => {
 
     expect(slice.targetRange).toEqual({ start: 5, end: 5 });
     expect(slice.clips).toEqual([]);
-    expect(slice.captions).toEqual([]);
     expect(slice.zooms).toEqual([]);
-    expect(slice.callouts).toEqual([]);
     expect(slice.cursorEvents).toEqual([]);
   });
 

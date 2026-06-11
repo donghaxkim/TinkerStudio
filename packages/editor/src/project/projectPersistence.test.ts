@@ -3,6 +3,7 @@ import { sampleProject } from "../test/sampleProject.js";
 import {
   deserializeDemoProjectJson,
   formatProjectValidationIssues,
+  MAX_DEMO_PROJECT_JSON_BYTES,
   serializeDemoProject,
 } from "./projectPersistence.js";
 
@@ -18,11 +19,11 @@ describe("projectPersistence", () => {
     expect(result.json).toContain('\n  "schemaVersion": "0.1.0"');
     expect(result.json).toContain('"assets"');
     expect(result.json).toContain('"tracks"');
-    expect(result.json).toContain('"captions"');
     expect(result.json).toContain('"zooms"');
     expect(result.json).toContain('"cursorEvents"');
-    expect(result.json).toContain('"callouts"');
     expect(result.json).toContain('"aiEditHistory"');
+    expect(result.json).not.toContain('"captions"');
+    expect(result.json).not.toContain('"callouts"');
   });
 
   it("deserializes valid DemoProject JSON through the schema validator", () => {
@@ -41,6 +42,24 @@ describe("projectPersistence", () => {
     if (loaded.ok) throw new Error("expected load failure");
     expect(loaded.error.message).toBe("Project JSON could not be parsed");
     expect(loaded.error.issues[0]).toMatch(/JSON|Unexpected|Expected/);
+  });
+
+  it("rejects DemoProject JSON above the safe size before parsing", () => {
+    const oversized = " ".repeat(MAX_DEMO_PROJECT_JSON_BYTES + 1);
+
+    const loaded = deserializeDemoProjectJson(oversized);
+
+    expect(loaded.ok).toBe(false);
+    if (loaded.ok) throw new Error("expected load failure");
+    expect(loaded.error.message).toBe("Project JSON is too large");
+  });
+
+  it("rejects unknown schema versions", () => {
+    const loaded = deserializeDemoProjectJson(JSON.stringify({ ...sampleProject, schemaVersion: "999.0.0" }));
+
+    expect(loaded.ok).toBe(false);
+    if (loaded.ok) throw new Error("expected load failure");
+    expect(loaded.error.issues.join("\n")).toContain("schemaVersion");
   });
 
   it("rejects JSON that is not a valid DemoProject", () => {

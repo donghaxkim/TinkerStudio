@@ -97,7 +97,7 @@ export function Timeline({ project, currentTime, selectedRange, width = 960, onS
                     border: "1px solid rgba(255,255,255,0.24)",
                     borderRadius: 8,
                     color: "white",
-                    background: item.kind === "clip" ? "#2563eb" : item.kind === "caption" ? "#16a34a" : item.kind === "zoom" ? "#9333ea" : "#ea580c",
+                    background: item.kind === "clip" ? "#2563eb" : "#9333ea",
                   }}
                   onClick={(event) => {
                     event.stopPropagation();

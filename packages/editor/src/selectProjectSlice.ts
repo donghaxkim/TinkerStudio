@@ -1,4 +1,4 @@
-import type { Callout, Caption, Clip, CursorEvent, DemoProject, ZoomKeyframe } from "@tinker/project-schema";
+import type { Clip, CursorEvent, DemoProject, ZoomKeyframe } from "@tinker/project-schema";
 import { DemoProjectSchema } from "@tinker/project-schema";
 import type { SelectedRange } from "./state/editorState.js";
 import { normalizeSelectedRange } from "./state/editorState.js";
@@ -17,9 +17,7 @@ export type ProjectSlice = {
   aspectRatio: DemoProject["aspectRatio"];
   targetRange: SelectedRange;
   clips: ProjectSliceClip[];
-  captions: Caption[];
   zooms: ZoomKeyframe[];
-  callouts: Callout[];
   cursorEvents: CursorEvent[];
 };
 
@@ -67,9 +65,7 @@ export function selectProjectSlice(project: DemoProject, selectedRange: Selected
     aspectRatio: parsedProject.aspectRatio,
     targetRange,
     clips,
-    captions: parsedProject.captions.filter((caption) => rangesOverlap(caption, targetRange)),
     zooms: parsedProject.zooms.filter((zoom) => rangesOverlap(zoom, targetRange)),
-    callouts: parsedProject.callouts.filter((callout) => rangesOverlap(callout, targetRange)),
     cursorEvents: parsedProject.cursorEvents.filter((event) => timeWithinRange(event.time, targetRange)),
   };
 }

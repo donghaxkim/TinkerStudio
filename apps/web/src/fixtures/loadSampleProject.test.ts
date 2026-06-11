@@ -16,8 +16,8 @@ describe("loadSampleProject", () => {
         aspectRatio: "16:9",
       }),
     );
-    expect(result.project.assets).toHaveLength(2);
-    expect(result.project.tracks).toHaveLength(2);
+    expect(result.project.assets).toHaveLength(1);
+    expect(result.project.tracks).toHaveLength(1);
   });
 
   it("returns readable validation errors for invalid projects", () => {

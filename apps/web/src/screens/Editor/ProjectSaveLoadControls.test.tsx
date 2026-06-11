@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DemoProject } from "@tinker/project-schema";
-import { serializeDemoProject } from "@tinker/editor";
+import { MAX_DEMO_PROJECT_JSON_BYTES, serializeDemoProject } from "@tinker/editor";
 import { loadSampleProject } from "../../fixtures/loadSampleProject.js";
 import { LOCAL_PROJECT_STORAGE_KEY, saveProjectToStorage } from "../../lib/projectStorage.js";
 import { ProjectSaveLoadControls } from "./ProjectSaveLoadControls.js";
@@ -73,5 +73,23 @@ describe("ProjectSaveLoadControls", () => {
 
     await waitFor(() => expect(screen.getByText("Project JSON could not be parsed")).toBeInTheDocument());
     expect(loadedIds).toEqual(["demo_project_sample"]);
+  });
+
+  it("rejects oversized project files before reading them", async () => {
+    const loadedIds: string[] = [];
+    renderControls((project) => loadedIds.push(project.id));
+    const file = new File(["x".repeat(MAX_DEMO_PROJECT_JSON_BYTES + 1)], "huge-project.json", {
+      type: "application/json",
+    });
+    Object.defineProperty(file, "text", {
+      value: async () => {
+        throw new Error("oversized project file should not be read");
+      },
+    });
+
+    fireEvent.change(screen.getByLabelText("Load project JSON file"), { target: { files: [file] } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Project JSON is too large");
+    expect(loadedIds).toEqual([]);
   });
 });

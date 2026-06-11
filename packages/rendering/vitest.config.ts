@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@tinker/motion": fileURLToPath(new URL("../motion/src/index.ts", import.meta.url)),
       "@tinker/project-schema": fileURLToPath(new URL("../project-schema/src/index.ts", import.meta.url)),
     },
   },

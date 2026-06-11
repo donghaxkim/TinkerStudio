@@ -12,6 +12,8 @@ import {
 } from "@tinker/editor";
 import type { DemoProject } from "@tinker/project-schema";
 import { loadSampleProject } from "../../fixtures/loadSampleProject.js";
+import { EditorAutoZoomPanel, type PreviewSource } from "./EditorAutoZoomPanel.js";
+import { EditorManualControls } from "./EditorManualControls.js";
 import { ProjectLoadPanel } from "./ProjectLoadPanel.js";
 import { ProjectExportPanel } from "./ProjectExportPanel.js";
 import { ProjectSaveLoadControls } from "./ProjectSaveLoadControls.js";
@@ -25,10 +27,15 @@ type EditorScreenProps = {
   initialProject?: DemoProject;
 };
 
+type PreviewState = {
+  source: Exclude<PreviewSource, "none">;
+  project: DemoProject;
+};
+
 export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
   const loadResult = useMemo(() => (initialProject ? { ok: true as const, project: initialProject } : loadSampleProject()), [initialProject]);
   const [project, setProject] = useState<DemoProject | undefined>(loadResult.ok ? loadResult.project : undefined);
-  const [previewProject, setPreviewProject] = useState<DemoProject | undefined>();
+  const [previewState, setPreviewState] = useState<PreviewState | undefined>();
   const [history, setHistory] = useState<EditorHistory>(() => createEditorHistory());
   const [currentTime, setCurrentTime] = useState(0);
   const [selectedRange, setSelectedRange] = useState<SelectedRange>({ start: 12, end: 18 });
@@ -49,8 +56,9 @@ export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
     );
   }
 
-  const displayProject = previewProject ?? project;
-  const isPreviewingAIEdit = Boolean(previewProject);
+  const displayProject = previewState?.project ?? project;
+  const previewSource = previewState?.source ?? "none";
+  const isPreviewingAIEdit = previewState?.source === "ai";
 
   return (
     <main style={{ display: "grid", gap: 20, padding: 24 }}>
@@ -62,10 +70,10 @@ export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <button type="button" onClick={() => setCurrentTime(3)} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white" }}>
-            Jump to caption (3s)
+            Jump to intro (3s)
           </button>
           <button type="button" onClick={() => setCurrentTime(14)} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white" }}>
-            Jump to zoom/callout (14s)
+            Jump to zoom (14s)
           </button>
           <button
             type="button"
@@ -74,7 +82,7 @@ export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
               const result = undoEditorCommand(history, project);
               setHistory(result.history);
               setProject(result.project);
-              setPreviewProject(undefined);
+              setPreviewState(undefined);
             }}
             style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: history.past.length ? "#111827" : "#334155", color: "white" }}
           >
@@ -87,7 +95,7 @@ export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
               const result = redoEditorCommand(history, project);
               setHistory(result.history);
               setProject(result.project);
-              setPreviewProject(undefined);
+              setPreviewState(undefined);
             }}
             style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: history.future.length ? "#111827" : "#334155", color: "white" }}
           >
@@ -101,7 +109,7 @@ export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
         project={project}
         onProjectLoaded={(loadedProject) => {
           setProject(loadedProject);
-          setPreviewProject(undefined);
+          setPreviewState(undefined);
           setHistory(createEditorHistory());
           setCurrentTime(0);
           setSelectedRange({ start: 0, end: Math.min(loadedProject.duration, 6) });
@@ -127,7 +135,7 @@ export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={() => setSelectedRange({ start: 2, end: 5 })} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white" }}>
-              Select caption
+              Select intro
             </button>
             <button type="button" onClick={() => setSelectedRange({ start: 12, end: 18 })} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white" }}>
               Select analytics
@@ -137,18 +145,43 @@ export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
         </aside>
       </section>
 
+      <EditorManualControls
+        project={project}
+        selectedRange={selectedRange}
+        onApply={(updatedProject, command) => {
+          setProject(updatedProject);
+          setPreviewState(undefined);
+          setHistory((currentHistory) => pushEditorCommand(currentHistory, command));
+        }}
+      />
+      <EditorAutoZoomPanel
+        project={project}
+        previewSource={previewSource}
+        onPreviewProjectChange={(previewProject) => {
+          setPreviewState(previewProject ? { source: "auto-zoom", project: previewProject } : undefined);
+        }}
+        onAccept={(updatedProject, command) => {
+          setProject(updatedProject);
+          setPreviewState(undefined);
+          setHistory((currentHistory) => pushEditorCommand(currentHistory, command));
+        }}
+      />
+
       <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 22rem", gap: 20, alignItems: "start" }}>
         <Timeline project={displayProject} currentTime={currentTime} selectedRange={selectedRange} onSeek={setCurrentTime} />
         <AIEditPanel
           project={project}
           selectedRange={selectedRange}
-          onPreviewProjectChange={setPreviewProject}
+          previewSource={previewSource}
+          onPreviewProjectChange={(previewProject) => {
+            setPreviewState(previewProject ? { source: "ai", project: previewProject } : undefined);
+          }}
           onAccept={(updatedProject, command) => {
             setProject(updatedProject);
-            setPreviewProject(undefined);
+            setPreviewState(undefined);
             setHistory((currentHistory) => pushEditorCommand(currentHistory, command));
           }}
-          onReject={() => setPreviewProject(undefined)}
+          onReject={() => setPreviewState(undefined)}
         />
       </section>
     </main>

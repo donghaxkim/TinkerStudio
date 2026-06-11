@@ -17,12 +17,13 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "pnpm --filter @tinker/project-schema build && tsc -p tsconfig.json",
-    "typecheck": "pnpm --filter @tinker/project-schema build && tsc -p tsconfig.json --noEmit",
+    "build": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/motion build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/motion build && tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "render:sample": "pnpm build && node dist/cli/renderSampleProject.js"
   },
   "dependencies": {
+    "@tinker/motion": "workspace:*",
     "@tinker/project-schema": "workspace:*"
   },
   "devDependencies": {

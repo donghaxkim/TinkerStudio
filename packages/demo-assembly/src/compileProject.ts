@@ -2,7 +2,6 @@ import {
   DemoProjectSchema,
   PROJECT_SCHEMA_VERSION,
   type Asset,
-  type Caption,
   type CursorEvent,
   type DemoProject,
   type ZoomKeyframe,
@@ -80,29 +79,6 @@ export function compileProject(input: CompileProjectInput): DemoProject {
 
   const clipDuration = videoAsset.duration !== undefined ? Math.min(duration, videoAsset.duration) : duration;
   const assets = [...input.captureResult.clips, ...input.captureResult.screenshots].map(toProjectAsset);
-  const captions: Caption[] = input.storyboard.beats
-    .flatMap((beat, index) => {
-      if (!beat.narration) {
-        return [];
-      }
-
-      const start = Math.max(0, beat.startHint ?? index * 3);
-      const end = Math.min(beat.endHint ?? start + 3, duration);
-
-      if (end <= start) {
-        return [];
-      }
-
-      return [
-        {
-          id: `caption-${beat.id}`,
-          start,
-          end,
-          text: beat.narration,
-          style: { position: "bottom" },
-        },
-      ];
-    });
   const cursorEvents = input.captureResult.events.flatMap((event) => {
     const cursorEvent = toCursorEvent(event);
 
@@ -144,10 +120,8 @@ export function compileProject(input: CompileProjectInput): DemoProject {
         ],
       },
     ],
-    captions,
     zooms,
     cursorEvents,
-    callouts: [],
     aiEditHistory: [],
     metadata: {
       ...(input.sourceRepoUrl ? { sourceRepoUrl: input.sourceRepoUrl } : {}),

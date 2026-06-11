@@ -8,7 +8,6 @@ export type ManualStoryboardBeat = {
   id: string;
   type: "hook" | "screen_capture" | "feature" | "proof" | "cta";
   goal: string;
-  narration?: string;
   startHint?: number;
   endHint?: number;
 };

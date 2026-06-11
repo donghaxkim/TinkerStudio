@@ -36,19 +36,6 @@ export async function mockAIEditClient({
 
   const operations: AIEditOperation[] = [
     {
-      type: "add_caption",
-      start: operationStart,
-      end: operationEnd,
-      text: `AI edit: ${safePrompt}`,
-    },
-    {
-      type: "add_callout",
-      start: operationStart,
-      end: operationEnd,
-      text: "Suggested highlight",
-      position: "top-right",
-    },
-    {
       type: "add_zoom",
       start: operationStart,
       end: operationEnd,

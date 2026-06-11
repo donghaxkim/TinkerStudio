@@ -18,11 +18,7 @@ describe("mockAIEditClient", () => {
 
     expect(proposal.targetRange).toEqual({ start: 12, end: 18 });
     expect(proposal.projectSlice.zooms.map((zoom) => zoom.id)).toEqual(["zoom_001"]);
-    expect(proposal.operations.map((operation) => operation.type)).toEqual([
-      "add_caption",
-      "add_callout",
-      "add_zoom",
-    ]);
+    expect(proposal.operations.map((operation) => operation.type)).toEqual(["add_zoom"]);
   });
 
   it("keeps mock operations valid for short and boundary ranges", async () => {
@@ -70,9 +66,9 @@ describe("AIEditPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /generate mock proposal/i }));
 
-    expect(await screen.findByText("add_caption")).toBeInTheDocument();
-    expect(screen.getByText("add_callout")).toBeInTheDocument();
-    expect(screen.getByText("add_zoom")).toBeInTheDocument();
+    expect(await screen.findByText("add_zoom")).toBeInTheDocument();
+    expect(screen.queryByText("add_caption")).not.toBeInTheDocument();
+    expect(screen.queryByText("add_callout")).not.toBeInTheDocument();
     await waitFor(() => expect(onPreviewProjectChange).toHaveBeenCalledWith(expect.objectContaining({ id: sampleProject.id })));
   });
 

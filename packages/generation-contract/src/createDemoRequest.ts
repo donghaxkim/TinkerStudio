@@ -1,12 +1,6 @@
 import { z } from "zod";
 import { AspectRatioSchema } from "@tinker/project-schema";
 
-export const NarrationRequestSchema = z.object({
-  enabled: z.boolean().default(false),
-  style: z.string().trim().min(1).optional(),
-  voiceId: z.string().trim().min(1).optional(),
-});
-
 const PublicUrlSchema = z.string().url().refine((value) => {
   try {
     const protocol = new URL(value).protocol;
@@ -84,7 +78,6 @@ export const AssistedCreateDemoRequestSchema = z.object({
   prompt: z.string().trim().min(1, "prompt is required"),
   durationCapSeconds: z.number().int().positive().max(600),
   aspectRatio: AspectRatioSchema,
-  narration: NarrationRequestSchema.optional(),
 }).strict();
 
 export const CreateDemoRequestSchema = z.union([
@@ -93,7 +86,6 @@ export const CreateDemoRequestSchema = z.union([
   AssistedCreateDemoRequestSchema,
 ]);
 
-export type NarrationRequest = z.infer<typeof NarrationRequestSchema>;
 export type ManualFixtureCreateDemoRequest = z.infer<typeof ManualFixtureCreateDemoRequestSchema>;
 export type AiUrlPlanningCreateDemoRequest = z.infer<typeof AiUrlPlanningCreateDemoRequestSchema>;
 export type AssistedCreateDemoRequest = z.infer<typeof AssistedCreateDemoRequestSchema>;
