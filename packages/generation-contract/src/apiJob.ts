@@ -3,7 +3,7 @@ import { AiUrlPlanningCreateDemoRequestSchema } from "./createDemoRequest.js";
 import { GenerationErrorSchema } from "./errors.js";
 import { ManualFixtureProgressEventSchema } from "./progress.js";
 
-const ApiCreateDemoRequestSchema = AiUrlPlanningCreateDemoRequestSchema.extend({ id: z.string().min(1) });
+const ApiCreateDemoRequestSchema = AiUrlPlanningCreateDemoRequestSchema.extend({ id: z.string().min(1) }).strict();
 
 export const ApiArtifactKindSchema = z.enum([
   "output-video",

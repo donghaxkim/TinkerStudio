@@ -116,6 +116,17 @@ describe("API generation job contract", () => {
         updatedAt: "2026-06-11T00:00:00.000Z",
       }).success,
     ).toBe(false);
+
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-test",
+        status: "queued",
+        request: { ...request, unexpected: true },
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+        progressEvents: [],
+      }).success,
+    ).toBe(false);
   });
 
   it("requires result only for completed jobs and error only for failed jobs", () => {
