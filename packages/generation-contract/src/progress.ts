@@ -44,6 +44,7 @@ export const GenerationProgressEventSchema = z.union([
 
 export type GenerationPhase = z.infer<typeof GenerationPhaseSchema>;
 export type ManualFixtureProgressStatus = z.infer<typeof ManualFixtureProgressStatusSchema>;
+export type ManualFixtureProgressEvent = z.infer<typeof ManualFixtureProgressEventSchema>;
 export type GenerationProgressEvent = z.infer<typeof GenerationProgressEventSchema>;
 
 export const GENERATION_PHASE_LABELS: Record<GenerationPhase, string> = {

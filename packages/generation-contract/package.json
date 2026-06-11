@@ -15,7 +15,7 @@
   "scripts": {
     "build": "pnpm --filter @tinker/project-schema build && tsc -p tsconfig.json",
     "typecheck": "pnpm --filter @tinker/project-schema build && tsc -p tsconfig.json --noEmit",
-    "test": "tsx src/generationContract.test.ts && vitest run src/validators.test.ts"
+    "test": "tsx src/generationContract.test.ts && vitest run src/validators.test.ts src/apiJob.test.ts"
   },
   "dependencies": {
     "@tinker/project-schema": "workspace:*",
