@@ -87,6 +87,37 @@ describe("API generation job contract", () => {
     expect(completed.result?.artifacts[0]?.kind).toBe("output-video");
   });
 
+  it("requires AI URL planning requests and explicit progress events", () => {
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-test",
+        status: "queued",
+        request: {
+          id: "job-test",
+          mode: "manual-fixture",
+          repoUrl: "https://github.com/example/product",
+          productUrl: "https://example.com",
+          prompt: "Make a short demo.",
+          durationCapSeconds: 12,
+          aspectRatio: "16:9",
+        },
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+        progressEvents: [],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-test",
+        status: "queued",
+        request,
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+      }).success,
+    ).toBe(false);
+  });
+
   it("requires result only for completed jobs and error only for failed jobs", () => {
     expect(
       safeParseApiGenerationJob({
@@ -161,6 +192,56 @@ describe("API generation job contract", () => {
         },
       }).success,
     ).toBe(true);
+
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-test",
+        status: "completed",
+        request,
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+        progressEvents: [progressEvent],
+        result: {
+          artifacts: [
+            {
+              kind: "output-video",
+              relativePath: "hyperframes/output.mp4",
+              url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
+            },
+          ],
+        },
+        error: {
+          status: "failed",
+          stage: "planning",
+          message: "Planner failed",
+        },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-test",
+        status: "failed",
+        request,
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+        progressEvents: [progressEvent],
+        result: {
+          artifacts: [
+            {
+              kind: "output-video",
+              relativePath: "hyperframes/output.mp4",
+              url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
+            },
+          ],
+        },
+        error: {
+          status: "failed",
+          stage: "planning",
+          message: "Planner failed",
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects assisted result dialects and malformed artifacts", () => {

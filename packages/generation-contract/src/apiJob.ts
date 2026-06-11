@@ -1,12 +1,9 @@
 import { z } from "zod";
-import { AiUrlPlanningCreateDemoRequestSchema, ManualFixtureCreateDemoRequestSchema } from "./createDemoRequest.js";
+import { AiUrlPlanningCreateDemoRequestSchema } from "./createDemoRequest.js";
 import { GenerationErrorSchema } from "./errors.js";
 import { ManualFixtureProgressEventSchema } from "./progress.js";
 
-const ApiCreateDemoRequestSchema = z.union([
-  ManualFixtureCreateDemoRequestSchema.extend({ id: z.string().min(1) }),
-  AiUrlPlanningCreateDemoRequestSchema.extend({ id: z.string().min(1) }),
-]);
+const ApiCreateDemoRequestSchema = AiUrlPlanningCreateDemoRequestSchema.extend({ id: z.string().min(1) });
 
 export const ApiArtifactKindSchema = z.enum([
   "output-video",
@@ -53,7 +50,7 @@ export const ApiGenerationJobSchema = z
     request: ApiCreateDemoRequestSchema,
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
-    progressEvents: z.array(ManualFixtureProgressEventSchema).default([]),
+    progressEvents: z.array(ManualFixtureProgressEventSchema),
     result: ApiGenerationResultSchema.optional(),
     error: GenerationErrorSchema.optional(),
   })
