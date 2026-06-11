@@ -1,16 +1,15 @@
-:root {
-  color: CanvasText;
-  background: Canvas;
-  font-family: system-ui, sans-serif;
-}
+/* ==========================================================================
+   RESET
+   ========================================================================== */
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
 }
 
 button,
@@ -24,6 +23,520 @@ button {
   cursor: pointer;
 }
 
+
+/* ==========================================================================
+   TOKENS — Porcelain design system
+   ========================================================================== */
+
+:root,
+.tk-porcelain {
+  --tk-font: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  --tk-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* surfaces */
+  --tk-app-bg: #FBFAF6;        /* warm page / editor shell background */
+  --tk-card: #FFFFFF;          /* panels, cards, clean content */
+  --tk-raised: #F3F1EA;        /* toolbar controls, timeline rails, panel headers, chip bg */
+  --tk-subtle: #E8E4DA;        /* disabled/secondary control surfaces */
+  --tk-preview-bg: #10192C;    /* deep blue preview stage behind captured product UI */
+
+  /* text */
+  --tk-text: #1B1A17;          /* primary ink */
+  --tk-text-sec: #6E6C66;      /* secondary / metadata */
+  --tk-text-ter: #9D9B94;      /* tertiary / quiet labels, ghost hints */
+
+  /* accent (ink blue) */
+  --tk-accent: #3B5BD9;        /* actions, playhead, selection, active tool */
+  --tk-accent-text: #FFFFFF;
+  --tk-accent-soft: rgba(59,91,217,0.10);   /* selected-range fill, hover */
+  --tk-accent-line: rgba(59,91,217,0.32);   /* selected-range / focus border */
+
+  /* lines & control surfaces */
+  --tk-border: rgba(20,20,15,0.12);
+  --tk-border-strong: rgba(20,20,15,0.20);
+  --tk-border-soft: rgba(20,20,15,0.07);
+  --tk-btn-bg: #F3F1EA;
+  --tk-btn-border: rgba(20,20,15,0.12);
+  --tk-hover: rgba(20,20,15,0.05);
+  --tk-ok: #2E8B57;            /* success (verified repo check) */
+
+  /* radius */
+  --tk-radius-xs: 3px;
+  --tk-radius-sm: 6px;
+  --tk-radius-md: 8px;
+  --tk-radius-lg: 11px;
+  --tk-radius-xl: 14px;
+  --tk-radius-pill: 999px;
+
+  /* shadows */
+  --tk-shadow-sm: 0 1px 2px rgba(20,20,15,0.06);
+  --tk-shadow-md: 0 10px 28px rgba(20,20,15,0.09);
+  --tk-shadow-overlay: 0 18px 54px rgba(25,32,46,0.16);
+}
+
+
+/* ==========================================================================
+   BASE
+   ========================================================================== */
+
+body {
+  background: var(--tk-app-bg);
+  color: var(--tk-text);
+  font-family: var(--tk-font);
+  min-height: 100vh;
+}
+
 #root {
   min-height: 100vh;
 }
+
+textarea::placeholder,
+input::placeholder {
+  color: var(--tk-text-ter);
+}
+
+
+/* ==========================================================================
+   COMPONENTS — .tk-* classes
+   ========================================================================== */
+
+/* --- Buttons --- */
+
+.tk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11.5px/1 inherit;
+  font-family: inherit;
+  color: var(--tk-text);
+  background: var(--tk-btn-bg);
+  border: 1px solid var(--tk-btn-border);
+  border-radius: var(--tk-radius-sm);
+  padding: 7px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.tk-btn:hover:not(:disabled) { background: var(--tk-hover); }
+.tk-btn:disabled { opacity: 0.45; cursor: default; }
+
+.tk-btn-accent {
+  background: var(--tk-accent);
+  border-color: var(--tk-accent);
+  color: var(--tk-accent-text);
+}
+.tk-btn-accent:hover:not(:disabled) {
+  background: var(--tk-accent);
+  filter: brightness(1.07);
+}
+
+/* --- Icon button --- */
+
+.tk-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--tk-radius-sm);
+  color: var(--tk-text-sec);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.tk-iconbtn:hover:not(:disabled) { background: var(--tk-hover); color: var(--tk-text); }
+.tk-iconbtn:disabled { opacity: 0.32; cursor: default; }
+
+/* --- Play button --- */
+
+.tk-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 99px;
+  border: none;
+  cursor: pointer;
+  background: var(--tk-accent);
+  color: var(--tk-accent-text);
+  transition: filter 0.15s, transform 0.1s;
+}
+.tk-play:hover { filter: brightness(1.08); }
+.tk-play:active { transform: scale(0.94); }
+
+/* --- Send button --- */
+
+.tk-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin: 4px;
+  border-radius: 99px;
+  border: none;
+  cursor: pointer;
+  background: var(--tk-accent);
+  color: var(--tk-accent-text);
+  flex-shrink: 0;
+  transition: opacity 0.15s, filter 0.15s;
+}
+.tk-send:hover:not(:disabled) { filter: brightness(1.08); }
+.tk-send:disabled { opacity: 0.35; cursor: default; }
+
+/* --- Tool-rail button --- */
+
+.tk-railbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--tk-radius-sm);
+  color: var(--tk-text-sec);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tk-railbtn:hover:not(:disabled) { background: var(--tk-hover); color: var(--tk-text); }
+.tk-railbtn:disabled { opacity: 0.32; cursor: default; }
+
+.tk-railbtn-on,
+.tk-railbtn-on:hover {
+  background: var(--tk-accent);
+  color: var(--tk-accent-text);
+  border-color: var(--tk-accent);
+}
+
+/* --- Timecode --- */
+
+.tk-timecode {
+  font-family: var(--tk-mono);
+  font-size: 11.5px;
+  color: var(--tk-text);
+  min-width: 96px;
+  letter-spacing: 0.01em;
+}
+
+/* --- Vertical rule --- */
+
+.tk-vr {
+  width: 1px;
+  height: 20px;
+  background: var(--tk-border);
+  flex-shrink: 0;
+}
+
+/* --- Chip --- */
+
+.tk-chip {
+  font: 500 10.5px/1 inherit;
+  font-family: inherit;
+  color: var(--tk-text-sec);
+  background: transparent;
+  border: 1px solid var(--tk-border);
+  border-radius: 99px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tk-chip:hover {
+  background: var(--tk-accent-soft);
+  color: var(--tk-text);
+  border-color: var(--tk-accent);
+}
+
+/* --- Tabs --- */
+
+.tk-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font: 600 11px/1 inherit;
+  font-family: inherit;
+  color: var(--tk-text-ter);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--tk-radius-sm);
+  padding: 6px 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.tk-tab:hover { color: var(--tk-text-sec); background: var(--tk-hover); }
+
+.tk-tab-on,
+.tk-tab-on:hover {
+  color: var(--tk-text);
+  background: var(--tk-card);
+  border-color: var(--tk-border);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+
+/* --- Row card --- */
+
+.tk-rowcard {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid;
+  border-radius: var(--tk-radius-sm);
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.tk-rowcard:hover { background: var(--tk-hover); }
+
+/* --- Glass button (used by design canvas overlays) --- */
+
+.tk-glassbtn {
+  color: rgba(255,255,255,0.66);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tk-glassbtn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.tk-glassbtn-on,
+.tk-glassbtn-on:hover {
+  background: var(--tk-accent-soft);
+  color: var(--tk-accent);
+  border-color: var(--tk-accent-line);
+}
+
+
+/* ==========================================================================
+   ANIMATIONS
+   ========================================================================== */
+
+/* Typing pulse dots */
+.tk-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 99px;
+  display: inline-block;
+  animation: tkPulse 1s ease-in-out infinite;
+}
+@keyframes tkPulse {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50%       { opacity: 1;    transform: translateY(-2px); }
+}
+
+/* Scene-detect sweep */
+.tk-scan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  animation: tkScan 1.1s linear infinite;
+}
+@keyframes tkScan {
+  from { left: -40%; }
+  to   { left: 100%; }
+}
+
+/* Verify spinner */
+.tk-spin {
+  animation: tkSpin 0.7s linear infinite;
+  transform-origin: 50% 50%;
+}
+@keyframes tkSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Typewriter blinking caret */
+.tk-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 1em;
+  margin-left: 1px;
+  background: currentColor;
+  vertical-align: text-bottom;
+  animation: tkBlink 1s steps(2) infinite;
+}
+@keyframes tkBlink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* Invalid-input shake */
+.tk-shake {
+  animation: tkShake 0.4s ease;
+}
+@keyframes tkShake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-5px); }
+  40%      { transform: translateX(5px); }
+  60%      { transform: translateX(-3px); }
+  80%      { transform: translateX(3px); }
+}
+
+
+/* ==========================================================================
+   SETTINGS MENU
+   ========================================================================== */
+
+.tk-settings-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.tk-settings-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.76);
+  background: rgba(10,12,18,0.46);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.tk-settings-button:hover,
+.tk-settings-button[aria-expanded="true"] {
+  color: #fff;
+  background: rgba(10,12,18,0.64);
+  border-color: rgba(255,255,255,0.22);
+}
+
+.tk-settings-porcelain .tk-settings-button {
+  color: rgba(22,28,40,0.68);
+  background: rgba(250,249,246,0.86);
+  border-color: rgba(22,28,40,0.12);
+  box-shadow: 0 8px 22px rgba(25,32,46,0.12);
+}
+
+.tk-settings-porcelain .tk-settings-button:hover,
+.tk-settings-porcelain .tk-settings-button[aria-expanded="true"] {
+  color: rgba(22,28,40,0.92);
+  background: rgba(250,249,246,0.96);
+  border-color: rgba(22,28,40,0.2);
+}
+
+.tk-theme-menu {
+  position: absolute;
+  top: 48px;
+  right: 12px;
+  z-index: 21;
+  width: 238px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 10px;
+  background: rgba(15,17,24,0.96);
+  box-shadow: 0 18px 54px rgba(0,0,0,0.32);
+}
+
+.tk-settings-porcelain .tk-theme-menu {
+  background: rgba(250,249,246,0.98);
+  border-color: rgba(22,28,40,0.12);
+  box-shadow: 0 18px 54px rgba(25,32,46,0.16);
+}
+
+.tk-theme-menu-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: rgba(255,255,255,0.92);
+  font: 700 11px/1 var(--tk-font, inherit);
+  letter-spacing: 0;
+  padding: 2px 2px 4px;
+}
+
+.tk-theme-menu-head span {
+  color: rgba(255,255,255,0.42);
+  font-weight: 600;
+}
+
+.tk-settings-porcelain .tk-theme-menu-head {
+  color: rgba(22,28,40,0.9);
+}
+
+.tk-settings-porcelain .tk-theme-menu-head span {
+  color: rgba(22,28,40,0.44);
+}
+
+.tk-theme-option {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 42px;
+  padding: 7px 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.9);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tk-theme-option:hover,
+.tk-theme-option[aria-pressed="true"] {
+  border-color: var(--tk-accent, rgba(139,124,246,0.8));
+  background: var(--tk-accent-soft, rgba(139,124,246,0.16));
+}
+
+.tk-settings-porcelain .tk-theme-option {
+  color: rgba(22,28,40,0.88);
+  border-color: rgba(22,28,40,0.12);
+}
+
+.tk-theme-option strong,
+.tk-theme-option small {
+  display: block;
+}
+
+.tk-theme-option strong {
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.tk-theme-option small {
+  color: rgba(255,255,255,0.48);
+  font-size: 10px;
+  line-height: 1.25;
+  margin-top: 3px;
+}
+
+.tk-settings-porcelain .tk-theme-option small {
+  color: rgba(22,28,40,0.5);
+}
+
+.tk-theme-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 99px;
+  border: 1px solid rgba(255,255,255,0.18);
+}
+
+.tk-swatch-graphite { background: linear-gradient(135deg, #17191f, #d89d35); }
+.tk-swatch-porcelain { background: linear-gradient(135deg, #fbfaf6, #386bd8); }
+.tk-swatch-nocturne { background: linear-gradient(135deg, #10192c, #e0639a); }
+
+.tk-theme-check {
+  color: var(--tk-accent, #8B7CF6);
+  font-size: 13px;
+  text-align: right;
+}
+
+/* --- Note (design canvas label helper) --- */
+
+.tk-note { font-size: 11px; line-height: 1.5; }
+.tk-note b { display: block; margin-bottom: 4px; }
