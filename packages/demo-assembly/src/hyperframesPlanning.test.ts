@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
@@ -67,7 +67,8 @@ assert.equal(calls[0]?.repoCheckoutDirectory, "/tmp/repo-checkout");
 assert.match(calls[0]?.prompt ?? "", /Create a Hyperframes project/);
 assert.match(calls[0]?.prompt ?? "", /repository\//);
 assert.match(calls[0]?.prompt ?? "", /source repo snapshot is under repository\//);
-assert.match(calls[0]?.prompt ?? "", /Write all generated Hyperframes output files inside the OpenCode working directory/);
+assert.match(calls[0]?.prompt ?? "", /Write all generated Hyperframes output files inside the agent working directory/);
+assert.doesNotMatch(calls[0]?.prompt ?? "", /OpenCode working directory/);
 assert.match(calls[0]?.prompt ?? "", /Do not write generated files into repository\//);
 assert.match(calls[0]?.prompt ?? "", /index.html/);
 assert.match(calls[0]?.prompt ?? "", /asset-manifest.json/);
@@ -149,7 +150,8 @@ assert.equal(repairCalls[0]?.repoCheckoutDirectory, "/tmp/repo-checkout");
 assert.match(repairCalls[0]?.prompt ?? "", /Fix only the generated Hyperframes project/);
 assert.match(repairCalls[0]?.prompt ?? "", /repository\//);
 assert.match(repairCalls[0]?.prompt ?? "", /source repo snapshot is under repository\//);
-assert.match(repairCalls[0]?.prompt ?? "", /Modify only generated Hyperframes output files inside the OpenCode working directory/);
+assert.match(repairCalls[0]?.prompt ?? "", /Modify only generated Hyperframes output files inside the agent working directory/);
+assert.doesNotMatch(repairCalls[0]?.prompt ?? "", /OpenCode working directory/);
 assert.match(repairCalls[0]?.prompt ?? "", /failureStage/);
 assert.match(repairCalls[0]?.prompt ?? "", /line 1/);
 const repairPrompt = JSON.parse(repairCalls[0]?.prompt ?? "{}");
@@ -265,11 +267,26 @@ await writeFile(
   ].join("\n"),
 );
 await chmod(fakeOpencodePath, 0o755);
+const blankAgentClaudeMarker = join(tempDir, "blank-agent-claude-ran.txt");
+const blankAgentFakeClaudePath = join(fakeBinDir, "claude");
+await writeFile(
+  blankAgentFakeClaudePath,
+  [
+    "#!/usr/bin/env node",
+    "const { writeFileSync } = require('node:fs');",
+    `writeFileSync(${JSON.stringify(blankAgentClaudeMarker)}, 'claude');`,
+    "process.exit(1);",
+  ].join("\n"),
+);
+await chmod(blankAgentFakeClaudePath, 0o755);
 
 const originalPath = process.env.PATH;
 const originalOpencodeConfig = process.env.OPENCODE_CONFIG;
+const originalHyperframesAgent = process.env.TINKER_HYPERFRAMES_AGENT;
+const originalShouldNotLeak = process.env.TINKER_SHOULD_NOT_LEAK;
 try {
   process.env.PATH = `${fakeBinDir}${delimiter}${originalPath ?? ""}`;
+  process.env.TINKER_HYPERFRAMES_AGENT = "   ";
   process.env.TINKER_SHOULD_NOT_LEAK = "host-secret";
   process.env.OPENCODE_CONFIG = join(tempDir, "host-opencode.json");
   await createOpencodeHyperframesGenerator()({
@@ -285,11 +302,20 @@ try {
   });
 } finally {
   process.env.PATH = originalPath;
-  delete process.env.TINKER_SHOULD_NOT_LEAK;
+  if (originalShouldNotLeak === undefined) {
+    delete process.env.TINKER_SHOULD_NOT_LEAK;
+  } else {
+    process.env.TINKER_SHOULD_NOT_LEAK = originalShouldNotLeak;
+  }
   if (originalOpencodeConfig === undefined) {
     delete process.env.OPENCODE_CONFIG;
   } else {
     process.env.OPENCODE_CONFIG = originalOpencodeConfig;
+  }
+  if (originalHyperframesAgent === undefined) {
+    delete process.env.TINKER_HYPERFRAMES_AGENT;
+  } else {
+    process.env.TINKER_HYPERFRAMES_AGENT = originalHyperframesAgent;
   }
 }
 
@@ -330,12 +356,18 @@ assert.equal(snapshotChecks.oldTinkerLog, false);
 assert.equal(snapshotChecks.hostTmpLink, false);
 assert.equal((await readFile(join(hyperframesDir, "opencode-cwd.txt"), "utf8")).endsWith(".tinker-opencode-workspace"), true);
 const opencodeArgs = JSON.parse(await readFile(join(hyperframesDir, "opencode-args.json"), "utf8"));
+assert.deepEqual(opencodeArgs.slice(0, 6), ["run", "--pure", "--format", "json", "--dir", sandboxDir]);
+assert.match(opencodeArgs[6] ?? "", /Create a Hyperframes project/);
+assert.equal(opencodeArgs.length, 7);
+assert.equal(opencodeArgs.includes("--permission-mode"), false);
 assert.equal(opencodeArgs.includes("--dangerously-skip-permissions"), false);
+assert.equal(opencodeArgs.includes("--allow-dangerously-skip-permissions"), false);
 const opencodeConfigCheck = JSON.parse(await readFile(join(hyperframesDir, "opencode-config-check.json"), "utf8"));
 assert.equal(opencodeConfigCheck.hasLocalConfig, false);
 const spawnedEnv = JSON.parse(await readFile(join(hyperframesDir, "opencode-env.json"), "utf8"));
 assert.equal(spawnedEnv.TINKER_SHOULD_NOT_LEAK, undefined);
 assert.equal(spawnedEnv.OPENCODE_CONFIG, undefined);
+await assert.rejects(() => access(blankAgentClaudeMarker));
 const stdoutLog = await readFile(join(hyperframesDir, ".tinker-opencode-hyperframes-output.jsonl"), "utf8");
 const stderrLog = await readFile(join(hyperframesDir, ".tinker-opencode-hyperframes-error.log"), "utf8");
 assert.match(stdoutLog, /truncated/i);
@@ -346,6 +378,157 @@ assert.match(stderrLog, /SECRET_STDERR_SHOULD_STAY_IN_LOG/);
 assert.doesNotMatch(stderrLog, /STDERR_START_SHOULD_BE_TRUNCATED/);
 assert.ok(Buffer.byteLength(stdoutLog, "utf8") < 140_000);
 assert.ok(Buffer.byteLength(stderrLog, "utf8") < 140_000);
+
+const claudeTempDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-planning-claude-"));
+const claudeFakeBinDir = join(claudeTempDir, "bin");
+const claudeRepoCheckoutDirectory = join(claudeTempDir, "repo");
+const claudeHyperframesDir = join(claudeTempDir, "hyperframes");
+await mkdir(claudeFakeBinDir);
+await mkdir(claudeRepoCheckoutDirectory);
+await writeFile(join(claudeRepoCheckoutDirectory, "package.json"), JSON.stringify({ name: "fixture-product" }));
+const fakeClaudePath = join(claudeFakeBinDir, "claude");
+await writeFile(
+  fakeClaudePath,
+  [
+    "#!/usr/bin/env node",
+    "const { writeFileSync } = require('node:fs');",
+    "const { join } = require('node:path');",
+    "writeFileSync(join(process.cwd(), 'claude-cwd.txt'), process.cwd());",
+    "writeFileSync(join(process.cwd(), 'claude-args.json'), JSON.stringify(process.argv.slice(2), null, 2));",
+    "writeFileSync(join(process.cwd(), 'claude-env.json'), JSON.stringify(process.env, null, 2));",
+    "writeFileSync(join(process.cwd(), 'index.html'), '<!doctype html><title>Claude Generated</title>');",
+    "writeFileSync(join(process.cwd(), 'asset-manifest.json'), JSON.stringify({ assets: [] }));",
+    "writeFileSync(join(process.cwd(), 'generation-manifest.json'), JSON.stringify({ renderer: 'hyperframes', productUrl: 'https://example.com', sourceRepoUrl: 'https://github.com/example/product', durationCapSeconds: 12, aspectRatio: '16:9', sourceGrounding: ['repo', 'website-analysis'], outputVideoPath: 'output.mp4' }));",
+    "process.exit(0);",
+  ].join("\n"),
+);
+await chmod(fakeClaudePath, 0o755);
+const claudeFallbackOpencodePath = join(claudeFakeBinDir, "opencode");
+await writeFile(
+  claudeFallbackOpencodePath,
+  [
+    "#!/usr/bin/env node",
+    "const { writeFileSync } = require('node:fs');",
+    "const { join } = require('node:path');",
+    "writeFileSync(join(process.cwd(), 'opencode-ran.txt'), 'opencode');",
+    "writeFileSync(join(process.cwd(), 'index.html'), '<!doctype html><title>OpenCode Generated</title>');",
+    "writeFileSync(join(process.cwd(), 'asset-manifest.json'), JSON.stringify({ assets: [] }));",
+    "writeFileSync(join(process.cwd(), 'generation-manifest.json'), JSON.stringify({ renderer: 'hyperframes', productUrl: 'https://example.com', sourceRepoUrl: 'https://github.com/example/product', durationCapSeconds: 12, aspectRatio: '16:9', sourceGrounding: ['repo', 'website-analysis'], outputVideoPath: 'output.mp4' }));",
+    "process.exit(0);",
+  ].join("\n"),
+);
+await chmod(claudeFallbackOpencodePath, 0o755);
+
+try {
+  process.env.PATH = `${claudeFakeBinDir}${delimiter}${originalPath ?? ""}`;
+  process.env.TINKER_HYPERFRAMES_AGENT = "claude";
+  process.env.TINKER_SHOULD_NOT_LEAK = "host-secret";
+  process.env.OPENCODE_CONFIG = join(claudeTempDir, "host-opencode.json");
+  await createOpencodeHyperframesGenerator()({
+    productUrl: "https://example.com",
+    repoUrl: "https://github.com/example/product",
+    prompt: "Create a workflow demo.",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    websiteAnalysis: productAnalysis,
+    repoAnalysis,
+    repoCheckoutDirectory: claudeRepoCheckoutDirectory,
+    hyperframesDir: claudeHyperframesDir,
+  });
+} finally {
+  process.env.PATH = originalPath;
+  if (originalShouldNotLeak === undefined) {
+    delete process.env.TINKER_SHOULD_NOT_LEAK;
+  } else {
+    process.env.TINKER_SHOULD_NOT_LEAK = originalShouldNotLeak;
+  }
+  if (originalOpencodeConfig === undefined) {
+    delete process.env.OPENCODE_CONFIG;
+  } else {
+    process.env.OPENCODE_CONFIG = originalOpencodeConfig;
+  }
+  if (originalHyperframesAgent === undefined) {
+    delete process.env.TINKER_HYPERFRAMES_AGENT;
+  } else {
+    process.env.TINKER_HYPERFRAMES_AGENT = originalHyperframesAgent;
+  }
+}
+
+await validateHyperframesArtifacts({
+  hyperframesDir: claudeHyperframesDir,
+  productUrl: "https://example.com",
+  repoUrl: "https://github.com/example/product",
+});
+await assert.rejects(() => access(join(claudeHyperframesDir, ".tinker-opencode-workspace")));
+assert.equal(
+  await readFile(join(claudeHyperframesDir, "claude-cwd.txt"), "utf8"),
+  join(await realpath(claudeHyperframesDir), ".tinker-opencode-workspace"),
+);
+const claudeArgs = JSON.parse(await readFile(join(claudeHyperframesDir, "claude-args.json"), "utf8"));
+assert.equal(claudeArgs[0], "-p");
+assert.match(claudeArgs[1] ?? "", /Create a Hyperframes project/);
+assert.deepEqual(claudeArgs.slice(2), ["--output-format", "text"]);
+assert.equal(claudeArgs.includes("--permission-mode"), false);
+assert.equal(claudeArgs.includes("--dangerously-skip-permissions"), false);
+assert.equal(claudeArgs.includes("--allow-dangerously-skip-permissions"), false);
+const claudeEnv = JSON.parse(await readFile(join(claudeHyperframesDir, "claude-env.json"), "utf8"));
+assert.equal(claudeEnv.TINKER_SHOULD_NOT_LEAK, undefined);
+assert.equal(claudeEnv.OPENCODE_CONFIG, undefined);
+await assert.rejects(() => access(join(claudeHyperframesDir, "opencode-ran.txt")));
+
+const invalidTempDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-planning-invalid-agent-"));
+const invalidFakeBinDir = join(invalidTempDir, "bin");
+const invalidRepoCheckoutDirectory = join(invalidTempDir, "repo");
+const invalidHyperframesDir = join(invalidTempDir, "hyperframes");
+const invalidSpawnMarker = join(invalidTempDir, "spawned.txt");
+const invalidStaleSandboxMarker = join(invalidHyperframesDir, ".tinker-opencode-workspace", "stale-marker.txt");
+await mkdir(invalidFakeBinDir);
+await mkdir(invalidRepoCheckoutDirectory);
+await mkdir(join(invalidHyperframesDir, ".tinker-opencode-workspace"), { recursive: true });
+await writeFile(join(invalidRepoCheckoutDirectory, "package.json"), JSON.stringify({ name: "fixture-product" }));
+await writeFile(invalidStaleSandboxMarker, "stale sandbox data\n");
+for (const executableName of ["opencode", "claude"]) {
+  const fakeExecutablePath = join(invalidFakeBinDir, executableName);
+  await writeFile(
+    fakeExecutablePath,
+    [
+      "#!/usr/bin/env node",
+      "const { writeFileSync } = require('node:fs');",
+      `writeFileSync(${JSON.stringify(invalidSpawnMarker)}, ${JSON.stringify(executableName)});`,
+      "process.exit(0);",
+    ].join("\n"),
+  );
+  await chmod(fakeExecutablePath, 0o755);
+}
+
+try {
+  process.env.PATH = `${invalidFakeBinDir}${delimiter}${originalPath ?? ""}`;
+  process.env.TINKER_HYPERFRAMES_AGENT = "cursor";
+  await assert.rejects(
+    () =>
+      createOpencodeHyperframesGenerator()({
+        productUrl: "https://example.com",
+        repoUrl: "https://github.com/example/product",
+        prompt: "Create a workflow demo.",
+        durationCapSeconds: 12,
+        aspectRatio: "16:9",
+        websiteAnalysis: productAnalysis,
+        repoAnalysis,
+        repoCheckoutDirectory: invalidRepoCheckoutDirectory,
+        hyperframesDir: invalidHyperframesDir,
+      }),
+    /Unknown TINKER_HYPERFRAMES_AGENT: cursor\. Supported values: opencode, claude/,
+  );
+} finally {
+  process.env.PATH = originalPath;
+  if (originalHyperframesAgent === undefined) {
+    delete process.env.TINKER_HYPERFRAMES_AGENT;
+  } else {
+    process.env.TINKER_HYPERFRAMES_AGENT = originalHyperframesAgent;
+  }
+}
+await assert.rejects(() => access(invalidSpawnMarker));
+assert.equal(await readFile(invalidStaleSandboxMarker, "utf8"), "stale sandbox data\n");
 
 const failureTempDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-planning-failure-"));
 const failureFakeBinDir = join(failureTempDir, "bin");
@@ -369,6 +552,7 @@ await chmod(failureFakeOpencodePath, 0o755);
 
 try {
   process.env.PATH = `${failureFakeBinDir}${delimiter}${originalPath ?? ""}`;
+  process.env.TINKER_HYPERFRAMES_AGENT = "   ";
   await assert.rejects(
     () =>
       createOpencodeHyperframesGenerator()({
@@ -392,6 +576,11 @@ try {
   );
 } finally {
   process.env.PATH = originalPath;
+  if (originalHyperframesAgent === undefined) {
+    delete process.env.TINKER_HYPERFRAMES_AGENT;
+  } else {
+    process.env.TINKER_HYPERFRAMES_AGENT = originalHyperframesAgent;
+  }
 }
 await access(join(failureHyperframesDir, ".tinker-opencode-hyperframes-output.jsonl"));
 await access(join(failureHyperframesDir, ".tinker-opencode-hyperframes-error.log"));
