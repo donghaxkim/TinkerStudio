@@ -346,6 +346,54 @@ assert.deepEqual(repairCalls, [{ failureStage: "render", logText: "actual render
 assert.equal(repairedResult.rendererResults.hyperframes?.outputVideoPath, join(repairOutputRoot, "hyperframes", "output.mp4"));
 assert.equal(existsSync(join(repairOutputRoot, ".repo-scratch")), false);
 
+const lintPathRenderFailureOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-lint-path-render-failure-"));
+const lintPathRenderRepairCalls: Array<{ failureStage: string; logText: string }> = [];
+let lintPathRenderAttempts = 0;
+await runAiUrlDemo({
+  outputRoot: lintPathRenderFailureOutputRoot,
+  projectId: "ai-url-demo-lint-path-render-failure-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "hyperframes",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  generateHyperframes: async (input) => {
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+  },
+  runHyperframes: async (input) => {
+    lintPathRenderAttempts += 1;
+    if (lintPathRenderAttempts === 1) {
+      await writeFile(join(input.hyperframesDir, "render.log"), "render failed under lint-named output path\n");
+      throw new Error(`Hyperframes render failed for ${input.outputVideoPath}; see render.log`);
+    }
+
+    await writeFile(input.outputVideoPath, "fake repaired mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async (input) => {
+    lintPathRenderRepairCalls.push({ failureStage: input.failureStage, logText: input.logText });
+  },
+  runCapture: async () => {
+    throw new Error("runCapture should not run for lint-path render failure test");
+  },
+});
+
+assert.equal(lintPathRenderAttempts, 2);
+assert.deepEqual(lintPathRenderRepairCalls, [
+  { failureStage: "render", logText: "render failed under lint-named output path\n" },
+]);
+
 const oversizedRepairLogOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-hyperframes-repair-log-"));
 const oversizedRenderLog = `render failure detail\n${"x".repeat(25_000)}`;
 const oversizedRepairLogTexts: string[] = [];

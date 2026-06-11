@@ -7,6 +7,7 @@ import {
   GenerationResultSchema,
 } from "./index.js";
 import { parseCreateDemoRequest, safeParseCreateDemoRequest } from "./createDemoRequest.js";
+import sampleProject from "../../project-schema/fixtures/demo-project.sample.json";
 
 const validManualRequest = CreateDemoRequestSchema.parse({
   id: "manual-fixture-job",
@@ -263,6 +264,38 @@ const result = GenerationResultSchema.parse({
 });
 
 assert.equal("status" in result ? result.status : undefined, "completed");
+assert.equal(
+  GenerationResultSchema.safeParse({
+    jobId: "manual-fixture-job",
+    status: "completed",
+    projectPath: "generated/local-job/manual-fixture-job/demo-project.json",
+    outputDirectory: "generated/local-job/manual-fixture-job",
+    artifactPaths: ["generated/local-job/manual-fixture-job/capture-result.json"],
+    unexpected: "field",
+  }).success,
+  false,
+);
+
+assert.equal(
+  GenerationResultSchema.safeParse({
+    project: sampleProject,
+    warnings: [],
+    unexpected: "field",
+  }).success,
+  false,
+);
+
+assert.equal(
+  GenerationResultSchema.safeParse({
+    project: sampleProject,
+    artifacts: {
+      storyboardAssetId: "asset_storyboard_json",
+      unexpected: "field",
+    },
+    warnings: [],
+  }).success,
+  false,
+);
 
 const hyperframesRendererResult = {
   outputVideoPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",

@@ -35,6 +35,7 @@ export const ManualFixtureGenerationResultSchema = z
     renderer: AiUrlRendererSchema.optional(),
     rendererResults: RendererResultsSchema.optional(),
   })
+  .strict()
   .superRefine((result, ctx) => {
     if (result.renderer === undefined) {
       if (result.rendererResults !== undefined) {
@@ -117,17 +118,21 @@ export const ManualFixtureGenerationResultSchema = z
     }
   });
 
-export const GenerationArtifactsSchema = z.object({
-  storyboardAssetId: z.string().min(1).optional(),
-  captureTraceAssetId: z.string().min(1).optional(),
-  previewVideoAssetId: z.string().min(1).optional(),
-});
+export const GenerationArtifactsSchema = z
+  .object({
+    storyboardAssetId: z.string().min(1).optional(),
+    captureTraceAssetId: z.string().min(1).optional(),
+    previewVideoAssetId: z.string().min(1).optional(),
+  })
+  .strict();
 
-export const AssistedGenerationResultSchema = z.object({
-  project: DemoProjectSchema,
-  artifacts: GenerationArtifactsSchema.optional(),
-  warnings: z.array(z.string().min(1)).default([]),
-});
+export const AssistedGenerationResultSchema = z
+  .object({
+    project: DemoProjectSchema,
+    artifacts: GenerationArtifactsSchema.optional(),
+    warnings: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
 
 export const GenerationResultSchema = z.union([
   ManualFixtureGenerationResultSchema,

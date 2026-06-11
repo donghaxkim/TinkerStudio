@@ -129,9 +129,8 @@ function formatErrorMessage(error: unknown) {
 
 function classifyHyperframesRunFailure(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  const lowerMessage = message.toLowerCase();
 
-  if (lowerMessage.includes("lint")) {
+  if (message.startsWith("Hyperframes lint failed")) {
     return { failureStage: "lint", message };
   }
 
