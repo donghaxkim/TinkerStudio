@@ -297,6 +297,54 @@ assert.equal(new Set(bothResult.artifactPaths).size, bothResult.artifactPaths.le
 assert.deepEqual(bothResult.captureCounts, { clips: 2, screenshots: 0, events: 0, checkpoints: 1 });
 assert.equal(existsSync(join(bothOutputRoot, ".repo-scratch")), false);
 
+const bothPlaywrightFailureOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-both-playwright-failure-"));
+const bothPlaywrightFailureCalls: string[] = [];
+await assert.rejects(
+  () =>
+    runAiUrlDemo({
+      outputRoot: bothPlaywrightFailureOutputRoot,
+      projectId: "ai-url-demo-both-playwright-failure-test",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      productUrl,
+      repoUrl,
+      renderer: "both",
+      prompt,
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+      analyzeRepo: async (_url, options) => {
+        await mkdir(options.checkoutDirectory, { recursive: true });
+        return repoAnalysis;
+      },
+      generateHyperframes: async (input) => {
+        bothPlaywrightFailureCalls.push("hyperframes:generate");
+        await writeValidHyperframesArtifacts(input.hyperframesDir);
+      },
+      runHyperframes: async (input) => {
+        bothPlaywrightFailureCalls.push("hyperframes:render");
+        await writeFile(input.outputVideoPath, "fake mp4\n");
+        return {
+          lintLogPath: join(input.hyperframesDir, "lint.log"),
+          renderLogPath: join(input.hyperframesDir, "render.log"),
+          outputVideoPath: input.outputVideoPath,
+        };
+      },
+      repairHyperframes: async () => {
+        throw new Error("repair should not run for valid both-renderer artifacts before Playwright failure");
+      },
+      planner: async () => {
+        bothPlaywrightFailureCalls.push("playwright:plan");
+        throw new Error("Playwright planning failed");
+      },
+      runCapture: async () => {
+        throw new Error("runCapture should not run after Playwright planning failure");
+      },
+    }),
+  /Playwright planning failed/,
+);
+assert.deepEqual(bothPlaywrightFailureCalls, ["hyperframes:generate", "hyperframes:render", "playwright:plan"]);
+assert.equal(existsSync(join(bothPlaywrightFailureOutputRoot, ".repo-scratch")), false);
+
 const repairOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-hyperframes-repair-"));
 const repairCalls: Array<{ failureStage: string; logText: string }> = [];
 let renderAttempts = 0;
