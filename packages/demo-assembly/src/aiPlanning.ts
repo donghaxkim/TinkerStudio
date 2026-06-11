@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { lstat, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   MAX_CAPTURE_CHECKPOINTS,
@@ -416,8 +416,8 @@ function sanitizedOpencodeEnv() {
 }
 
 async function writeOpencodePlannerConfig(cwd: string) {
-  await writeFile(
-    join(cwd, "opencode.json"),
+  await writeLocalOpencodeConfig(
+    cwd,
     `${JSON.stringify(
       {
         $schema: "https://opencode.ai/config.json",
@@ -432,6 +432,21 @@ async function writeOpencodePlannerConfig(cwd: string) {
       2,
     )}\n`,
   );
+}
+
+async function writeLocalOpencodeConfig(cwd: string, contents: string) {
+  const target = join(cwd, "opencode.json");
+
+  try {
+    await lstat(target);
+    await rm(target, { recursive: true, force: true });
+  } catch (error) {
+    if (!isRecord(error) || error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  await writeFile(target, contents, { flag: "wx" });
 }
 
 function assertCapturePlanMatchesProductUrl(capturePlan: CapturePlan, productUrl: string) {

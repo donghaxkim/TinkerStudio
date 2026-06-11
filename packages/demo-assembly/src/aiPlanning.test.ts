@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
@@ -407,8 +407,11 @@ await assert.rejects(
 const opencodeRunnerRoot = await mkdtemp(join(tmpdir(), "tinker-ai-planning-opencode-"));
 const opencodeRunnerBin = join(opencodeRunnerRoot, "bin");
 const opencodeRunnerRepo = join(opencodeRunnerRoot, "repo");
+const opencodeRunnerOutsideConfig = join(opencodeRunnerRoot, "outside-opencode.json");
 await mkdir(opencodeRunnerBin);
 await mkdir(opencodeRunnerRepo);
+await writeFile(opencodeRunnerOutsideConfig, "outside config must stay untouched");
+await symlink(opencodeRunnerOutsideConfig, join(opencodeRunnerRepo, "opencode.json"));
 const fakeOpencodePlannerPath = join(opencodeRunnerBin, "opencode");
 await writeFile(
   fakeOpencodePlannerPath,
@@ -450,6 +453,10 @@ try {
 
 const plannerOpencodeArgs = JSON.parse(await readFile(join(opencodeRunnerRepo, "opencode-args.json"), "utf8"));
 assert.equal(plannerOpencodeArgs.includes("--dangerously-skip-permissions"), false);
+assert.equal(await readFile(opencodeRunnerOutsideConfig, "utf8"), "outside config must stay untouched");
+const plannerOpencodeConfigStat = await lstat(join(opencodeRunnerRepo, "opencode.json"));
+assert.equal(plannerOpencodeConfigStat.isSymbolicLink(), false);
+assert.equal(plannerOpencodeConfigStat.isFile(), true);
 const plannerOpencodeEnv = JSON.parse(await readFile(join(opencodeRunnerRepo, "opencode-env.json"), "utf8"));
 assert.equal(plannerOpencodeEnv.TINKER_AI_PLANNER_SHOULD_NOT_LEAK, undefined);
 assert.equal(plannerOpencodeEnv.OPENCODE_CONFIG, undefined);

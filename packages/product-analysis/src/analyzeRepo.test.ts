@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { analyzeRepo, defaultRunOpencode, parseRepoAnalysis } from "./analyzeRepo.js";
@@ -217,8 +217,11 @@ try {
 
   const fakeBinDirectory = join(fixtureRoot, "fake-bin");
   const opencodeCheckoutDirectory = join(fixtureRoot, "opencode-checkout");
+  const opencodeOutsideConfig = join(fixtureRoot, "outside-opencode.json");
   await mkdir(fakeBinDirectory);
   await mkdir(opencodeCheckoutDirectory);
+  await writeFile(opencodeOutsideConfig, "outside config must stay untouched");
+  await symlink(opencodeOutsideConfig, join(opencodeCheckoutDirectory, "opencode.json"));
   const fakeOpencodePath = join(fakeBinDirectory, "opencode");
   await writeFile(
     fakeOpencodePath,
@@ -260,6 +263,10 @@ try {
 
   const repoOpencodeArgs = JSON.parse(await readFile(join(opencodeCheckoutDirectory, "opencode-args.json"), "utf8"));
   assert.equal(repoOpencodeArgs.includes("--dangerously-skip-permissions"), false);
+  assert.equal(await readFile(opencodeOutsideConfig, "utf8"), "outside config must stay untouched");
+  const repoOpencodeConfigStat = await lstat(join(opencodeCheckoutDirectory, "opencode.json"));
+  assert.equal(repoOpencodeConfigStat.isSymbolicLink(), false);
+  assert.equal(repoOpencodeConfigStat.isFile(), true);
   const repoOpencodeEnv = JSON.parse(await readFile(join(opencodeCheckoutDirectory, "opencode-env.json"), "utf8"));
   assert.equal(repoOpencodeEnv.TINKER_REPO_ANALYSIS_SHOULD_NOT_LEAK, undefined);
   assert.equal(repoOpencodeEnv.OPENCODE_CONFIG, undefined);

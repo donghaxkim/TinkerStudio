@@ -1,6 +1,6 @@
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix, win32 } from "node:path";
 import { promisify } from "node:util";
 import type { AnalyzeRepoOpencodeRun, AnalyzeRepoOptions, RepoAnalysis } from "./types.js";
@@ -260,8 +260,8 @@ function sanitizedOpencodeEnv() {
 }
 
 async function writeOpencodeRepoAnalysisConfig(cwd: string) {
-  await writeFile(
-    join(cwd, "opencode.json"),
+  await writeLocalOpencodeConfig(
+    cwd,
     `${JSON.stringify(
       {
         $schema: "https://opencode.ai/config.json",
@@ -276,6 +276,21 @@ async function writeOpencodeRepoAnalysisConfig(cwd: string) {
       2,
     )}\n`,
   );
+}
+
+async function writeLocalOpencodeConfig(cwd: string, contents: string) {
+  const target = join(cwd, "opencode.json");
+
+  try {
+    await lstat(target);
+    await rm(target, { recursive: true, force: true });
+  } catch (error) {
+    if (!isRecord(error) || error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  await writeFile(target, contents, { flag: "wx" });
 }
 
 export async function defaultRunOpencode(prompt: string, options: { cwd: string }) {
