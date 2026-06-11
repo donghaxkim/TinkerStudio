@@ -47,7 +47,7 @@ describe("buildServer", () => {
     }
   });
 
-  test("does not label custom 400 errors as malformed JSON", async () => {
+  test("preserves custom 400 errors without labeling them as malformed JSON", async () => {
     const server = await buildServer({ config: readConfig({}) });
     server.get("/custom-400", async () => {
       const error = new Error("Custom bad request") as Error & { statusCode: number };
@@ -58,8 +58,26 @@ describe("buildServer", () => {
     try {
       const response = await server.inject({ method: "GET", url: "/custom-400" });
 
-      expect(response.statusCode).toBe(500);
-      expect(JSON.parse(response.body)).toEqual({ message: "Internal server error" });
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({ message: "Custom bad request" });
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("preserves custom 422 errors", async () => {
+    const server = await buildServer({ config: readConfig({}) });
+    server.get("/custom-422", async () => {
+      const error = new Error("Validation failed") as Error & { statusCode: number };
+      error.statusCode = 422;
+      throw error;
+    });
+
+    try {
+      const response = await server.inject({ method: "GET", url: "/custom-422" });
+
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body)).toEqual({ message: "Validation failed" });
     } finally {
       await server.close();
     }
