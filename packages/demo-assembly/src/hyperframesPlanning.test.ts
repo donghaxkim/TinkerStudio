@@ -5,10 +5,15 @@ import { delimiter, join } from "node:path";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { validateHyperframesArtifacts } from "./hyperframesArtifacts.js";
 import * as demoAssembly from "./index.js";
-import { createOpencodeHyperframesGenerator, createOpencodeHyperframesRepairer } from "./hyperframesPlanning.js";
+import {
+  DEFAULT_OPENCODE_TIMEOUT_MS,
+  createOpencodeHyperframesGenerator,
+  createOpencodeHyperframesRepairer,
+} from "./hyperframesPlanning.js";
 
 assert.equal(typeof demoAssembly.createOpencodeHyperframesGenerator, "function");
 assert.equal(typeof demoAssembly.createOpencodeHyperframesRepairer, "function");
+assert.equal(DEFAULT_OPENCODE_TIMEOUT_MS, 1_800_000);
 
 const productAnalysis: ProductAnalysis = {
   url: "https://example.com",
@@ -286,7 +291,7 @@ const originalHyperframesAgent = process.env.TINKER_HYPERFRAMES_AGENT;
 const originalShouldNotLeak = process.env.TINKER_SHOULD_NOT_LEAK;
 try {
   process.env.PATH = `${fakeBinDir}${delimiter}${originalPath ?? ""}`;
-  process.env.TINKER_HYPERFRAMES_AGENT = "   ";
+  process.env.TINKER_HYPERFRAMES_AGENT = "opencode";
   process.env.TINKER_SHOULD_NOT_LEAK = "host-secret";
   process.env.OPENCODE_CONFIG = join(tempDir, "host-opencode.json");
   await createOpencodeHyperframesGenerator()({
@@ -421,7 +426,7 @@ await chmod(claudeFallbackOpencodePath, 0o755);
 
 try {
   process.env.PATH = `${claudeFakeBinDir}${delimiter}${originalPath ?? ""}`;
-  process.env.TINKER_HYPERFRAMES_AGENT = "claude";
+  process.env.TINKER_HYPERFRAMES_AGENT = "   ";
   process.env.TINKER_SHOULD_NOT_LEAK = "host-secret";
   process.env.OPENCODE_CONFIG = join(claudeTempDir, "host-opencode.json");
   await createOpencodeHyperframesGenerator()({
@@ -467,7 +472,7 @@ assert.equal(
 const claudeArgs = JSON.parse(await readFile(join(claudeHyperframesDir, "claude-args.json"), "utf8"));
 assert.equal(claudeArgs[0], "-p");
 assert.match(claudeArgs[1] ?? "", /Create a Hyperframes project/);
-assert.deepEqual(claudeArgs.slice(2), ["--output-format", "text"]);
+assert.deepEqual(claudeArgs.slice(2), ["--output-format", "text", "--model", "claude-fable-5", "--effort", "max"]);
 assert.equal(claudeArgs.includes("--permission-mode"), false);
 assert.equal(claudeArgs.includes("--dangerously-skip-permissions"), false);
 assert.equal(claudeArgs.includes("--allow-dangerously-skip-permissions"), false);
@@ -552,7 +557,7 @@ await chmod(failureFakeOpencodePath, 0o755);
 
 try {
   process.env.PATH = `${failureFakeBinDir}${delimiter}${originalPath ?? ""}`;
-  process.env.TINKER_HYPERFRAMES_AGENT = "   ";
+  process.env.TINKER_HYPERFRAMES_AGENT = "opencode";
   await assert.rejects(
     () =>
       createOpencodeHyperframesGenerator()({
