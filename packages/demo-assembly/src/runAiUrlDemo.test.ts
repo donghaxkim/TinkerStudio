@@ -100,6 +100,44 @@ async function writeValidHyperframesArtifacts(hyperframesDir: string) {
   );
 }
 
+const invalidRendererOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-invalid-renderer-"));
+let invalidRendererAnalyzeCalled = false;
+let invalidRendererRepoAnalyzeCalled = false;
+await assert.rejects(
+  () =>
+    runAiUrlDemo({
+      outputRoot: invalidRendererOutputRoot,
+      projectId: "ai-url-demo-invalid-renderer-test",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      productUrl,
+      repoUrl,
+      renderer: "remotion" as never,
+      prompt,
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analyzeWebsite: async () => {
+        invalidRendererAnalyzeCalled = true;
+        return productAnalysis;
+      },
+      analyzeRepo: async () => {
+        invalidRendererRepoAnalyzeCalled = true;
+        return repoAnalysis;
+      },
+      generateHyperframes: async () => {
+        throw new Error("generateHyperframes should not run for invalid renderer");
+      },
+      planner: async () => {
+        throw new Error("planner should not run for invalid renderer");
+      },
+      runCapture: async () => {
+        throw new Error("runCapture should not run for invalid renderer");
+      },
+    }),
+  /Unknown AI URL renderer: remotion/,
+);
+assert.equal(invalidRendererAnalyzeCalled, false);
+assert.equal(invalidRendererRepoAnalyzeCalled, false);
+
 const defaultRendererOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-default-renderer-"));
 const defaultRendererCalls: string[] = [];
 const defaultRendererResult = await runAiUrlDemo({
@@ -154,6 +192,47 @@ assert.equal(
   join(defaultRendererOutputRoot, "hyperframes", "output.mp4"),
 );
 assert.equal(existsSync(join(defaultRendererOutputRoot, ".repo-scratch")), false);
+
+const mismatchedHyperframesOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-hyperframes-output-mismatch-"));
+await assert.rejects(
+  () =>
+    runAiUrlDemo({
+      outputRoot: mismatchedHyperframesOutputRoot,
+      projectId: "ai-url-demo-hyperframes-output-mismatch-test",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      productUrl,
+      repoUrl,
+      renderer: "hyperframes",
+      prompt,
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      maxHyperframesRepairAttempts: 0,
+      analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+      analyzeRepo: async (_url, options) => {
+        await mkdir(options.checkoutDirectory, { recursive: true });
+        return repoAnalysis;
+      },
+      generateHyperframes: async (input) => {
+        await writeValidHyperframesArtifacts(input.hyperframesDir);
+      },
+      runHyperframes: async (input) => {
+        const mismatchedOutputPath = join(input.hyperframesDir, "other-output.mp4");
+        await writeFile(mismatchedOutputPath, "fake mismatched mp4\n");
+        return {
+          lintLogPath: join(input.hyperframesDir, "lint.log"),
+          renderLogPath: join(input.hyperframesDir, "render.log"),
+          outputVideoPath: mismatchedOutputPath,
+        };
+      },
+      repairHyperframes: async () => {
+        throw new Error("repair should not run after mismatched render output path");
+      },
+      runCapture: async () => {
+        throw new Error("runCapture should not run for Hyperframes output mismatch test");
+      },
+    }),
+  /Hyperframes render output path must match generated outputVideoPath/,
+);
 
 const bothOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-both-renderers-"));
 const bothCalls: string[] = [];

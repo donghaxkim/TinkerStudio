@@ -184,6 +184,10 @@ function combineCaptureCounts(...counts: RunAiUrlDemoResult["captureCounts"][]):
 export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDemoResult> {
   const renderer = input.renderer ?? "hyperframes";
 
+  if (renderer !== "hyperframes" && renderer !== "playwright" && renderer !== "both") {
+    throw new Error(`Unknown AI URL renderer: ${String(renderer)}`);
+  }
+
   const playwrightOutputRoot = join(input.outputRoot, "playwright");
   const captureOutputDir = join(playwrightOutputRoot, "capture");
   const analyzeWebsite = input.analyzeWebsite ?? defaultAnalyzeWebsite;
@@ -270,6 +274,9 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       try {
         input.onPhase?.("capture");
         renderResult = await runHyperframes({ hyperframesDir, outputVideoPath: validated.outputVideoPath });
+        if (renderResult.outputVideoPath !== validated.outputVideoPath) {
+          throw new Error("Hyperframes render output path must match generated outputVideoPath");
+        }
         await access(renderResult.outputVideoPath);
         break;
       } catch (error) {
