@@ -420,8 +420,8 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       return { renderer: "playwright", ...(await runPlaywrightRenderer()) };
     }
 
-    const hyperframesResult = await runHyperframesRenderer();
     const playwrightResult = await runPlaywrightRenderer();
+    const hyperframesResult = await runHyperframesRenderer();
 
     return {
       renderer: "both",

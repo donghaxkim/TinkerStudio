@@ -287,7 +287,7 @@ const bothResult = await runAiUrlDemo({
   },
 });
 
-assert.deepEqual(bothCalls, ["hyperframes:generate", "hyperframes:render", "playwright:plan", "playwright:capture"]);
+assert.deepEqual(bothCalls, ["playwright:plan", "playwright:capture", "hyperframes:generate", "hyperframes:render"]);
 assert.equal(bothResult.renderer, "both");
 assert.ok(bothResult.rendererResults.hyperframes);
 assert.ok(bothResult.rendererResults.playwright);
@@ -342,8 +342,61 @@ await assert.rejects(
     }),
   /Playwright planning failed/,
 );
-assert.deepEqual(bothPlaywrightFailureCalls, ["hyperframes:generate", "hyperframes:render", "playwright:plan"]);
+assert.deepEqual(bothPlaywrightFailureCalls, ["playwright:plan"]);
 assert.equal(existsSync(join(bothPlaywrightFailureOutputRoot, ".repo-scratch")), false);
+
+const bothHyperframesFailureOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-both-hyperframes-failure-"));
+const bothHyperframesFailureCalls: string[] = [];
+await assert.rejects(
+  () =>
+    runAiUrlDemo({
+      outputRoot: bothHyperframesFailureOutputRoot,
+      projectId: "ai-url-demo-both-hyperframes-failure-test",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      productUrl,
+      repoUrl,
+      renderer: "both",
+      prompt,
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+      analyzeRepo: async (_url, options) => {
+        await mkdir(options.checkoutDirectory, { recursive: true });
+        return repoAnalysis;
+      },
+      planner: async () => {
+        bothHyperframesFailureCalls.push("playwright:plan");
+        return {
+          storyboard: {
+            title: "Both Renderers Hyperframes Failure Demo",
+            durationCapSeconds: 10,
+            aspectRatio: "16:9",
+            beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
+          },
+          capturePlan,
+        };
+      },
+      runCapture: async () => {
+        bothHyperframesFailureCalls.push("playwright:capture");
+        return captureResult;
+      },
+      generateHyperframes: async (input) => {
+        bothHyperframesFailureCalls.push("hyperframes:generate");
+        await writeValidHyperframesArtifacts(input.hyperframesDir);
+      },
+      runHyperframes: async () => {
+        bothHyperframesFailureCalls.push("hyperframes:render");
+        throw new Error("Hyperframes render failed after Playwright");
+      },
+      repairHyperframes: async () => {
+        throw new Error("repair should not run when both-mode Hyperframes retries are disabled");
+      },
+      maxHyperframesRepairAttempts: 0,
+    }),
+  /Hyperframes render failed after Playwright/,
+);
+assert.deepEqual(bothHyperframesFailureCalls, ["playwright:plan", "playwright:capture", "hyperframes:generate", "hyperframes:render"]);
+assert.equal(existsSync(join(bothHyperframesFailureOutputRoot, ".repo-scratch")), false);
 
 const repairOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-hyperframes-repair-"));
 const repairCalls: Array<{ failureStage: string; logText: string }> = [];

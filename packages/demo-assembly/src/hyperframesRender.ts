@@ -6,6 +6,7 @@ const DEFAULT_LINT_TIMEOUT_MS = 120_000;
 const DEFAULT_RENDER_TIMEOUT_MS = 600_000;
 const TIMEOUT_KILL_GRACE_MS = 5_000;
 const TIMEOUT_CLOSE_FALLBACK_MS = 5_000;
+const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
 
 export type HyperframesCommand = {
   command: string;
@@ -21,6 +22,8 @@ export type HyperframesCommandResult = {
   stdout: string;
   stderr: string;
   timedOut?: boolean;
+  stdoutOmittedBytes?: number;
+  stderrOmittedBytes?: number;
 };
 
 export type HyperframesCommandRun = (command: HyperframesCommand) => Promise<HyperframesCommandResult>;
@@ -45,8 +48,67 @@ function effectiveTimeout(value: number | undefined, fallback: number) {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+type RetainedOutput = {
+  chunks: Buffer[];
+  retainedBytes: number;
+  omittedBytes: number;
+};
+
+function createRetainedOutput(): RetainedOutput {
+  return { chunks: [], retainedBytes: 0, omittedBytes: 0 };
+}
+
+function appendRetainedOutput(output: RetainedOutput, chunk: Buffer) {
+  output.chunks.push(chunk);
+  output.retainedBytes += chunk.length;
+
+  while (output.retainedBytes > LOG_STREAM_RETAIN_BYTES) {
+    const excessBytes = output.retainedBytes - LOG_STREAM_RETAIN_BYTES;
+    const firstChunk = output.chunks[0];
+    if (firstChunk === undefined) {
+      break;
+    }
+
+    if (firstChunk.length <= excessBytes) {
+      output.chunks.shift();
+      output.retainedBytes -= firstChunk.length;
+      output.omittedBytes += firstChunk.length;
+    } else {
+      output.chunks[0] = firstChunk.subarray(excessBytes);
+      output.retainedBytes -= excessBytes;
+      output.omittedBytes += excessBytes;
+    }
+  }
+}
+
+function retainedOutputToResult(output: RetainedOutput) {
+  return {
+    text: Buffer.concat(output.chunks, output.retainedBytes).toString("utf8"),
+    omittedBytes: output.omittedBytes,
+  };
+}
+
+function formatLogStream(name: "stdout" | "stderr", value: string, omittedBytes = 0) {
+  const buffer = Buffer.from(value, "utf8");
+  const excessBytes = Math.max(0, buffer.length - LOG_STREAM_RETAIN_BYTES);
+  const retained = excessBytes > 0 ? buffer.subarray(excessBytes) : buffer;
+  const totalOmittedBytes = omittedBytes + excessBytes;
+  const text = retained.toString("utf8");
+
+  if (totalOmittedBytes === 0) {
+    return text;
+  }
+
+  return `[${name} truncated: omitted ${totalOmittedBytes} bytes; retained last ${retained.length} bytes]\n${text}`;
+}
+
 function formatLog(result: HyperframesCommandResult) {
-  return [`status: ${result.status ?? "null"}`, `timedOut: ${result.timedOut === true}`, `stdout:\n${result.stdout}`, `stderr:\n${result.stderr}`].join("\n\n");
+  return [
+    `status: ${result.status ?? "null"}`,
+    `timedOut: ${result.timedOut === true}`,
+    `stdout:\n${formatLogStream("stdout", result.stdout, result.stdoutOmittedBytes)}`,
+    `stderr:\n${formatLogStream("stderr", result.stderr, result.stderrOmittedBytes)}`,
+  ].join("\n\n");
 }
 
 function formatError(error: unknown) {
@@ -57,8 +119,8 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
   return await new Promise((resolve, reject) => {
     const detached = process.platform !== "win32";
     const child = spawn(command.command, command.args, { cwd: command.cwd, detached, stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
+    const stdout = createRetainedOutput();
+    const stderr = createRetainedOutput();
     let timedOut = false;
     let settled = false;
     let killTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -73,7 +135,7 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
         // Prefer close for flushed streams; this fallback breaks inherited pipe hangs.
         closeFallbackTimeout = setTimeout(() => {
           destroyStreams();
-          resolveOnce({ status: null, stdout, stderr, timedOut });
+          resolveOnce({ status: null, ...commandOutput(), timedOut });
         }, timeoutCloseFallbackMs);
       }, timeoutKillGraceMs);
     }, command.timeoutMs);
@@ -117,6 +179,17 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
       child.stderr.destroy();
     }
 
+    function commandOutput() {
+      const stdoutResult = retainedOutputToResult(stdout);
+      const stderrResult = retainedOutputToResult(stderr);
+      return {
+        stdout: stdoutResult.text,
+        stderr: stderrResult.text,
+        ...(stdoutResult.omittedBytes > 0 ? { stdoutOmittedBytes: stdoutResult.omittedBytes } : {}),
+        ...(stderrResult.omittedBytes > 0 ? { stderrOmittedBytes: stderrResult.omittedBytes } : {}),
+      };
+    }
+
     function resolveOnce(result: HyperframesCommandResult) {
       if (settled) {
         return;
@@ -137,19 +210,17 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
       reject(error);
     }
 
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
-      stdout += chunk;
+      appendRetainedOutput(stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
     });
     child.stderr.on("data", (chunk) => {
-      stderr += chunk;
+      appendRetainedOutput(stderr, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
     });
     child.on("error", (error) => {
       rejectOnce(error);
     });
     child.on("close", (status) => {
-      resolveOnce({ status, stdout, stderr, timedOut });
+      resolveOnce({ status, ...commandOutput(), timedOut });
     });
   });
 }

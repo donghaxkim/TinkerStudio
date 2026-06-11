@@ -141,4 +141,21 @@ const defaultTimeoutLog = await readFile(join(defaultTimeoutDir, "lint.log"), "u
 assert.match(defaultTimeoutLog, /timedOut: true/);
 assert.match(defaultTimeoutLog, /lint started/);
 
+const oversizedLogDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-oversized-log-"));
+const oversizedStdout = `${"stdout-start\n"}${"o".repeat(200_000)}\nstdout-end`;
+const oversizedStderr = `${"stderr-start\n"}${"e".repeat(200_000)}\nstderr-end`;
+const oversizedResult = await runHyperframesRender({
+  hyperframesDir: oversizedLogDir,
+  outputVideoPath: join(oversizedLogDir, "output.mp4"),
+  runCommand: async () => ({ status: 0, stdout: oversizedStdout, stderr: oversizedStderr }),
+});
+const oversizedLintLog = await readFile(oversizedResult.lintLogPath, "utf8");
+assert.match(oversizedLintLog, /stdout truncated/i);
+assert.match(oversizedLintLog, /stderr truncated/i);
+assert.match(oversizedLintLog, /stdout-end/);
+assert.match(oversizedLintLog, /stderr-end/);
+assert.doesNotMatch(oversizedLintLog, /stdout-start/);
+assert.doesNotMatch(oversizedLintLog, /stderr-start/);
+assert.ok(Buffer.byteLength(oversizedLintLog, "utf8") < 140_000);
+
 console.log("hyperframes render tests passed");
