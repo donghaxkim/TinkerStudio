@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const DEFAULT_LINT_TIMEOUT_MS = 120_000;
 const DEFAULT_RENDER_TIMEOUT_MS = 600_000;
@@ -116,11 +116,13 @@ function formatError(error: unknown) {
 }
 
 async function sanitizedHyperframesEnv(hyperframesDir: string) {
-  const runnerHome = join(hyperframesDir, ".tinker-hyperframes-runner-home");
-  const npmCache = join(hyperframesDir, ".tinker-hyperframes-npm-cache");
-  const npmUserconfig = join(hyperframesDir, ".tinker-hyperframes-npmrc");
+  const runnerRoot = join(dirname(hyperframesDir), ".tinker-hyperframes-runner");
+  const runnerHome = join(runnerRoot, "home");
+  const npmCache = join(runnerRoot, "npm-cache");
+  const npmUserconfig = join(runnerRoot, "npmrc");
   await mkdir(runnerHome, { recursive: true });
   await mkdir(npmCache, { recursive: true });
+  await writeFile(npmUserconfig, "", { flag: "a" });
 
   const allowedNames = new Set(["PATH", "USER", "LOGNAME", "SHELL", "TMPDIR"]);
   const env: NodeJS.ProcessEnv = {};

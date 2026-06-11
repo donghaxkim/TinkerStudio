@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { runHyperframesRender, type HyperframesCommandRun } from "./hyperframesRender.js";
+
+function isPathInside(parent: string, child: string) {
+  const relativePath = relative(parent, child);
+  return relativePath !== "" && !relativePath.startsWith("..") && !isAbsolute(relativePath);
+}
 
 const hyperframesDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-render-"));
 await mkdir(hyperframesDir, { recursive: true });
@@ -94,8 +99,10 @@ await assert.rejects(
 );
 assert.match(await readFile(join(rejectedRunnerDir, "lint.log"), "utf8"), /runner exploded/);
 
-const sanitizedEnvDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-sanitized-env-"));
-const sanitizedEnvBinDir = join(sanitizedEnvDir, "bin");
+const sanitizedEnvRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-sanitized-env-"));
+const sanitizedEnvDir = join(sanitizedEnvRoot, "hyperframes");
+await mkdir(sanitizedEnvDir);
+const sanitizedEnvBinDir = join(sanitizedEnvRoot, "bin");
 await mkdir(sanitizedEnvBinDir);
 const sanitizedEnvFakeNpxPath = join(sanitizedEnvBinDir, "npx");
 await writeFile(
@@ -155,23 +162,33 @@ try {
     process.env.TINKER_SECRET_SHOULD_NOT_LEAK = originalSecret;
   }
 }
-assert.deepEqual(JSON.parse(await readFile(join(sanitizedEnvDir, "env-lint.json"), "utf8")), {
+const expectedRunnerRoot = join(dirname(sanitizedEnvDir), ".tinker-hyperframes-runner");
+const expectedRunnerHome = join(expectedRunnerRoot, "home");
+const expectedNpmCache = join(expectedRunnerRoot, "npm-cache");
+const expectedNpmUserconfig = join(expectedRunnerRoot, "npmrc");
+const lintEnv = JSON.parse(await readFile(join(sanitizedEnvDir, "env-lint.json"), "utf8"));
+const renderEnv = JSON.parse(await readFile(join(sanitizedEnvDir, "env-render.json"), "utf8"));
+assert.deepEqual(lintEnv, {
   hasPath: true,
   leakedSecret: false,
-  home: join(sanitizedEnvDir, ".tinker-hyperframes-runner-home"),
-  npmCache: join(sanitizedEnvDir, ".tinker-hyperframes-npm-cache"),
-  npmUserconfig: join(sanitizedEnvDir, ".tinker-hyperframes-npmrc"),
+  home: expectedRunnerHome,
+  npmCache: expectedNpmCache,
+  npmUserconfig: expectedNpmUserconfig,
 });
-assert.deepEqual(JSON.parse(await readFile(join(sanitizedEnvDir, "env-render.json"), "utf8")), {
+assert.deepEqual(renderEnv, {
   hasPath: true,
   leakedSecret: false,
-  home: join(sanitizedEnvDir, ".tinker-hyperframes-runner-home"),
-  npmCache: join(sanitizedEnvDir, ".tinker-hyperframes-npm-cache"),
-  npmUserconfig: join(sanitizedEnvDir, ".tinker-hyperframes-npmrc"),
+  home: expectedRunnerHome,
+  npmCache: expectedNpmCache,
+  npmUserconfig: expectedNpmUserconfig,
 });
-assert.notEqual(JSON.parse(await readFile(join(sanitizedEnvDir, "env-lint.json"), "utf8")).home, hostHome);
-assert.ok((await stat(join(sanitizedEnvDir, ".tinker-hyperframes-runner-home"))).isDirectory());
-assert.ok((await stat(join(sanitizedEnvDir, ".tinker-hyperframes-npm-cache"))).isDirectory());
+assert.notEqual(lintEnv.home, hostHome);
+for (const value of [lintEnv.home, lintEnv.npmCache, lintEnv.npmUserconfig, renderEnv.home, renderEnv.npmCache, renderEnv.npmUserconfig]) {
+  assert.equal(isPathInside(sanitizedEnvDir, value), false);
+  assert.equal(isPathInside(dirname(sanitizedEnvDir), value), true);
+}
+assert.ok((await stat(expectedRunnerHome)).isDirectory());
+assert.ok((await stat(expectedNpmCache)).isDirectory());
 
 const defaultTimeoutDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-default-timeout-"));
 const fakeBinDir = join(defaultTimeoutDir, "bin");
