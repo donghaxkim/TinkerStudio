@@ -467,7 +467,7 @@ assert.equal(
 const claudeArgs = JSON.parse(await readFile(join(claudeHyperframesDir, "claude-args.json"), "utf8"));
 assert.equal(claudeArgs[0], "-p");
 assert.match(claudeArgs[1] ?? "", /Create a Hyperframes project/);
-assert.deepEqual(claudeArgs.slice(2), ["--output-format", "text"]);
+assert.deepEqual(claudeArgs.slice(2), ["--output-format", "text", "--model", "claude-fable-5", "--effort", "max"]);
 assert.equal(claudeArgs.includes("--permission-mode"), false);
 assert.equal(claudeArgs.includes("--dangerously-skip-permissions"), false);
 assert.equal(claudeArgs.includes("--allow-dangerously-skip-permissions"), false);

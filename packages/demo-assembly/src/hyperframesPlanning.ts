@@ -106,7 +106,7 @@ function buildHyperframesAgentCommand(prompt: string, sandboxDirectory: string):
   if (agent === "claude") {
     return {
       executable: "claude",
-      args: ["-p", prompt, "--output-format", "text"],
+      args: ["-p", prompt, "--output-format", "text", "--model", "claude-fable-5", "--effort", "max"],
       label: "Claude Code",
     };
   }
