@@ -29,7 +29,7 @@ import {
 import { runHyperframesRender, type RunHyperframesRenderInput, type RunHyperframesRenderResult } from "./hyperframesRender.js";
 import type { AspectRatio } from "./types.js";
 
-export type AiUrlDemoPhase = "analysis" | "planning" | "verification" | "capture" | "assembly";
+export type AiUrlDemoPhase = "analysis" | "planning" | "validation" | "verification" | "capture" | "assembly";
 
 const MAX_HYPERFRAMES_REPAIR_LOG_BYTES = 20_000;
 
@@ -251,7 +251,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     let renderResult: RunHyperframesRenderResult | undefined;
     for (let attempt = 0; attempt <= maxHyperframesRepairAttempts; attempt += 1) {
       try {
-        input.onPhase?.("verification");
+        input.onPhase?.("validation");
         validated = await validateHyperframesArtifacts({ hyperframesDir, productUrl: analysis.url, repoUrl: input.repoUrl });
       } catch (error) {
         if (attempt >= maxHyperframesRepairAttempts) {

@@ -1,9 +1,39 @@
 import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { GenerationProgressEvent } from "@tinker/generation-contract";
+import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { LocalGenerationJobError, runLocalGenerationJob, type ManualDemoRunner } from "./localGenerationJob.js";
-import type { RunAiUrlDemoInput, RunAiUrlDemoResult } from "./runAiUrlDemo.js";
+import { runAiUrlDemo, type RunAiUrlDemoInput, type RunAiUrlDemoResult } from "./runAiUrlDemo.js";
 
 type AiUrlDemoRunner = (input: RunAiUrlDemoInput) => Promise<RunAiUrlDemoResult>;
+
+const productAnalysis: ProductAnalysis = {
+  url: "http://127.0.0.1:3000/canonical",
+  title: "Fixture Product",
+  headings: ["Build demos faster"],
+  bodySnippets: ["Fixture Product turns product URLs into editable demo projects."],
+  links: [],
+  buttons: ["Start demo"],
+  inputs: [],
+  brandHints: {
+    colors: ["#0f172a"],
+    fontFamilies: ["Inter"],
+  },
+};
+
+const repoAnalysis: RepoAnalysis = {
+  repoUrl: "https://github.com/example/product",
+  commit: "abcdef1",
+  productName: "Fixture Product",
+  summary: "Fixture Product turns source context into better product demos.",
+  features: ["Repo-aware planning"],
+  likelyRoutes: ["/"],
+  demoIdeas: ["Show repo-aware planning."],
+  importantTerms: ["storyboard"],
+  setupNotes: ["Source-only repo analysis."],
+  sourceHints: [{ path: "README.md", reason: "Product summary." }],
+};
 
 const times = [
   "2026-06-09T00:00:00.000Z",
@@ -263,5 +293,79 @@ await assert.rejects(
 
 assert.equal(aiRunnerCalledWithoutRepo, false);
 assert.equal(manualStatuses(planningFailureEvents).at(-1), "failed");
+
+const hyperframesValidationFailureEvents: GenerationProgressEvent[] = [];
+
+await assert.rejects(
+  () =>
+    runLocalGenerationJob(
+      {
+        id: "ai-url-hyperframes-validation-failure-job",
+        durationCapSeconds: 10,
+        aspectRatio: "16:9",
+        mode: "ai-url-planning",
+        productUrl: "http://127.0.0.1:3000/",
+        repoUrl: "https://github.com/example/product",
+        renderer: "hyperframes",
+        prompt: "Make a short demo of the main value prop.",
+        outputDirectory: "generated/local-job/ai-url-hyperframes-validation-failure-job",
+      },
+      {
+        now: () => "2026-06-09T00:00:13.000Z",
+        onProgress: (event) => hyperframesValidationFailureEvents.push(event),
+        runAiUrlDemo: (input) =>
+          runAiUrlDemo({
+            ...input,
+            maxHyperframesRepairAttempts: 0,
+            analyzeWebsite: async () => productAnalysis,
+            analyzeRepo: async (_repoUrl, options) => {
+              await mkdir(options.checkoutDirectory, { recursive: true });
+              return repoAnalysis;
+            },
+            generateHyperframes: async (input) => {
+              await mkdir(input.hyperframesDir, { recursive: true });
+              await writeFile(join(input.hyperframesDir, "index.html"), "<html><body>Fixture Product</body></html>\n");
+              await writeFile(join(input.hyperframesDir, "asset-manifest.json"), `${JSON.stringify({ assets: [] }, null, 2)}\n`);
+              await writeFile(
+                join(input.hyperframesDir, "generation-manifest.json"),
+                `${JSON.stringify(
+                  {
+                    renderer: "playwright",
+                    productUrl: productAnalysis.url,
+                    sourceRepoUrl: repoAnalysis.repoUrl,
+                    durationCapSeconds: 10,
+                    aspectRatio: "16:9",
+                    sourceGrounding: ["repo", "website-analysis"],
+                    outputVideoPath: "output.mp4",
+                  },
+                  null,
+                  2,
+                )}\n`,
+              );
+            },
+            runHyperframes: async () => {
+              throw new Error("runHyperframes should not run after artifact validation failure");
+            },
+            repairHyperframes: async () => {
+              throw new Error("repair should not run when repair attempts are exhausted");
+            },
+          }),
+      },
+    ),
+  (error: unknown) => {
+    assert.ok(error instanceof LocalGenerationJobError);
+    assert.equal("stage" in error.generationError ? error.generationError.stage : undefined, "validation");
+    assert.match(error.generationError.message, /renderer/);
+    return true;
+  },
+);
+
+const finalHyperframesValidationFailureEvent = hyperframesValidationFailureEvents.at(-1);
+assert.equal(
+  finalHyperframesValidationFailureEvent && "status" in finalHyperframesValidationFailureEvent
+    ? finalHyperframesValidationFailureEvent.status
+    : undefined,
+  "failed",
+);
 
 console.log("local generation job tests passed");
