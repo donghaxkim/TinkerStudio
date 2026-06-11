@@ -10,6 +10,13 @@ const TIMEOUT_CLOSE_FALLBACK_MS = 5_000;
 const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
 const OPENCODE_SANDBOX_DIRECTORY = ".tinker-opencode-workspace";
 const REPOSITORY_SNAPSHOT_DIRECTORY = "repository";
+const HYPERFRAMES_AGENT_VALUES = ["opencode", "claude"] as const;
+type HyperframesAgent = (typeof HYPERFRAMES_AGENT_VALUES)[number];
+type HyperframesAgentCommand = {
+  executable: "opencode" | "claude";
+  args: string[];
+  label: "OpenCode" | "Claude Code";
+};
 const REPO_SNAPSHOT_DENY_NAMES = new Set([
   ".aws",
   ".cache",
@@ -77,6 +84,40 @@ function effectiveTimeout(value: number | undefined, fallback: number) {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function selectHyperframesAgent(value = process.env.TINKER_HYPERFRAMES_AGENT): HyperframesAgent {
+  const normalized = (value ?? "").trim();
+
+  if (normalized === "") {
+    return "opencode";
+  }
+
+  if (normalized === "opencode" || normalized === "claude") {
+    return normalized;
+  }
+
+  throw new Error(
+    `Unknown TINKER_HYPERFRAMES_AGENT: ${normalized}. Supported values: ${HYPERFRAMES_AGENT_VALUES.join(", ")}`,
+  );
+}
+
+function buildHyperframesAgentCommand(prompt: string, sandboxDirectory: string): HyperframesAgentCommand {
+  const agent = selectHyperframesAgent();
+
+  if (agent === "claude") {
+    return {
+      executable: "claude",
+      args: ["-p", prompt, "--output-format", "text"],
+      label: "Claude Code",
+    };
+  }
+
+  return {
+    executable: "opencode",
+    args: ["run", "--pure", "--format", "json", "--dir", sandboxDirectory, prompt],
+    label: "OpenCode",
+  };
+}
+
 function hyperframesOpencodeSandboxDirectory(hyperframesDir: string) {
   return join(hyperframesDir, OPENCODE_SANDBOX_DIRECTORY);
 }
@@ -118,7 +159,7 @@ async function shouldCopyGeneratedOutputPath(source: string) {
   );
 }
 
-function sanitizedOpencodeEnv() {
+function sanitizedHyperframesAgentEnv() {
   const allowedNames = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR"]);
   const env: NodeJS.ProcessEnv = {};
 
@@ -227,6 +268,7 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
   const stdoutPath = join(options.logDir, ".tinker-opencode-hyperframes-output.jsonl");
   const stderrPath = join(options.logDir, ".tinker-opencode-hyperframes-error.log");
   const sandboxDirectory = hyperframesOpencodeSandboxDirectory(options.logDir);
+  const agentCommand = buildHyperframesAgentCommand(prompt, sandboxDirectory);
 
   try {
     await prepareOpencodeSandbox(options);
@@ -241,10 +283,10 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
       let settled = false;
       let killTimeout: ReturnType<typeof setTimeout> | undefined;
       let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
-      const child = spawn("opencode", ["run", "--pure", "--format", "json", "--dir", sandboxDirectory, prompt], {
+      const child = spawn(agentCommand.executable, agentCommand.args, {
         cwd: sandboxDirectory,
         detached,
-        env: sanitizedOpencodeEnv(),
+        env: sanitizedHyperframesAgentEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
       const timer = setTimeout(() => {
@@ -319,7 +361,7 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
       }
 
       child.on("error", (error) => {
-        rejectOnce(new Error(`OpenCode Hyperframes generation failed to start: ${error.message}`, { cause: error }));
+        rejectOnce(new Error(`${agentCommand.label} Hyperframes generation failed to start: ${error.message}`, { cause: error }));
       });
 
       child.stdout.on("data", (chunk) => {
@@ -339,12 +381,12 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
     await Promise.all([writeFile(stdoutPath, stdoutText), writeFile(stderrPath, retainedOutputToLog("stderr", stderr))]);
 
     if (result.timedOut) {
-      throw new Error(`OpenCode Hyperframes generation timed out after ${effectiveTimeoutMs}ms; see ${stderrPath}`);
+      throw new Error(`${agentCommand.label} Hyperframes generation timed out after ${effectiveTimeoutMs}ms; see ${stderrPath}`);
     }
 
     if (result.code !== 0) {
       const reason = result.signal ? `signal ${result.signal}` : `exit code ${result.code ?? "unknown"}`;
-      throw new Error(`OpenCode Hyperframes generation failed with ${reason}; see ${stderrPath}`);
+      throw new Error(`${agentCommand.label} Hyperframes generation failed with ${reason}; see ${stderrPath}`);
     }
 
     await copySandboxOutputToHyperframesDirectory(sandboxDirectory, options.logDir);
