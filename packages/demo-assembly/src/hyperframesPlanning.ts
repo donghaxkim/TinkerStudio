@@ -196,25 +196,6 @@ async function copyDirectoryEntries(
   }
 }
 
-async function writeOpencodeSandboxConfig(sandboxDirectory: string) {
-  await writeFile(
-    join(sandboxDirectory, "opencode.json"),
-    `${JSON.stringify(
-      {
-        $schema: "https://opencode.ai/config.json",
-        permission: {
-          edit: "allow",
-          bash: "deny",
-          webfetch: "deny",
-          external_directory: "deny",
-        },
-      },
-      null,
-      2,
-    )}\n`,
-  );
-}
-
 async function prepareOpencodeSandbox(options: HyperframesOpencodeRunOptions) {
   const repoCheckoutDirectory = options.repoCheckoutDirectory ?? options.cwd;
   const sandboxDirectory = hyperframesOpencodeSandboxDirectory(options.logDir);
@@ -228,7 +209,6 @@ async function prepareOpencodeSandbox(options: HyperframesOpencodeRunOptions) {
     filter: shouldCopyRepoSnapshotPath,
   });
   await copyDirectoryEntries(options.logDir, sandboxDirectory, shouldCopyGeneratedOutputPath);
-  await writeOpencodeSandboxConfig(sandboxDirectory);
 
   return sandboxDirectory;
 }
