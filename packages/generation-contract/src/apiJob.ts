@@ -3,7 +3,15 @@ import { AiUrlPlanningCreateDemoRequestSchema } from "./createDemoRequest.js";
 import { GenerationErrorSchema } from "./errors.js";
 import { ManualFixtureProgressEventSchema } from "./progress.js";
 
-const ApiCreateDemoRequestSchema = AiUrlPlanningCreateDemoRequestSchema.extend({ id: z.string().min(1) }).strict();
+const ApiCreateDemoRequestSchema = AiUrlPlanningCreateDemoRequestSchema.omit({
+  outputDirectory: true,
+  renderer: true,
+})
+  .extend({
+    id: z.string().min(1),
+    renderer: z.literal("hyperframes").optional(),
+  })
+  .strict();
 
 export const ApiArtifactKindSchema = z.enum([
   "output-video",
