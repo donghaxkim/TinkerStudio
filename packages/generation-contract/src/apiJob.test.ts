@@ -113,6 +113,42 @@ describe("API generation job contract", () => {
     expect(
       safeParseApiGenerationJob({
         id: "job-test",
+        status: "running",
+        request,
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+        progressEvents: [progressEvent],
+        result: {
+          artifacts: [
+            {
+              kind: "output-video",
+              relativePath: "hyperframes/output.mp4",
+              url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-test",
+        status: "running",
+        request,
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+        progressEvents: [progressEvent],
+        error: {
+          status: "failed",
+          stage: "planning",
+          message: "Planner failed",
+        },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-test",
         status: "failed",
         request,
         createdAt: "2026-06-11T00:00:00.000Z",
