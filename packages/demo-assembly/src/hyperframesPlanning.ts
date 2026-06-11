@@ -493,6 +493,9 @@ export function createOpencodeHyperframesGenerator(options: OpencodeHyperframesO
   return async (input) => {
     assertRequiredPath(input.repoCheckoutDirectory, "repoCheckoutDirectory");
     assertRequiredPath(input.hyperframesDir, "hyperframesDir");
+    if (runOpencode === defaultRunOpencode) {
+      selectHyperframesAgent();
+    }
     try {
       await runOpencode(buildGeneratePrompt(input), {
         cwd: hyperframesOpencodeSandboxDirectory(input.hyperframesDir),
@@ -511,6 +514,9 @@ export function createOpencodeHyperframesRepairer(options: OpencodeHyperframesOp
   return async (input) => {
     assertRequiredPath(input.repoCheckoutDirectory, "repoCheckoutDirectory");
     assertRequiredPath(input.hyperframesDir, "hyperframesDir");
+    if (runOpencode === defaultRunOpencode) {
+      selectHyperframesAgent();
+    }
     try {
       await runOpencode(buildRepairPrompt(input), {
         cwd: hyperframesOpencodeSandboxDirectory(input.hyperframesDir),

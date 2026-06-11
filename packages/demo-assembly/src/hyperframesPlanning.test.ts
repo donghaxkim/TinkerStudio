@@ -481,9 +481,12 @@ const invalidFakeBinDir = join(invalidTempDir, "bin");
 const invalidRepoCheckoutDirectory = join(invalidTempDir, "repo");
 const invalidHyperframesDir = join(invalidTempDir, "hyperframes");
 const invalidSpawnMarker = join(invalidTempDir, "spawned.txt");
+const invalidStaleSandboxMarker = join(invalidHyperframesDir, ".tinker-opencode-workspace", "stale-marker.txt");
 await mkdir(invalidFakeBinDir);
 await mkdir(invalidRepoCheckoutDirectory);
+await mkdir(join(invalidHyperframesDir, ".tinker-opencode-workspace"), { recursive: true });
 await writeFile(join(invalidRepoCheckoutDirectory, "package.json"), JSON.stringify({ name: "fixture-product" }));
+await writeFile(invalidStaleSandboxMarker, "stale sandbox data\n");
 for (const executableName of ["opencode", "claude"]) {
   const fakeExecutablePath = join(invalidFakeBinDir, executableName);
   await writeFile(
@@ -525,8 +528,7 @@ try {
   }
 }
 await assert.rejects(() => access(invalidSpawnMarker));
-await assert.rejects(() => access(invalidHyperframesDir));
-await assert.rejects(() => access(join(invalidHyperframesDir, ".tinker-opencode-workspace")));
+assert.equal(await readFile(invalidStaleSandboxMarker, "utf8"), "stale sandbox data\n");
 
 const failureTempDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-planning-failure-"));
 const failureFakeBinDir = join(failureTempDir, "bin");
