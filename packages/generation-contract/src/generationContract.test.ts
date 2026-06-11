@@ -285,6 +285,13 @@ const aiUrlGenerationResult = {
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
+    rendererResults: { hyperframes: hyperframesRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
     renderer: "both",
     rendererResults: { hyperframes: hyperframesRendererResult },
   }).success,
@@ -319,6 +326,51 @@ assert.equal(
     ...aiUrlGenerationResult,
     renderer: "hyperframes",
     rendererResults: { hyperframes: { ...hyperframesRendererResult, extra: "not allowed" } },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    projectPath: "generated/local-job/ai-url-job/hyperframes/other.mp4",
+    renderer: "hyperframes",
+    rendererResults: { hyperframes: hyperframesRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    captureResultPath: "generated/local-job/ai-url-job/hyperframes/other-manifest.json",
+    renderer: "hyperframes",
+    rendererResults: { hyperframes: hyperframesRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "playwright",
+    rendererResults: { playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    projectPath: playwrightRendererResult.projectPath,
+    captureResultPath: "generated/local-job/ai-url-job/playwright/other-capture-result.json",
+    renderer: "playwright",
+    rendererResults: { playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    projectPath: "generated/local-job/ai-url-job/playwright/demo-project.json",
+    renderer: "both",
+    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
   }).success,
   false,
 );

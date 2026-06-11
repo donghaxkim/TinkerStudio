@@ -313,6 +313,65 @@ await runAiUrlDemo({
 
 assert.deepEqual(oversizedRepairLogTexts, [oversizedRenderLog.slice(0, 20_000)]);
 
+const validationRendererTextOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-validation-renderer-text-"));
+const validationRendererTextRepairStages: string[] = [];
+let validationRendererTextRenderAttempts = 0;
+await runAiUrlDemo({
+  outputRoot: validationRendererTextOutputRoot,
+  projectId: "ai-url-demo-validation-renderer-text-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "hyperframes",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  generateHyperframes: async (input) => {
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+    await writeFile(
+      join(input.hyperframesDir, "generation-manifest.json"),
+      `${JSON.stringify(
+        {
+          renderer: "playwright",
+          productUrl: canonicalProductUrl,
+          sourceRepoUrl: repoUrl,
+          durationCapSeconds: 10,
+          aspectRatio: "16:9",
+          sourceGrounding: ["repo", "website-analysis"],
+          outputVideoPath: "output.mp4",
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  },
+  runHyperframes: async (input) => {
+    validationRendererTextRenderAttempts += 1;
+    await writeFile(input.outputVideoPath, "fake repaired mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async (input) => {
+    validationRendererTextRepairStages.push(input.failureStage);
+    assert.match(input.logText, /renderer/);
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+  },
+  runCapture: async () => {
+    throw new Error("runCapture should not run for validation renderer text test");
+  },
+});
+
+assert.deepEqual(validationRendererTextRepairStages, ["validation"]);
+assert.equal(validationRendererTextRenderAttempts, 1);
+
 const negativeRepairAttemptsOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-negative-repairs-"));
 let negativeRepairRenderAttempts = 0;
 const negativeRepairAttemptsResult = await runAiUrlDemo({

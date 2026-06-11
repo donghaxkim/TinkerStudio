@@ -1,4 +1,4 @@
-import { mkdir, open, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, open, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   runPlaywrightCapture,
@@ -123,19 +123,19 @@ async function cleanupRepoScratch(repoScratchDir: string | undefined, priorError
   }
 }
 
-function classifyHyperframesFailure(error: unknown) {
+function formatErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function classifyHyperframesRunFailure(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   const lowerMessage = message.toLowerCase();
-
-  if (lowerMessage.includes("render")) {
-    return { failureStage: "render", message };
-  }
 
   if (lowerMessage.includes("lint")) {
     return { failureStage: "lint", message };
   }
 
-  return { failureStage: "validation", message };
+  return { failureStage: "render", message };
 }
 
 async function readHyperframesFailureLog(hyperframesDir: string, failureStage: string, fallback: string) {
@@ -253,16 +253,31 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       try {
         input.onPhase?.("verification");
         validated = await validateHyperframesArtifacts({ hyperframesDir, productUrl: analysis.url, repoUrl: input.repoUrl });
+      } catch (error) {
+        if (attempt >= maxHyperframesRepairAttempts) {
+          throw error;
+        }
 
+        await repairHyperframes({
+          repoCheckoutDirectory,
+          hyperframesDir,
+          failureStage: "validation",
+          logText: formatErrorMessage(error),
+        });
+        continue;
+      }
+
+      try {
         input.onPhase?.("capture");
         renderResult = await runHyperframes({ hyperframesDir, outputVideoPath: validated.outputVideoPath });
+        await access(renderResult.outputVideoPath);
         break;
       } catch (error) {
         if (attempt >= maxHyperframesRepairAttempts) {
           throw error;
         }
 
-        const failure = classifyHyperframesFailure(error);
+        const failure = classifyHyperframesRunFailure(error);
         await repairHyperframes({
           repoCheckoutDirectory,
           hyperframesDir,

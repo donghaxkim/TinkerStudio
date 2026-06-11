@@ -37,6 +37,14 @@ export const ManualFixtureGenerationResultSchema = z
   })
   .superRefine((result, ctx) => {
     if (result.renderer === undefined) {
+      if (result.rendererResults !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["rendererResults"],
+          message: "rendererResults are not allowed without renderer",
+        });
+      }
+
       return;
     }
 
@@ -81,6 +89,30 @@ export const ManualFixtureGenerationResultSchema = z
         code: "custom",
         path: ["rendererResults", "hyperframes"],
         message: "hyperframes result is not allowed for playwright renderer",
+      });
+    }
+
+    const primaryHyperframes =
+      result.renderer === "hyperframes" || result.renderer === "both"
+        ? result.rendererResults.hyperframes
+        : undefined;
+    const primaryPlaywright = result.renderer === "playwright" ? result.rendererResults.playwright : undefined;
+    const primaryProjectPath = primaryHyperframes?.outputVideoPath ?? primaryPlaywright?.projectPath;
+    const primaryCaptureResultPath = primaryHyperframes?.generationManifestPath ?? primaryPlaywright?.captureResultPath;
+
+    if (primaryProjectPath !== undefined && result.projectPath !== primaryProjectPath) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["projectPath"],
+        message: "projectPath must match the primary renderer result",
+      });
+    }
+
+    if (primaryCaptureResultPath !== undefined && result.captureResultPath !== primaryCaptureResultPath) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["captureResultPath"],
+        message: "captureResultPath must match the primary renderer result",
       });
     }
   });
