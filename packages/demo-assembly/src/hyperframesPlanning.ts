@@ -228,133 +228,142 @@ async function copySandboxOutputToHyperframesDirectory(sandboxDirectory: string,
   await copyDirectoryEntries(sandboxDirectory, hyperframesDir, shouldCopyGeneratedOutputPath);
 }
 
+async function cleanupOpencodeSandbox(hyperframesDir: string) {
+  await rm(hyperframesOpencodeSandboxDirectory(hyperframesDir), { recursive: true, force: true });
+}
+
 export async function defaultRunOpencode(prompt: string, options: HyperframesOpencodeRunOptions) {
   const timeoutMs = Number(process.env.TINKER_HYPERFRAMES_OPENCODE_TIMEOUT_MS ?? DEFAULT_OPENCODE_TIMEOUT_MS);
   const effectiveTimeoutMs = effectiveTimeout(timeoutMs, DEFAULT_OPENCODE_TIMEOUT_MS);
   const stdoutPath = join(options.logDir, ".tinker-opencode-hyperframes-output.jsonl");
   const stderrPath = join(options.logDir, ".tinker-opencode-hyperframes-error.log");
-  const sandboxDirectory = await prepareOpencodeSandbox(options);
+  const sandboxDirectory = hyperframesOpencodeSandboxDirectory(options.logDir);
 
-  await mkdir(options.logDir, { recursive: true });
+  try {
+    await prepareOpencodeSandbox(options);
+    await mkdir(options.logDir, { recursive: true });
 
-  let result: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean };
-  const stdout = createRetainedOutput();
-  const stderr = createRetainedOutput();
-  result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
-    const detached = process.platform !== "win32";
-    let timedOut = false;
-    let settled = false;
-    let killTimeout: ReturnType<typeof setTimeout> | undefined;
-    let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
-    const child = spawn("opencode", ["run", "--pure", "--format", "json", "--dir", sandboxDirectory, prompt], {
-      cwd: sandboxDirectory,
-      detached,
-      env: sanitizedOpencodeEnv(),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      killChild("SIGTERM");
-      killTimeout = setTimeout(() => {
-        killChild("SIGKILL");
-        closeFallbackTimeout = setTimeout(() => {
-          destroyStreams();
-          resolveOnce({ code: null, signal: null, timedOut });
-        }, TIMEOUT_CLOSE_FALLBACK_MS);
-      }, TIMEOUT_KILL_GRACE_MS);
-    }, effectiveTimeoutMs);
+    let result: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean };
+    const stdout = createRetainedOutput();
+    const stderr = createRetainedOutput();
+    result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
+      const detached = process.platform !== "win32";
+      let timedOut = false;
+      let settled = false;
+      let killTimeout: ReturnType<typeof setTimeout> | undefined;
+      let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
+      const child = spawn("opencode", ["run", "--pure", "--format", "json", "--dir", sandboxDirectory, prompt], {
+        cwd: sandboxDirectory,
+        detached,
+        env: sanitizedOpencodeEnv(),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const timer = setTimeout(() => {
+        timedOut = true;
+        killChild("SIGTERM");
+        killTimeout = setTimeout(() => {
+          killChild("SIGKILL");
+          closeFallbackTimeout = setTimeout(() => {
+            destroyStreams();
+            resolveOnce({ code: null, signal: null, timedOut });
+          }, TIMEOUT_CLOSE_FALLBACK_MS);
+        }, TIMEOUT_KILL_GRACE_MS);
+      }, effectiveTimeoutMs);
 
-    function killChild(signal: NodeJS.Signals) {
-      if (detached && child.pid !== undefined) {
+      function killChild(signal: NodeJS.Signals) {
+        if (detached && child.pid !== undefined) {
+          try {
+            process.kill(-child.pid, signal);
+            return;
+          } catch {
+            // Fall back to the direct child when process-group kill is unavailable.
+          }
+        }
+
         try {
-          process.kill(-child.pid, signal);
-          return;
+          child.kill(signal);
         } catch {
-          // Fall back to the direct child when process-group kill is unavailable.
+          // The child may already have exited between timeout callbacks.
         }
       }
 
-      try {
-        child.kill(signal);
-      } catch {
-        // The child may already have exited between timeout callbacks.
+      function clearTimers() {
+        clearTimeout(timer);
+        if (killTimeout !== undefined) {
+          clearTimeout(killTimeout);
+        }
+        if (closeFallbackTimeout !== undefined) {
+          clearTimeout(closeFallbackTimeout);
+        }
       }
-    }
 
-    function clearTimers() {
-      clearTimeout(timer);
-      if (killTimeout !== undefined) {
-        clearTimeout(killTimeout);
+      function cleanupListeners() {
+        child.stdout.removeAllListeners("data");
+        child.stderr.removeAllListeners("data");
+        child.removeAllListeners("close");
+        child.removeAllListeners("error");
       }
-      if (closeFallbackTimeout !== undefined) {
-        clearTimeout(closeFallbackTimeout);
+
+      function destroyStreams() {
+        child.stdout.destroy();
+        child.stderr.destroy();
       }
-    }
 
-    function cleanupListeners() {
-      child.stdout.removeAllListeners("data");
-      child.stderr.removeAllListeners("data");
-      child.removeAllListeners("close");
-      child.removeAllListeners("error");
-    }
-
-    function destroyStreams() {
-      child.stdout.destroy();
-      child.stderr.destroy();
-    }
-
-    function resolveOnce(finalResult: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }) {
-      if (settled) {
-        return;
+      function resolveOnce(finalResult: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimers();
+        cleanupListeners();
+        resolve(finalResult);
       }
-      settled = true;
-      clearTimers();
-      cleanupListeners();
-      resolve(finalResult);
-    }
 
-    function rejectOnce(error: Error) {
-      if (settled) {
-        return;
+      function rejectOnce(error: Error) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimers();
+        cleanupListeners();
+        reject(error);
       }
-      settled = true;
-      clearTimers();
-      cleanupListeners();
-      reject(error);
-    }
 
-    child.on("error", (error) => {
-      rejectOnce(new Error(`OpenCode Hyperframes generation failed to start: ${error.message}`, { cause: error }));
+      child.on("error", (error) => {
+        rejectOnce(new Error(`OpenCode Hyperframes generation failed to start: ${error.message}`, { cause: error }));
+      });
+
+      child.stdout.on("data", (chunk) => {
+        appendRetainedOutput(stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+      });
+
+      child.stderr.on("data", (chunk) => {
+        appendRetainedOutput(stderr, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+      });
+
+      child.on("close", (code, signal) => {
+        resolveOnce({ code, signal, timedOut });
+      });
     });
 
-    child.stdout.on("data", (chunk) => {
-      appendRetainedOutput(stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
-    });
+    const stdoutText = retainedOutputToLog("stdout", stdout);
+    await Promise.all([writeFile(stdoutPath, stdoutText), writeFile(stderrPath, retainedOutputToLog("stderr", stderr))]);
 
-    child.stderr.on("data", (chunk) => {
-      appendRetainedOutput(stderr, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
-    });
+    if (result.timedOut) {
+      throw new Error(`OpenCode Hyperframes generation timed out after ${effectiveTimeoutMs}ms; see ${stderrPath}`);
+    }
 
-    child.on("close", (code, signal) => {
-      resolveOnce({ code, signal, timedOut });
-    });
-  });
+    if (result.code !== 0) {
+      const reason = result.signal ? `signal ${result.signal}` : `exit code ${result.code ?? "unknown"}`;
+      throw new Error(`OpenCode Hyperframes generation failed with ${reason}; see ${stderrPath}`);
+    }
 
-  const stdoutText = retainedOutputToLog("stdout", stdout);
-  await Promise.all([writeFile(stdoutPath, stdoutText), writeFile(stderrPath, retainedOutputToLog("stderr", stderr))]);
+    await copySandboxOutputToHyperframesDirectory(sandboxDirectory, options.logDir);
 
-  if (result.timedOut) {
-    throw new Error(`OpenCode Hyperframes generation timed out after ${effectiveTimeoutMs}ms; see ${stderrPath}`);
+    return stdoutText;
+  } finally {
+    await cleanupOpencodeSandbox(options.logDir);
   }
-
-  if (result.code !== 0) {
-    const reason = result.signal ? `signal ${result.signal}` : `exit code ${result.code ?? "unknown"}`;
-    throw new Error(`OpenCode Hyperframes generation failed with ${reason}; see ${stderrPath}`);
-  }
-
-  await copySandboxOutputToHyperframesDirectory(sandboxDirectory, options.logDir);
-
-  return stdoutText;
 }
 
 function assertRequiredPath(value: string, name: string) {
@@ -447,11 +456,15 @@ export function createOpencodeHyperframesGenerator(options: OpencodeHyperframesO
   return async (input) => {
     assertRequiredPath(input.repoCheckoutDirectory, "repoCheckoutDirectory");
     assertRequiredPath(input.hyperframesDir, "hyperframesDir");
-    await runOpencode(buildGeneratePrompt(input), {
-      cwd: hyperframesOpencodeSandboxDirectory(input.hyperframesDir),
-      logDir: input.hyperframesDir,
-      repoCheckoutDirectory: input.repoCheckoutDirectory,
-    });
+    try {
+      await runOpencode(buildGeneratePrompt(input), {
+        cwd: hyperframesOpencodeSandboxDirectory(input.hyperframesDir),
+        logDir: input.hyperframesDir,
+        repoCheckoutDirectory: input.repoCheckoutDirectory,
+      });
+    } finally {
+      await cleanupOpencodeSandbox(input.hyperframesDir);
+    }
   };
 }
 
@@ -461,10 +474,14 @@ export function createOpencodeHyperframesRepairer(options: OpencodeHyperframesOp
   return async (input) => {
     assertRequiredPath(input.repoCheckoutDirectory, "repoCheckoutDirectory");
     assertRequiredPath(input.hyperframesDir, "hyperframesDir");
-    await runOpencode(buildRepairPrompt(input), {
-      cwd: hyperframesOpencodeSandboxDirectory(input.hyperframesDir),
-      logDir: input.hyperframesDir,
-      repoCheckoutDirectory: input.repoCheckoutDirectory,
-    });
+    try {
+      await runOpencode(buildRepairPrompt(input), {
+        cwd: hyperframesOpencodeSandboxDirectory(input.hyperframesDir),
+        logDir: input.hyperframesDir,
+        repoCheckoutDirectory: input.repoCheckoutDirectory,
+      });
+    } finally {
+      await cleanupOpencodeSandbox(input.hyperframesDir);
+    }
   };
 }

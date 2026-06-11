@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { access, chmod, mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
+import { validateHyperframesArtifacts } from "./hyperframesArtifacts.js";
 import * as demoAssembly from "./index.js";
-import { createOpencodeHyperframesGenerator, createOpencodeHyperframesRepairer, defaultRunOpencode } from "./hyperframesPlanning.js";
+import { createOpencodeHyperframesGenerator, createOpencodeHyperframesRepairer } from "./hyperframesPlanning.js";
 
 assert.equal(typeof demoAssembly.createOpencodeHyperframesGenerator, "function");
 assert.equal(typeof demoAssembly.createOpencodeHyperframesRepairer, "function");
@@ -143,6 +144,26 @@ assert.match(repairCalls[0]?.prompt ?? "", /Modify only generated Hyperframes ou
 assert.match(repairCalls[0]?.prompt ?? "", /failureStage/);
 assert.match(repairCalls[0]?.prompt ?? "", /line 1/);
 
+const repairCleanupRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-repair-cleanup-"));
+const repairCleanupRepo = join(repairCleanupRoot, "repo");
+const repairCleanupHyperframes = join(repairCleanupRoot, "hyperframes");
+await mkdir(repairCleanupRepo);
+const repairCleanupSandbox = join(repairCleanupHyperframes, ".tinker-opencode-workspace");
+const cleanupRepairer = createOpencodeHyperframesRepairer({
+  runOpencode: async (_prompt, options) => {
+    await mkdir(options.cwd, { recursive: true });
+    await writeFile(join(options.cwd, "scratch.txt"), "scratch\n");
+    return "ok";
+  },
+});
+await cleanupRepairer({
+  repoCheckoutDirectory: repairCleanupRepo,
+  hyperframesDir: repairCleanupHyperframes,
+  failureStage: "validation",
+  logText: "repair me",
+});
+await assert.rejects(() => access(repairCleanupSandbox));
+
 const tempDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-planning-"));
 const fakeBinDir = join(tempDir, "bin");
 const repoCheckoutDirectory = join(tempDir, "repo");
@@ -161,6 +182,7 @@ await mkdir(join(repoCheckoutDirectory, ".cache"));
 await mkdir(join(repoCheckoutDirectory, "tmp"));
 await mkdir(join(repoCheckoutDirectory, "temp"));
 await writeFile(join(repoCheckoutDirectory, "README.md"), "repo readme");
+await writeFile(join(repoCheckoutDirectory, "package.json"), JSON.stringify({ name: "fixture-product" }));
 await writeFile(join(repoCheckoutDirectory, "src", "app.ts"), "export const app = true;\n");
 await writeFile(join(repoCheckoutDirectory, ".env"), "SECRET=host-secret\n");
 await writeFile(join(repoCheckoutDirectory, ".env.local"), "LOCAL_SECRET=host-local-secret\n");
@@ -187,15 +209,42 @@ await writeFile(
   fakeOpencodePath,
   [
     "#!/usr/bin/env node",
-    "const { writeFileSync, writeSync } = require('node:fs');",
+    "const { existsSync, readFileSync, writeFileSync, writeSync } = require('node:fs');",
     "const { join } = require('node:path');",
     "writeFileSync(join(process.cwd(), 'opencode-cwd.txt'), process.cwd());",
     "writeFileSync(join(process.cwd(), 'opencode-args.json'), JSON.stringify(process.argv.slice(2), null, 2));",
     "writeFileSync(join(process.cwd(), 'opencode-env.json'), JSON.stringify(process.env, null, 2));",
+    "writeFileSync(join(process.cwd(), 'opencode-config-check.json'), readFileSync(join(process.cwd(), 'opencode.json'), 'utf8'));",
+    "writeFileSync(join(process.cwd(), 'snapshot-checks.json'), JSON.stringify({",
+    "  readme: existsSync(join(process.cwd(), 'repository', 'README.md')),",
+    "  packageJson: existsSync(join(process.cwd(), 'repository', 'package.json')),",
+    "  sourceFile: existsSync(join(process.cwd(), 'repository', 'src', 'app.ts')),",
+    "  gitHead: existsSync(join(process.cwd(), 'repository', '.git', 'HEAD')),",
+    "  nodeModules: existsSync(join(process.cwd(), 'repository', 'node_modules', 'ignored.js')),",
+    "  env: existsSync(join(process.cwd(), 'repository', '.env')),",
+    "  envLocal: existsSync(join(process.cwd(), 'repository', '.env.local')),",
+    "  npmrc: existsSync(join(process.cwd(), 'repository', '.npmrc')),",
+    "  pypirc: existsSync(join(process.cwd(), 'repository', '.pypirc')),",
+    "  netrc: existsSync(join(process.cwd(), 'repository', '.netrc')),",
+    "  aws: existsSync(join(process.cwd(), 'repository', '.aws', 'credentials')),",
+    "  ssh: existsSync(join(process.cwd(), 'repository', '.ssh', 'id_rsa')),",
+    "  next: existsSync(join(process.cwd(), 'repository', '.next', 'cache')),",
+    "  turbo: existsSync(join(process.cwd(), 'repository', '.turbo', 'cache')),",
+    "  coverage: existsSync(join(process.cwd(), 'repository', 'coverage', 'coverage-final.json')),",
+    "  cache: existsSync(join(process.cwd(), 'repository', '.cache', 'cache-entry')),",
+    "  tmp: existsSync(join(process.cwd(), 'repository', 'tmp', 'scratch')),",
+    "  temp: existsSync(join(process.cwd(), 'repository', 'temp', 'scratch')),",
+    "  debugLog: existsSync(join(process.cwd(), 'repository', 'debug.log')),",
+    "  npmDebugLog: existsSync(join(process.cwd(), 'repository', 'npm-debug.log')),",
+    "  oldTinkerLog: existsSync(join(process.cwd(), 'repository', '.tinker-opencode-old.log')),",
+    "  hostTmpLink: existsSync(join(process.cwd(), 'repository', 'host-tmp-link'))",
+    "}, null, 2));",
     "writeFileSync(join(process.cwd(), 'index.html'), '<!doctype html><title>Generated</title>');",
+    "writeFileSync(join(process.cwd(), 'asset-manifest.json'), JSON.stringify({ assets: [] }));",
+    "writeFileSync(join(process.cwd(), 'generation-manifest.json'), JSON.stringify({ renderer: 'hyperframes', productUrl: 'https://example.com', sourceRepoUrl: 'https://github.com/example/product', durationCapSeconds: 12, aspectRatio: '16:9', sourceGrounding: ['repo', 'website-analysis'], outputVideoPath: 'output.mp4' }));",
     "writeSync(1, 'STDOUT_START_SHOULD_BE_TRUNCATED\\n' + 'o'.repeat(200000) + '\\nSTDOUT_END_SHOULD_STAY\\n');",
     "writeSync(2, 'STDERR_START_SHOULD_BE_TRUNCATED\\n' + 'e'.repeat(200000) + '\\nSECRET_STDERR_SHOULD_STAY_IN_LOG\\n');",
-    "process.exit(7);",
+    "process.exit(0);",
   ].join("\n"),
 );
 await chmod(fakeOpencodePath, 0o755);
@@ -206,21 +255,17 @@ try {
   process.env.PATH = `${fakeBinDir}${delimiter}${originalPath ?? ""}`;
   process.env.TINKER_SHOULD_NOT_LEAK = "host-secret";
   process.env.OPENCODE_CONFIG = join(tempDir, "host-opencode.json");
-  await assert.rejects(
-    () =>
-      defaultRunOpencode("fake prompt", {
-        cwd: join(hyperframesDir, ".tinker-opencode-workspace"),
-        logDir: hyperframesDir,
-        repoCheckoutDirectory,
-      }),
-    (error) => {
-      assert.ok(error instanceof Error);
-      assert.match(error.message, /exit code 7/);
-      assert.match(error.message, new RegExp(hyperframesDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-      assert.doesNotMatch(error.message, /SECRET_STDERR_SHOULD_STAY_IN_LOG/);
-      return true;
-    },
-  );
+  await createOpencodeHyperframesGenerator()({
+    productUrl: "https://example.com",
+    repoUrl: "https://github.com/example/product",
+    prompt: "Create a workflow demo.",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    websiteAnalysis: productAnalysis,
+    repoAnalysis,
+    repoCheckoutDirectory,
+    hyperframesDir,
+  });
 } finally {
   process.env.PATH = originalPath;
   delete process.env.TINKER_SHOULD_NOT_LEAK;
@@ -237,36 +282,44 @@ await assert.rejects(() => access(join(repoCheckoutDirectory, ".tinker-opencode-
 assert.match(await readFile(join(hyperframesDir, ".tinker-opencode-hyperframes-error.log"), "utf8"), /SECRET_STDERR_SHOULD_STAY_IN_LOG/);
 
 const sandboxDir = join(hyperframesDir, ".tinker-opencode-workspace");
-await access(join(sandboxDir, "repository", "README.md"));
-await access(join(sandboxDir, "repository", "src", "app.ts"));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".git", "HEAD")));
-await assert.rejects(() => access(join(sandboxDir, "repository", "node_modules", "ignored.js")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".env")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".env.local")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".npmrc")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".pypirc")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".netrc")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".aws", "credentials")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".ssh", "id_rsa")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".next", "cache")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".turbo", "cache")));
-await assert.rejects(() => access(join(sandboxDir, "repository", "coverage", "coverage-final.json")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".cache", "cache-entry")));
-await assert.rejects(() => access(join(sandboxDir, "repository", "tmp", "scratch")));
-await assert.rejects(() => access(join(sandboxDir, "repository", "temp", "scratch")));
-await assert.rejects(() => access(join(sandboxDir, "repository", "debug.log")));
-await assert.rejects(() => access(join(sandboxDir, "repository", "npm-debug.log")));
-await assert.rejects(() => access(join(sandboxDir, "repository", ".tinker-opencode-old.log")));
-await assert.rejects(() => access(join(sandboxDir, "repository", "host-tmp-link")));
-assert.equal(await readFile(join(sandboxDir, "opencode-cwd.txt"), "utf8"), await realpath(sandboxDir));
-const opencodeArgs = JSON.parse(await readFile(join(sandboxDir, "opencode-args.json"), "utf8"));
+await assert.rejects(() => access(sandboxDir));
+await validateHyperframesArtifacts({
+  hyperframesDir,
+  productUrl: "https://example.com",
+  repoUrl: "https://github.com/example/product",
+});
+const snapshotChecks = JSON.parse(await readFile(join(hyperframesDir, "snapshot-checks.json"), "utf8"));
+assert.equal(snapshotChecks.readme, true);
+assert.equal(snapshotChecks.packageJson, true);
+assert.equal(snapshotChecks.sourceFile, true);
+assert.equal(snapshotChecks.gitHead, false);
+assert.equal(snapshotChecks.nodeModules, false);
+assert.equal(snapshotChecks.env, false);
+assert.equal(snapshotChecks.envLocal, false);
+assert.equal(snapshotChecks.npmrc, false);
+assert.equal(snapshotChecks.pypirc, false);
+assert.equal(snapshotChecks.netrc, false);
+assert.equal(snapshotChecks.aws, false);
+assert.equal(snapshotChecks.ssh, false);
+assert.equal(snapshotChecks.next, false);
+assert.equal(snapshotChecks.turbo, false);
+assert.equal(snapshotChecks.coverage, false);
+assert.equal(snapshotChecks.cache, false);
+assert.equal(snapshotChecks.tmp, false);
+assert.equal(snapshotChecks.temp, false);
+assert.equal(snapshotChecks.debugLog, false);
+assert.equal(snapshotChecks.npmDebugLog, false);
+assert.equal(snapshotChecks.oldTinkerLog, false);
+assert.equal(snapshotChecks.hostTmpLink, false);
+assert.equal((await readFile(join(hyperframesDir, "opencode-cwd.txt"), "utf8")).endsWith(".tinker-opencode-workspace"), true);
+const opencodeArgs = JSON.parse(await readFile(join(hyperframesDir, "opencode-args.json"), "utf8"));
 assert.equal(opencodeArgs.includes("--dangerously-skip-permissions"), false);
-const opencodeConfig = JSON.parse(await readFile(join(sandboxDir, "opencode.json"), "utf8"));
+const opencodeConfig = JSON.parse(await readFile(join(hyperframesDir, "opencode-config-check.json"), "utf8"));
 assert.equal(opencodeConfig.permission.edit, "allow");
 assert.equal(opencodeConfig.permission.bash, "deny");
 assert.equal(opencodeConfig.permission.webfetch, "deny");
 assert.equal(opencodeConfig.permission.external_directory, "deny");
-const spawnedEnv = JSON.parse(await readFile(join(sandboxDir, "opencode-env.json"), "utf8"));
+const spawnedEnv = JSON.parse(await readFile(join(hyperframesDir, "opencode-env.json"), "utf8"));
 assert.equal(spawnedEnv.TINKER_SHOULD_NOT_LEAK, undefined);
 assert.equal(spawnedEnv.OPENCODE_CONFIG, undefined);
 const stdoutLog = await readFile(join(hyperframesDir, ".tinker-opencode-hyperframes-output.jsonl"), "utf8");
@@ -279,5 +332,56 @@ assert.match(stderrLog, /SECRET_STDERR_SHOULD_STAY_IN_LOG/);
 assert.doesNotMatch(stderrLog, /STDERR_START_SHOULD_BE_TRUNCATED/);
 assert.ok(Buffer.byteLength(stdoutLog, "utf8") < 140_000);
 assert.ok(Buffer.byteLength(stderrLog, "utf8") < 140_000);
+
+const failureTempDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-planning-failure-"));
+const failureFakeBinDir = join(failureTempDir, "bin");
+const failureRepoCheckoutDirectory = join(failureTempDir, "repo");
+const failureHyperframesDir = join(failureTempDir, "hyperframes");
+await mkdir(failureFakeBinDir);
+await mkdir(failureRepoCheckoutDirectory);
+await writeFile(join(failureRepoCheckoutDirectory, "package.json"), JSON.stringify({ name: "fixture-product" }));
+const failureFakeOpencodePath = join(failureFakeBinDir, "opencode");
+await writeFile(
+  failureFakeOpencodePath,
+  [
+    "#!/usr/bin/env node",
+    "const { writeSync } = require('node:fs');",
+    "writeSync(1, 'failure stdout\\n');",
+    "writeSync(2, 'SECRET_FAILURE_STDERR\\n');",
+    "process.exit(7);",
+  ].join("\n"),
+);
+await chmod(failureFakeOpencodePath, 0o755);
+
+try {
+  process.env.PATH = `${failureFakeBinDir}${delimiter}${originalPath ?? ""}`;
+  await assert.rejects(
+    () =>
+      createOpencodeHyperframesGenerator()({
+        productUrl: "https://example.com",
+        repoUrl: "https://github.com/example/product",
+        prompt: "Create a workflow demo.",
+        durationCapSeconds: 12,
+        aspectRatio: "16:9",
+        websiteAnalysis: productAnalysis,
+        repoAnalysis,
+        repoCheckoutDirectory: failureRepoCheckoutDirectory,
+        hyperframesDir: failureHyperframesDir,
+      }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /exit code 7/);
+      assert.match(error.message, new RegExp(failureHyperframesDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      assert.doesNotMatch(error.message, /SECRET_FAILURE_STDERR/);
+      return true;
+    },
+  );
+} finally {
+  process.env.PATH = originalPath;
+}
+await access(join(failureHyperframesDir, ".tinker-opencode-hyperframes-output.jsonl"));
+await access(join(failureHyperframesDir, ".tinker-opencode-hyperframes-error.log"));
+assert.match(await readFile(join(failureHyperframesDir, ".tinker-opencode-hyperframes-error.log"), "utf8"), /SECRET_FAILURE_STDERR/);
+await assert.rejects(() => access(join(failureHyperframesDir, ".tinker-opencode-workspace")));
 
 console.log("hyperframes planning tests passed");
