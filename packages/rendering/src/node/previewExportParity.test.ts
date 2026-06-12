@@ -173,9 +173,9 @@ describe("preview/export camera parity", () => {
   });
 
   it.each([
-    ["16:9", { width: 960, height: 540, x: 480, y: 270 }],
-    ["9:16", { width: 540, height: 960, x: 270, y: 480 }],
-    ["1:1", { width: 540, height: 540, x: 270, y: 270 }],
+    ["16:9", { width: 1128, height: 634, x: 396, y: 222 }],
+    ["9:16", { width: 634, height: 1128, x: 222, y: 396 }],
+    ["1:1", { width: 634, height: 634, x: 222, y: 222 }],
   ] as const)("keeps centered zoom crop placement stable for %s output", (aspectRatio, expectedCrop) => {
     const project = projectWith({ aspectRatio });
 

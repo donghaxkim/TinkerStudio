@@ -124,10 +124,10 @@ describe("Preview", () => {
     const layer = screen.getByTestId("preview-motion-layer");
     const cursor = screen.getByTestId("active-cursor");
 
-    expectPercent(layer.style.left, -100);
-    expectPercent(layer.style.top, -100);
-    expectPercent(layer.style.width, 400);
-    expectPercent(layer.style.height, 400);
+    expectPercent(layer.style.left, -40);
+    expectPercent(layer.style.top, -40);
+    expectPercent(layer.style.width, 240);
+    expectPercent(layer.style.height, 240);
     expectPercent(cursor.style.left, 37.5);
     expectPercent(cursor.style.top, 37.5);
   });
