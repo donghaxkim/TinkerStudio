@@ -92,7 +92,7 @@ Do these in order unless a blocker forces a smaller slice:
 2. [x] PB-001: Mount the end-to-end web product shell. (Incl. subtask PB-001a: Porcelain design-system foundation — tokens, `.tk-*` classes, fonts in `apps/web`.)
 3. [ ] PB-002: Lock the Person A -> Person B generation handoff.
 4. [x] PB-003: Make Create Demo product-grade for one user.
-5. [ ] PB-004: Make the Editor product-grade for one user.
+5. [x] PB-004: Make the Editor product-grade for one user. (Subtasks PB-004a shell/layout/tabs + PB-004b Timeline/Preview restyle.)
 6. [ ] PB-005: Replace prototype manual editing with item-aware editing.
 7. [ ] PB-006: Add manual cursor/click controls.
 8. [ ] PB-007: Harden project lifecycle, save/load, and recovery.
@@ -363,7 +363,7 @@ pnpm --filter @tinker/web build
 
 **Priority:** P0
 **Owner:** Person B
-**Status:** Not started
+**Status:** Done
 **Goal:** Convert the editor from a verified technical surface into a polished product surface a user can operate without docs.
 
 **Files/areas:**
@@ -381,24 +381,26 @@ packages/editor/src/preview/Preview.tsx
 apps/web/src/styles.css
 ```
 
+**Design note:** Rebuilt to match `.design-ref/editor-reference.png` exactly, in two subtasks: **PB-004a** (apps/web — top app bar, 70/30 layout, deep-blue preview stage, floating tool rail, playback bar with a real rAF playback loop + timecode, right tabbed panel Chat/Zoom/Speed/Cursor/Frame) and **PB-004b** (packages/editor — Timeline restyled to warm clip track + mono ruler ticks + accent zoom lane + accent playhead/selection; Preview restyled to the deep-blue Porcelain stage). All prior wiring preserved. Verified live via screenshot vs the reference mock.
+
 **Tasks:**
 
-- [ ] Make preview the primary visual area.
-- [ ] Make timeline, selected range, manual controls, AI edits, save/load, and export visually distinct.
-- [ ] Remove stale captions/callouts wording from any user-facing UI.
-- [ ] Make current time, selected range, and selected entity obvious.
-- [ ] Make undo/redo disabled states obvious.
-- [ ] Make AI proposal preview state visually obvious and reversible.
-- [ ] Make empty/missing asset states calm and actionable.
-- [ ] Ensure all buttons have clear labels and do not rely on hidden knowledge.
-- [ ] Keep layout usable on a laptop viewport without overlapping text.
-- [ ] Add or update component tests for the visible editor product states.
+- [x] Make preview the primary visual area. (Large deep-blue stage dominates the left ~70%.)
+- [x] Make timeline, selected range, manual controls, AI edits, save/load, and export visually distinct. (Restyled timeline, selection band, Zoom tab controls, Chat tab AI panel, save/load/export footer.)
+- [x] Remove stale captions/callouts wording from any user-facing UI. (Grep clean.)
+- [x] Make current time, selected range, and selected entity obvious. (Timecode in the playback bar + accent selection band; per-item entity selection is deepened in PB-005.)
+- [x] Make undo/redo disabled states obvious. (Disabled icon buttons keyed to history past/future.)
+- [x] Make AI proposal preview state visually obvious and reversible. (Accent-soft preview banner; accept/reject in the Chat panel; undo restores.)
+- [x] Make empty/missing asset states calm and actionable. (Calm Porcelain placeholder on the stage; calm load-error card.)
+- [x] Ensure all buttons have clear labels and do not rely on hidden knowledge. (aria-labels throughout; non-MVP tools disabled with reasons.)
+- [x] Keep layout usable on a laptop viewport without overlapping text. (Verified at 1440px.)
+- [x] Add or update component tests for the visible editor product states. (EditorScreen 11 tests; Timeline/Preview restyle tests.)
 
 **Done when:**
 
-- [ ] A reviewer can complete the happy path without reading docs.
-- [ ] No user-facing UI references removed MVP scope.
-- [ ] The editor feels like a focused demo editor, not a generic video editor.
+- [x] A reviewer can complete the happy path without reading docs.
+- [x] No user-facing UI references removed MVP scope.
+- [x] The editor feels like a focused demo editor, not a generic video editor.
 
 **Verification:**
 
