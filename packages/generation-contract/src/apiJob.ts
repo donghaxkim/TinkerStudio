@@ -9,7 +9,7 @@ const ApiCreateDemoRequestSchema = AiUrlPlanningCreateDemoRequestSchema.omit({
 })
   .extend({
     id: z.string().min(1),
-    renderer: z.literal("hyperframes").optional(),
+    renderer: z.literal("hyperframes"),
   })
   .strict();
 

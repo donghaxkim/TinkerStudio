@@ -261,6 +261,69 @@ describe("job routes", () => {
     }
   });
 
+  it("rejects unknown extra fields on job requests", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-unknown-field-${randomUUID()}-`));
+    const server = await buildServer({ config: testConfig(repoRoot) });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: { ...validBody, chatEndpoint: "https://example.com/chat" },
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body)).toMatchObject({ status: "failed", stage: "validation" });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("accepts omitted renderer and stores Hyperframes in the response snapshot", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-default-renderer-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
+        expect(rawRequest).toMatchObject({ id: "job-test", mode: "ai-url-planning", renderer: "hyperframes" });
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      const response = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+
+      expect(response.statusCode).toBe(202);
+      expect(JSON.parse(response.body)).toMatchObject({
+        id: "job-test",
+        status: "queued",
+        request: { id: "job-test", renderer: "hyperframes" },
+      });
+      await completed.promise;
+    } finally {
+      await server.close();
+    }
+  });
+
   it("rejects invalid job requests and caps pending queue capacity", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-validation-${randomUUID()}-`));
     const validationServer = await buildServer({ config: testConfig(repoRoot) });

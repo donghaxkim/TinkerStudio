@@ -35,15 +35,16 @@ function requestBodyWithoutClientId(body: unknown) {
   return requestBody;
 }
 
+const ApiJobCreateRequestBodySchema = AiUrlPlanningCreateDemoRequestSchema.omit({
+  id: true,
+  outputDirectory: true,
+}).strict();
+
 export function registerJobsRoutes(server: FastifyInstance, options: JobsRoutesOptions) {
   server.post("/api/jobs", async (request, reply) => {
-    const parsed = AiUrlPlanningCreateDemoRequestSchema.safeParse(requestBodyWithoutClientId(request.body));
+    const parsed = ApiJobCreateRequestBodySchema.safeParse(requestBodyWithoutClientId(request.body));
     if (!parsed.success) {
       return reply.status(422).send(validationError(formatZodIssues(parsed.error.issues)));
-    }
-
-    if (parsed.data.outputDirectory !== undefined) {
-      return reply.status(422).send(validationError("outputDirectory is not allowed"));
     }
 
     if (parsed.data.renderer !== "hyperframes") {

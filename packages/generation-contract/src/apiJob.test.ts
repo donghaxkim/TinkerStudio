@@ -121,6 +121,25 @@ describe("API generation job contract", () => {
       safeParseApiGenerationJob({
         id: "job-test",
         status: "queued",
+        request: {
+          id: "job-test",
+          mode: "ai-url-planning",
+          repoUrl: "https://github.com/example/product",
+          productUrl: "https://example.com",
+          prompt: "Make a short demo.",
+          durationCapSeconds: 12,
+          aspectRatio: "16:9",
+        },
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+        progressEvents: [],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-test",
+        status: "queued",
         request: { ...request, unexpected: true },
         createdAt: "2026-06-11T00:00:00.000Z",
         updatedAt: "2026-06-11T00:00:00.000Z",
