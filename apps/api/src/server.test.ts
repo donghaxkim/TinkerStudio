@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolve } from "node:path";
@@ -6,8 +6,10 @@ import { describe, expect, it, test } from "vitest";
 import type { AiUrlPlanningCreateDemoRequest, GenerationError, ManualFixtureProgressEvent } from "@tinker/generation-contract";
 import { readConfig } from "./config.js";
 import { indexArtifacts } from "./jobs/artifactIndex.js";
+import { createJobQueue } from "./jobs/jobQueue.js";
 import { createJobStore } from "./jobs/jobStore.js";
 import { buildServer } from "./server.js";
+import { createGenerationWorker, type GenerationRunner } from "./workers/generationWorker.js";
 
 const request: AiUrlPlanningCreateDemoRequest = {
   id: "job-test",
@@ -337,5 +339,94 @@ describe("job store", () => {
     const snapshot = store.getSnapshot("job-invalid-progress-time");
     expect(snapshot?.status).toBe("running");
     expect(snapshot?.updatedAt).toBe("2026-06-11T00:00:00.000Z");
+  });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((innerResolve, innerReject) => {
+    resolve = innerResolve;
+    reject = innerReject;
+  });
+  return { promise, resolve, reject };
+}
+
+describe("job queue", () => {
+  it("runs one job at a time in FIFO order and bounds pending jobs", async () => {
+    const first = deferred<void>();
+    const started: string[] = [];
+    const finished: string[] = [];
+    const queue = createJobQueue({
+      maxPendingJobs: 1,
+      runJob: async (id) => {
+        started.push(id);
+        if (id === "job-1") {
+          await first.promise;
+        }
+        finished.push(id);
+      },
+    });
+
+    expect(queue.enqueue("job-1")).toBe(true);
+    expect(queue.enqueue("job-2")).toBe(true);
+    expect(queue.enqueue("job-3")).toBe(false);
+
+    await Promise.resolve();
+    expect(started).toEqual(["job-1"]);
+
+    first.resolve();
+    await first.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(started).toEqual(["job-1", "job-2"]);
+    expect(finished).toEqual(["job-1", "job-2"]);
+  });
+});
+
+describe("generation worker", () => {
+  it("invokes the runner, appends progress, indexes artifacts, and completes the job", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-"));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const store = createJobStore();
+    store.create({ id: "job-test", request, outputRoot, now: "2026-06-11T00:00:00.000Z" });
+
+    const runner: GenerationRunner = async (rawRequest, options) => {
+      expect(rawRequest).toMatchObject({ id: "job-test", mode: "ai-url-planning", renderer: "hyperframes" });
+      options?.onProgress?.({
+        jobId: "job-test",
+        status: "running",
+        message: "AI URL analysis started",
+        time: "2026-06-11T00:00:01.000Z",
+      });
+      await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+      await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html></html>");
+      await writeFile(join(outputRoot, "hyperframes", "output.mp4"), "video");
+      return {
+        jobId: "job-test",
+        status: "completed",
+        projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+        captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+        outputDirectory: outputRoot,
+        artifactPaths: [join(outputRoot, "hyperframes", "index.html"), join(outputRoot, "hyperframes", "output.mp4")],
+        renderer: "hyperframes",
+        rendererResults: {
+          hyperframes: {
+            outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+            generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+            assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+          },
+        },
+      };
+    };
+
+    const worker = createGenerationWorker({ store, runner, now: () => "2026-06-11T00:00:02.000Z" });
+    await worker("job-test");
+
+    const completed = store.getSnapshot("job-test");
+    expect(completed?.status).toBe("completed");
+    expect(completed?.progressEvents.map((event) => event.message)).toEqual(["AI URL analysis started"]);
+    expect(completed?.result?.artifacts.map((artifact) => artifact.kind)).toEqual(["composition-index", "output-video"]);
   });
 });
