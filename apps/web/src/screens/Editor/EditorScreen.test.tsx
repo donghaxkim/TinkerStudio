@@ -143,8 +143,8 @@ describe("EditorScreen", () => {
         rafCallback?.(500);
       });
 
-      // currentTime should have advanced (timecode no longer shows 0:00.0).
-      expect(screen.getByLabelText("Timecode")).not.toHaveTextContent("0:00.0 / 0:45.0");
+      // currentTime should have advanced by exactly 0.5s (500ms frame delta).
+      expect(screen.getByLabelText("Timecode")).toHaveTextContent("0:00.5 / 0:45.0");
 
       rafSpy.mockRestore();
       cafSpy.mockRestore();

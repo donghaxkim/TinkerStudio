@@ -26,7 +26,8 @@ function formatTimecode(seconds: number): string {
   const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
   const minutes = Math.floor(safe / 60);
   const remainder = safe - minutes * 60;
-  const padded = remainder < 10 ? `0${remainder.toFixed(1)}` : remainder.toFixed(1);
+  const rounded = remainder.toFixed(1);
+  const padded = parseFloat(rounded) < 10 ? `0${rounded}` : rounded;
   return `${minutes}:${padded}`;
 }
 
@@ -270,6 +271,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
   const [activeTab, setActiveTab] = useState<PanelTab>("zoom");
   const [isPlaying, setIsPlaying] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [toolRailOpen, setToolRailOpen] = useState(true);
 
   // Refs for the rAF playback loop.
   const lastFrameTimeRef = useRef<number | null>(null);
@@ -333,6 +335,13 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
       lastFrameTimeRef.current = null;
     };
   }, [isPlaying, project?.duration]);
+
+  // Fix 6: scroll export panel into view when exportOpen becomes true, no uncancelled timer.
+  useEffect(() => {
+    if (exportOpen) {
+      exportPanelRef.current?.scrollIntoView?.({ block: "nearest" });
+    }
+  }, [exportOpen]);
 
   if (!loadResult.ok) {
     return (
@@ -485,15 +494,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             className="tk-btn tk-btn-accent"
             aria-label="Export"
             title="Open the export panel"
-            onClick={() => {
-              setExportOpen(true);
-              // Scroll export panel into view after state update.
-              setTimeout(() => {
-                if (exportPanelRef.current && typeof exportPanelRef.current.scrollIntoView === "function") {
-                  exportPanelRef.current.scrollIntoView({ block: "nearest" });
-                }
-              }, 0);
-            }}
+            onClick={() => setExportOpen(true)}
           >
             Export
           </button>
@@ -521,56 +522,74 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
               }}
             >
               {/* Floating tool rail */}
-              <nav
-                aria-label="Editor tools"
-                style={{
-                  position: "absolute",
-                  left: 14,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  display: "grid",
-                  gap: 4,
-                  padding: 5,
-                  borderRadius: "var(--tk-radius-md)",
-                  background: "var(--tk-card)",
-                  border: "1px solid var(--tk-border)",
-                  boxShadow: "var(--tk-shadow-md)",
-                  zIndex: 5,
-                }}
-              >
-                <button
-                  type="button"
-                  className={`tk-railbtn${activeTab === "zoom" ? "" : " tk-railbtn-on"}`}
-                  aria-label="Close tools"
-                  title="Close tools"
-                  aria-pressed={activeTab !== "zoom"}
-                  onClick={() => setActiveTab("chat")}
+              {toolRailOpen ? (
+                <nav
+                  aria-label="Editor tools"
+                  style={{
+                    position: "absolute",
+                    left: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    display: "grid",
+                    gap: 4,
+                    padding: 5,
+                    borderRadius: "var(--tk-radius-md)",
+                    background: "var(--tk-card)",
+                    border: "1px solid var(--tk-border)",
+                    boxShadow: "var(--tk-shadow-md)",
+                    zIndex: 5,
+                  }}
                 >
-                  <CloseIcon />
-                </button>
-                <button type="button" className="tk-railbtn" aria-label="Split clip — not available in the MVP" title="Not available in the MVP" disabled>
-                  <SplitIcon />
-                </button>
+                  <button
+                    type="button"
+                    className="tk-iconbtn"
+                    aria-label="Close tools"
+                    title="Close tools"
+                    onClick={() => setToolRailOpen(false)}
+                  >
+                    <CloseIcon />
+                  </button>
+                  <button type="button" className="tk-railbtn" aria-label="Split clip — not available in the MVP" title="Not available in the MVP" disabled>
+                    <SplitIcon />
+                  </button>
+                  <button
+                    type="button"
+                    className={`tk-railbtn${activeTab === "zoom" ? " tk-railbtn-on" : ""}`}
+                    aria-label="Zoom move"
+                    title="Add a zoom move (opens the Zoom panel)"
+                    aria-pressed={activeTab === "zoom"}
+                    onClick={() => setActiveTab("zoom")}
+                  >
+                    <ZoomMoveIcon />
+                  </button>
+                  <button type="button" className="tk-railbtn" aria-label="Auto frame — not available in the MVP" title="Not available in the MVP" disabled>
+                    <FrameIcon />
+                  </button>
+                  <button type="button" className="tk-railbtn" aria-label="Crop — not available in the MVP" title="Not available in the MVP" disabled>
+                    <CropIcon />
+                  </button>
+                  <button type="button" className="tk-railbtn" aria-label="Mask — not available in the MVP" title="Not available in the MVP" disabled>
+                    <MaskIcon />
+                  </button>
+                </nav>
+              ) : (
                 <button
                   type="button"
-                  className={`tk-railbtn${activeTab === "zoom" ? " tk-railbtn-on" : ""}`}
-                  aria-label="Zoom move"
-                  title="Add a zoom move (opens the Zoom panel)"
-                  aria-pressed={activeTab === "zoom"}
-                  onClick={() => setActiveTab("zoom")}
+                  className="tk-iconbtn"
+                  aria-label="Open tools"
+                  title="Open tools"
+                  style={{
+                    position: "absolute",
+                    left: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    zIndex: 5,
+                  }}
+                  onClick={() => setToolRailOpen(true)}
                 >
                   <ZoomMoveIcon />
                 </button>
-                <button type="button" className="tk-railbtn" aria-label="Auto frame — not available in the MVP" title="Not available in the MVP" disabled>
-                  <FrameIcon />
-                </button>
-                <button type="button" className="tk-railbtn" aria-label="Crop — not available in the MVP" title="Not available in the MVP" disabled>
-                  <CropIcon />
-                </button>
-                <button type="button" className="tk-railbtn" aria-label="Mask — not available in the MVP" title="Not available in the MVP" disabled>
-                  <MaskIcon />
-                </button>
-              </nav>
+              )}
 
               <div style={{ width: "100%", maxWidth: 760 }}>
                 <Preview project={displayProject} currentTime={currentTime} />
@@ -710,6 +729,8 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
                 key={tab.id}
                 type="button"
                 role="tab"
+                id={`tab-${tab.id}`}
+                aria-controls={`panel-${tab.id}`}
                 aria-selected={activeTab === tab.id}
                 className={`tk-tab${activeTab === tab.id ? " tk-tab-on" : ""}`}
                 onClick={() => setActiveTab(tab.id)}
@@ -721,7 +742,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
 
           <div style={{ minHeight: 0, overflow: "auto" }}>
             {/* Chat tab — full-height AI assistant */}
-            <div role="tabpanel" aria-label="Chat" hidden={activeTab !== "chat"} style={{ height: "100%", minHeight: 0 }}>
+            <div role="tabpanel" id="panel-chat" aria-labelledby="tab-chat" hidden={activeTab !== "chat"} style={{ height: "100%", minHeight: 0 }}>
               {activeTab === "chat" ? (
                 <AIEditPanel
                   project={project}
@@ -737,7 +758,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             </div>
 
             {/* Zoom tab — auto-zoom + manual zoom/clip controls */}
-            <div role="tabpanel" aria-label="Zoom" hidden={activeTab !== "zoom"} style={{ display: activeTab === "zoom" ? "grid" : "none", gap: 12, padding: 14 }}>
+            <div role="tabpanel" id="panel-zoom" aria-labelledby="tab-zoom" hidden={activeTab !== "zoom"} style={{ display: "grid", gap: 12, padding: 14 }}>
               <EditorAutoZoomPanel
                 project={project}
                 previewSource={previewSource}
@@ -750,7 +771,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             </div>
 
             {/* Speed tab */}
-            <div role="tabpanel" aria-label="Speed" hidden={activeTab !== "speed"} style={{ display: activeTab === "speed" ? "block" : "none", padding: 14 }}>
+            <div role="tabpanel" id="panel-speed" aria-labelledby="tab-speed" hidden={activeTab !== "speed"} style={{ display: "block", padding: 14 }}>
               <PlaceholderPanel
                 kind="Clip speed"
                 lead="Per-clip speed ramps land in a later step."
@@ -759,7 +780,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             </div>
 
             {/* Cursor tab */}
-            <div role="tabpanel" aria-label="Cursor" hidden={activeTab !== "cursor"} style={{ display: activeTab === "cursor" ? "block" : "none", padding: 14 }}>
+            <div role="tabpanel" id="panel-cursor" aria-labelledby="tab-cursor" hidden={activeTab !== "cursor"} style={{ display: "block", padding: 14 }}>
               <PlaceholderPanel
                 kind="Cursor & clicks"
                 lead="Cursor smoothing and click styling arrive in a later step."
@@ -768,7 +789,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             </div>
 
             {/* Frame tab */}
-            <div role="tabpanel" aria-label="Frame" hidden={activeTab !== "frame"} style={{ display: activeTab === "frame" ? "block" : "none", padding: 14 }}>
+            <div role="tabpanel" id="panel-frame" aria-labelledby="tab-frame" hidden={activeTab !== "frame"} style={{ display: "block", padding: 14 }}>
               <PlaceholderPanel
                 kind="Frame & wallpaper"
                 lead="Background and framing controls arrive in a later step."
