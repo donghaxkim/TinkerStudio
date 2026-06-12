@@ -23,6 +23,17 @@ import { ProjectLoadPanel } from "./ProjectLoadPanel.js";
 import { ProjectExportPanel } from "./ProjectExportPanel.js";
 import { ProjectSaveLoadControls } from "./ProjectSaveLoadControls.js";
 
+// ─── local helpers ─────────────────────────────────────────────────────────────
+
+/** Convert a string to a URL-safe slug (lowercase, non-alphanumeric → single hyphen). */
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "demo-project";
+}
+
 // ─── time + resolution formatters ──────────────────────────────────────────────
 
 /** Format seconds as `m:ss.s` (e.g. 3.2 → "0:03.2"). */
@@ -588,7 +599,7 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
               whiteSpace: "nowrap",
             }}
           >
-            {project.title}
+            {slugify(project.title)}.tinker
           </span>
           <span
             aria-label="Persistence status"
@@ -626,22 +637,10 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
           </button>
           <button
             type="button"
-            className="tk-btn"
-            aria-label="Project file"
-            title="Open save, load &amp; export panel"
-            onClick={() => setFilesOpen(true)}
-          >
-            Project file
-          </button>
-          <button
-            type="button"
             className="tk-btn tk-btn-accent"
             aria-label="Export"
-            title="Open the export panel and start export"
-            onClick={() => {
-              setExportOpen(true);
-              exportJob.start(project);
-            }}
+            title="Open save, load &amp; export panel"
+            onClick={() => setFilesOpen(true)}
           >
             Export
           </button>

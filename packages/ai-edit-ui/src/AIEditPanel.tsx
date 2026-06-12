@@ -28,6 +28,11 @@ function formatRange(range: SelectedRange | undefined) {
   return `${range.start.toFixed(1)}s – ${range.end.toFixed(1)}s`;
 }
 
+/** Return "1 word" or "n words" (pluralised). */
+function plural(n: number, word: string): string {
+  return `${n} ${n === 1 ? word : `${word}s`}`;
+}
+
 /** Circular arrow-up send glyph (inherits currentColor). */
 function SendIcon() {
   return (
@@ -127,7 +132,7 @@ export function AIEditPanel({
           <p style={{ margin: 0, fontSize: 12, color: "var(--tk-text-sec)" }}>
             <span style={{ fontFamily: "var(--tk-mono)", color: "var(--tk-text)" }}>{formatRange(selectedRange)}</span>
             {" · "}
-            {slice.clips.length} clips, {slice.zooms.length} zooms, {slice.cursorEvents.length} cursor events
+            {plural(slice.clips.length, "clip")}, {plural(slice.zooms.length, "zoom")}, {plural(slice.cursorEvents.length, "cursor event")}
           </p>
         ) : (
           <p style={{ margin: 0, fontSize: 12.5, color: "var(--tk-text-sec)" }}>

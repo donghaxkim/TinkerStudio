@@ -222,6 +222,30 @@ export function Timeline({
             onClick={handleSeek}
             style={{ ...laneStyle, cursor: "pointer" }}
           >
+              {/* Click markers — only on clip (track) rows */}
+            {row.kind === "track"
+              ? project.cursorEvents
+                  .filter((e) => e.type === "click")
+                  .map((e, i) => (
+                    <div
+                      key={`click-marker-${i}`}
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        left: timeToPercent(e.time),
+                        top: "50%",
+                        transform: "translate(-50%, -50%)",
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        background: "var(--tk-accent, #3B5BD9)",
+                        boxShadow: "0 0 0 2px var(--tk-accent-soft, rgba(59,91,217,0.20))",
+                        pointerEvents: "none",
+                        zIndex: 1,
+                      }}
+                    />
+                  ))
+              : null}
             {row.items.map((item) => {
               const left = timeToPercent(item.start);
               const itemWidth = rangeToPercent(item.start, item.end);

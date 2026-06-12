@@ -103,7 +103,7 @@ export function createProjectJsonDownload(project: DemoProject): ProjectJsonDown
 
   return {
     ok: true,
-    filename: `${slugify(project.title)}-${slugify(project.id)}.json`,
+    filename: `${slugify(project.title || project.id)}.json`,
     contents: serialized.json,
     mimeType: "application/json",
   };

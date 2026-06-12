@@ -33,9 +33,9 @@ function openTab(name: "Chat" | "Zoom" | "Speed" | "Cursor" | "Frame") {
   fireEvent.click(screen.getByRole("tab", { name }));
 }
 
-/** Open the project file overlay via the "Project file" button. */
+/** Open the project file overlay via the "Export" button. */
 function openFilesPanel() {
-  fireEvent.click(screen.getByRole("button", { name: "Project file" }));
+  fireEvent.click(screen.getByRole("button", { name: "Export" }));
 }
 
 describe("EditorScreen", () => {
@@ -108,6 +108,8 @@ describe("EditorScreen", () => {
 
       expect(screen.getByRole("button", { name: "Preview (play)" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
+      // There should be no "Project file" button — it was removed in favour of the single Export entry.
+      expect(screen.queryByRole("button", { name: "Project file" })).not.toBeInTheDocument();
     });
   });
 
@@ -445,8 +447,8 @@ describe("EditorScreen", () => {
     it("keeps save/load and export reachable via the overlay", () => {
       render(<EditorScreen initialProject={sampleProject} />);
 
-      // Open the overlay (via Project file button or Export button).
-      fireEvent.click(screen.getByRole("button", { name: "Project file" }));
+      // Open the overlay via the Export button.
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
 
       expect(screen.getByRole("button", { name: "Save project" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Load saved project" })).toBeInTheDocument();
@@ -660,8 +662,8 @@ describe("EditorScreen", () => {
     }
 
     function openFilesOverlay() {
-      // Open via Project file button (does NOT start a job).
-      fireEvent.click(screen.getByRole("button", { name: "Project file" }));
+      // Open via Export button (opens the overlay; does NOT auto-start a job).
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
     }
 
     it("shows the Start export button in the export panel (via Project file overlay)", () => {
@@ -671,10 +673,14 @@ describe("EditorScreen", () => {
       expect(screen.getByRole("button", { name: "Start export" })).toBeInTheDocument();
     });
 
-    it("top-bar Export button starts a preflight and transitions to succeeded", () => {
+    it("top-bar Export button opens the overlay; Start export runs the preflight", () => {
       render(<EditorScreen initialProject={sampleProject} />);
-      // Clicking the top-bar Export button opens the panel AND starts the export job.
+      // Clicking the top-bar Export button opens the overlay (does NOT auto-start a job).
       fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      // The Start export button inside the overlay triggers the preflight.
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
 
       // After the sync preflight the job status block should show Succeeded.
       expect(screen.getByRole("status", { name: "Export job status" })).toBeInTheDocument();
@@ -683,7 +689,8 @@ describe("EditorScreen", () => {
 
     it("shows the artifact summary after a successful preflight", () => {
       render(<EditorScreen initialProject={sampleProject} />);
-      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      openExportPanel();
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
 
       expect(screen.getByLabelText("Artifact summary")).toBeInTheDocument();
       expect(screen.getByLabelText("Local render command")).toBeInTheDocument();
@@ -692,7 +699,8 @@ describe("EditorScreen", () => {
 
     it("shows honest copy — does not claim the browser wrote an MP4", () => {
       render(<EditorScreen initialProject={sampleProject} />);
-      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      openExportPanel();
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
 
       expect(screen.getByText(/preflight validated/i)).toBeInTheDocument();
       expect(screen.getByText(/browser does not write the file/i)).toBeInTheDocument();
@@ -709,15 +717,16 @@ describe("EditorScreen", () => {
       expect(screen.getByText("Succeeded")).toBeInTheDocument();
     });
 
-    it("duplicate-start prevention: clicking Export again while a job is terminal re-runs (new job)", () => {
+    it("duplicate-start prevention: clicking Start export again while a job is terminal re-runs (new job)", () => {
       render(<EditorScreen initialProject={sampleProject} />);
 
-      // First export.
-      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      // First export: open overlay, start job.
+      openExportPanel();
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
       expect(screen.getByText("Succeeded")).toBeInTheDocument();
 
-      // Second Export click — should re-run (terminal state allows re-start).
-      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      // Second Start export click — terminal state allows re-start.
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
       expect(screen.getByText("Succeeded")).toBeInTheDocument();
     });
 
@@ -766,6 +775,7 @@ describe("EditorScreen", () => {
       render(<EditorScreen initialProject={goldenProject()} />);
 
       fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
 
       expect(screen.getByRole("status", { name: "Export job status" })).toBeInTheDocument();
       expect(screen.getByText("Succeeded")).toBeInTheDocument();

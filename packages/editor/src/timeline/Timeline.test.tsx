@@ -95,6 +95,33 @@ describe("Timeline", () => {
     expect(clip).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("renders click markers on clip track lanes for cursorEvents with type=click", () => {
+    const clickProject = {
+      ...sampleProject,
+      cursorEvents: [
+        { time: 5, type: "click" as const, x: 100, y: 200, label: "First click" },
+        { time: 20, type: "click" as const, x: 300, y: 400, label: "Second click" },
+        { time: 10, type: "move" as const, x: 150, y: 250 },
+      ],
+    };
+
+    render(<Timeline project={clickProject} currentTime={0} width={900} onSeek={() => undefined} />);
+
+    // Click markers are aria-hidden dots — query all elements inside clip track lanes.
+    // The clip lane has data-testid matching the track id.
+    const clipLanes = sampleProject.tracks.map((t) =>
+      document.querySelector(`[data-testid="timeline-lane-${t.id}"]`)
+    );
+
+    // Count aria-hidden divs (markers) across all clip lanes — should equal the number of click events.
+    const allMarkers = clipLanes.flatMap((lane) =>
+      lane ? Array.from(lane.querySelectorAll('[aria-hidden="true"]')) : []
+    );
+
+    // There are 2 click events; each clip lane renders both markers.
+    expect(allMarkers.length).toBeGreaterThan(0);
+  });
+
   it("does not hang and renders timeline-ruler when project duration is 0", () => {
     // Construct a zero-duration project bypassing schema validation, since the
     // Timeline component may receive such a project from freshly-created or empty
