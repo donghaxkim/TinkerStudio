@@ -131,6 +131,14 @@ export const ZoomKeyframeSchema = z.object({
   target: RectSchema,
   scale: z.number().positive().optional(),
   easing: z.enum(["linear", "easeIn", "easeOut", "easeInOut"]).default("easeInOut"),
+  /**
+   * Human-readable label for this zoom move (PB-012, Person B).
+   * Optional and additive — existing projects without a name still validate.
+   * Displayed in the timeline zoom bar and the Zoom-panel rowcard list in place
+   * of the generic "Zoom N" fallback. Examples: "Invite modal", "Share button".
+   * NOTE FOR PERSON A: do NOT make this required — the field is optional by design.
+   */
+  name: z.string().min(1).optional(),
 });
 
 export const CursorEventSchema = z.discriminatedUnion("type", [

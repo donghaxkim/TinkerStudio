@@ -53,6 +53,11 @@ describe("golden generated-project fixture (person-a-generated-project.sample.js
     ]);
   });
 
+  it("has the design-reference zoom names (PB-012)", () => {
+    const project = DemoProjectSchema.parse(goldenFixture);
+    expect(project.zooms.map((zoom) => zoom.name)).toEqual(["Invite modal", "Share button"]);
+  });
+
   it("references the captured asset and keeps every clip's source range in bounds", () => {
     const project = DemoProjectSchema.parse(goldenFixture);
     expect(project.assets).toHaveLength(1);

@@ -769,9 +769,9 @@ describe("EditorScreen", () => {
     it("shows the 2 zoom moves from the reference timeline", () => {
       render(<EditorScreen initialProject={goldenProject()} />);
 
-      // Two zoom bars on the event lane (timeline labels them Zoom 1 / Zoom 2).
-      expect(screen.getByRole("button", { name: "zoom: Zoom 1" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "zoom: Zoom 2" })).toBeInTheDocument();
+      // Two zoom bars on the event lane — named after the design reference (PB-012).
+      expect(screen.getByRole("button", { name: "zoom: Invite modal" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "zoom: Share button" })).toBeInTheDocument();
 
       // The Zoom panel rowcards carry the reference time ranges and factors.
       expect(screen.getByText(/0:08\.0 → 0:12\.4\s+×1\.6/)).toBeInTheDocument();

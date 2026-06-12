@@ -47,7 +47,7 @@ export function buildTimelineRows(project: DemoProject): TimelineRow[] {
       items: project.zooms.map((zoom, index) => ({
         id: zoom.id,
         kind: "zoom",
-        label: `Zoom ${index + 1}`,
+        label: zoom.name ?? `Zoom ${index + 1}`,
         start: zoom.start,
         end: zoom.end,
         rowId: "zooms",

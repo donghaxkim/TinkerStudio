@@ -101,6 +101,14 @@ editor relies on them:
   reuses the 3s capture across all four clips).
 - **Zoom bounds are ordered and in range.** `0 ≤ start < end ≤ duration`. Give each zoom a
   positive-area `target` Rect, an optional `scale`, and an `easing`.
+- **`ZoomKeyframe.name` (PB-012, optional additive field — Person A review requested).**
+  `ZoomKeyframeSchema` now accepts an optional `name: string` (min 1 char). When present, the
+  editor displays it in the timeline zoom bar and the Zoom-panel rowcard list instead of the
+  generic "Zoom N" fallback. The golden fixture sets `name: "Invite modal"` and
+  `name: "Share button"` to match the design reference. Existing generated projects that omit
+  `name` continue to validate unchanged. **Person A: consider setting `name` on generated
+  zooms** (e.g. derived from the surrounding clip name or the closest cursor-click label) so
+  the editor labels match what the generation storyboard intended. Do not make it required.
 - **Cursor events** are within `[0, duration]`. A realistic stream (mostly `move`, a few
   `click`) gives the preview a cursor and the auto-zoom dwell data.
 - **MVP scope only** — no captions, callouts, text overlays, audio tracks, or voiceover.

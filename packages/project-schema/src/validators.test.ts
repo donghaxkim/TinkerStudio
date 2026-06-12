@@ -36,6 +36,41 @@ describe("DemoProjectSchema MVP scope", () => {
   });
 });
 
+describe("ZoomKeyframeSchema name field (PB-012, Person B)", () => {
+  it("validates a zoom WITH an optional name", () => {
+    const result = DemoProjectSchema.safeParse({
+      ...sampleProjectInput,
+      zooms: [
+        {
+          ...sampleProjectInput.zooms[0],
+          name: "Invite modal",
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.zooms[0]?.name).toBe("Invite modal");
+    }
+  });
+
+  it("validates a zoom WITHOUT a name (backward compatible)", () => {
+    // demo-project.sample.json zooms have no name — this must still pass.
+    const result = DemoProjectSchema.safeParse(sampleProjectInput);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.zooms[0]?.name).toBeUndefined();
+    }
+  });
+
+  it("rejects an empty-string name", () => {
+    const result = DemoProjectSchema.safeParse({
+      ...sampleProjectInput,
+      zooms: [{ ...sampleProjectInput.zooms[0], name: "" }],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe("DemoProjectSchema cursor display settings (PB-006, Person B)", () => {
   it("validates a project WITHOUT a cursor field (backward compatible)", () => {
     expect("cursor" in sampleProjectInput).toBe(false);

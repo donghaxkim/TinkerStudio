@@ -415,7 +415,7 @@ export function EditorManualControls({
                   <button
                     type="button"
                     className="tk-rowcard"
-                    aria-label={`Zoom ${index + 1}`}
+                    aria-label={zoom.name ?? `Zoom ${index + 1}`}
                     aria-pressed={isSelected}
                     onClick={() => onSelectEntity({ type: "zoom", id: zoom.id })}
                     style={{
@@ -426,7 +426,7 @@ export function EditorManualControls({
                       color: "var(--tk-text)",
                     }}
                   >
-                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>Zoom {index + 1}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>{zoom.name ?? `Zoom ${index + 1}`}</span>
                     <span
                       style={{
                         marginLeft: "auto",

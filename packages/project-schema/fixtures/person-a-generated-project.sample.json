@@ -77,7 +77,8 @@
         "height": 420
       },
       "scale": 1.6,
-      "easing": "easeInOut"
+      "easing": "easeInOut",
+      "name": "Invite modal"
     },
     {
       "id": "zoom_share_button",
@@ -90,7 +91,8 @@
         "height": 360
       },
       "scale": 1.5,
-      "easing": "easeInOut"
+      "easing": "easeInOut",
+      "name": "Share button"
     }
   ],
   "cursorEvents": [
