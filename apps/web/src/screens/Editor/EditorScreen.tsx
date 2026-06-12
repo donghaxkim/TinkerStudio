@@ -15,6 +15,7 @@ import {
 } from "@tinker/editor";
 import { safeParseDemoProject, type CursorSettings, type DemoProject } from "@tinker/project-schema";
 import { loadSampleProject } from "../../fixtures/loadSampleProject.js";
+import { useWebExportJob } from "../../lib/useWebExportJob.js";
 import { CursorControls } from "./CursorControls.js";
 import { EditorAutoZoomPanel, type PreviewSource } from "./EditorAutoZoomPanel.js";
 import { EditorManualControls } from "./EditorManualControls.js";
@@ -311,6 +312,7 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
   const [isPlaying, setIsPlaying] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [toolRailOpen, setToolRailOpen] = useState(true);
+  const exportJob = useWebExportJob();
 
   // ── Persistence state ────────────────────────────────────────────────────
   // Derives the initial origin from the prop (generated vs sample).
@@ -620,7 +622,10 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
             className="tk-btn tk-btn-accent"
             aria-label="Export"
             title="Open the export panel"
-            onClick={() => setExportOpen(true)}
+            onClick={() => {
+              setExportOpen(true);
+              exportJob.start(project);
+            }}
           >
             Export
           </button>
@@ -968,7 +973,12 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
             onSaved={() => setPersistenceState({ origin: "saved", dirty: false })}
             onDownloaded={() => setPersistenceState({ origin: "downloaded", dirty: false })}
           />
-          <ProjectExportPanel project={displayProject} />
+          <ProjectExportPanel
+            project={displayProject}
+            exportJobState={exportJob.state}
+            onStartExport={() => exportJob.start(project)}
+            isExportRunning={exportJob.isRunning}
+          />
         </div>
       </details>
     </div>

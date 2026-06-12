@@ -1,16 +1,24 @@
 import { prepareMp4Export } from "@tinker/editor";
 import type { DemoProject } from "@tinker/project-schema";
 import type { ExportJobState } from "@tinker/rendering/node";
+import type { ArtifactSummary } from "../../lib/useWebExportJob.js";
 
 type ProjectExportPanelProps = {
   project: DemoProject;
-  exportJobState?: ExportJobState;
+  exportJobState?: ExportJobState & { renderCommand?: string; artifactSummary?: ArtifactSummary };
+  onStartExport?: () => void;
+  isExportRunning?: boolean;
 };
 
 const wrappingValueStyle = { minWidth: 0, overflowWrap: "anywhere" } as const;
 const wrappingCodeStyle = { ...wrappingValueStyle, display: "block" } as const;
 
-export function ProjectExportPanel({ project, exportJobState }: ProjectExportPanelProps) {
+export function ProjectExportPanel({
+  project,
+  exportJobState,
+  onStartExport,
+  isExportRunning = false,
+}: ProjectExportPanelProps) {
   const exportResult = prepareMp4Export(project);
 
   if (!exportResult.ok) {
@@ -45,12 +53,30 @@ export function ProjectExportPanel({ project, exportJobState }: ProjectExportPan
       <p style={{ margin: 0, color: "var(--tk-text-sec)", fontSize: 12.5, lineHeight: 1.5 }}>
         Export v0 renders this project to MP4 through the local `@tinker/rendering` ffmpeg renderer. The browser panel only previews the artifact plan; it does not export JSON or mutate source video files.
       </p>
+
+      {onStartExport ? (
+        <button
+          type="button"
+          className="tk-btn tk-btn-accent"
+          aria-label="Start export"
+          disabled={isExportRunning}
+          onClick={onStartExport}
+        >
+          {isExportRunning ? "Validating…" : "Start export"}
+        </button>
+      ) : null}
+
       {exportJobState ? <ExportJobStatus state={exportJobState} /> : null}
     </section>
   );
 }
 
-function ExportJobStatus({ state }: { state: ExportJobState }) {
+type ExportJobStateWithExtras = ExportJobState & {
+  renderCommand?: string;
+  artifactSummary?: ArtifactSummary;
+};
+
+function ExportJobStatus({ state }: { state: ExportJobStateWithExtras }) {
   const percent = Math.round(state.progress * 100);
   const phase = formatPhase(state.phase);
   const errorPhase = state.error ? formatPhase(state.error.phase) : undefined;
@@ -71,6 +97,39 @@ function ExportJobStatus({ state }: { state: ExportJobState }) {
         </p>
       ) : null}
       {state.error?.command ? <code style={wrappingCodeStyle}>{state.error.command.command}</code> : null}
+
+      {state.phase === "succeeded" && state.artifactSummary ? (
+        <ArtifactSummaryDisplay summary={state.artifactSummary} />
+      ) : null}
+    </div>
+  );
+}
+
+function ArtifactSummaryDisplay({ summary }: { summary: ArtifactSummary }) {
+  return (
+    <div
+      aria-label="Artifact summary"
+      style={{ display: "grid", gap: 8, marginTop: 4 }}
+    >
+      <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "6px 10px", margin: 0, fontSize: 12 }}>
+        <dt style={{ color: "var(--tk-text-sec)" }}>Dimensions</dt>
+        <dd style={{ ...wrappingValueStyle, margin: 0 }}>{summary.dimensions}</dd>
+        <dt style={{ color: "var(--tk-text-sec)" }}>Timeline</dt>
+        <dd style={{ ...wrappingValueStyle, margin: 0 }}>{summary.timeline}</dd>
+        <dt style={{ color: "var(--tk-text-sec)" }}>Format</dt>
+        <dd style={{ ...wrappingValueStyle, margin: 0 }}>{summary.codec}</dd>
+        <dt style={{ color: "var(--tk-text-sec)" }}>Output</dt>
+        <dd style={{ ...wrappingValueStyle, margin: 0 }}><code style={wrappingCodeStyle}>{summary.outputPath}</code></dd>
+      </dl>
+      <p style={{ margin: 0, color: "var(--tk-text-sec)", fontSize: 12, lineHeight: 1.5 }}>
+        Preflight validated and plan is ready. Run the command below locally to produce the MP4 — the browser does not write the file.
+      </p>
+      <div aria-label="Local render command">
+        <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--tk-text-ter)" }}>Local render command</p>
+        <code style={{ ...wrappingCodeStyle, fontFamily: "var(--tk-mono)", padding: "6px 8px", background: "var(--tk-app-bg)", border: "1px solid var(--tk-border)", borderRadius: "var(--tk-radius-sm)" }}>
+          {summary.renderCommand}
+        </code>
+      </div>
     </div>
   );
 }

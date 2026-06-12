@@ -624,4 +624,79 @@ describe("EditorScreen", () => {
       expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
     });
   });
+
+  // ── PB-008: export UX integration ─────────────────────────────────────────
+
+  describe("export UX (PB-008)", () => {
+    function openExportPanel() {
+      // Open the <details> footer via the top-bar button so the export panel is visible.
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    }
+
+    it("shows the Start export button in the export panel", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+      openExportPanel();
+
+      expect(screen.getByRole("button", { name: "Start export" })).toBeInTheDocument();
+    });
+
+    it("top-bar Export button starts a preflight and transitions to succeeded", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+      // Clicking the top-bar Export button opens the panel AND starts the export job.
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+
+      // After the sync preflight the job status block should show Succeeded.
+      expect(screen.getByRole("status", { name: "Export job status" })).toBeInTheDocument();
+      expect(screen.getByText("Succeeded")).toBeInTheDocument();
+    });
+
+    it("shows the artifact summary after a successful preflight", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+
+      expect(screen.getByLabelText("Artifact summary")).toBeInTheDocument();
+      expect(screen.getByLabelText("Local render command")).toBeInTheDocument();
+      expect(screen.getByText(/render:sample/)).toBeInTheDocument();
+    });
+
+    it("shows honest copy — does not claim the browser wrote an MP4", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+
+      expect(screen.getByText(/preflight validated/i)).toBeInTheDocument();
+      expect(screen.getByText(/browser does not write the file/i)).toBeInTheDocument();
+    });
+
+    it("Start export button in the panel also starts the job", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+      openExportPanel();
+
+      // Panel Start export button (not the top-bar one) starts the job.
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
+
+      expect(screen.getByRole("status", { name: "Export job status" })).toBeInTheDocument();
+      expect(screen.getByText("Succeeded")).toBeInTheDocument();
+    });
+
+    it("duplicate-start prevention: clicking Export again while a job is terminal re-runs (new job)", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      // First export.
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      expect(screen.getByText("Succeeded")).toBeInTheDocument();
+
+      // Second Export click — should re-run (terminal state allows re-start).
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      expect(screen.getByText("Succeeded")).toBeInTheDocument();
+    });
+
+    it("re-enables Start export button after a succeeded job", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+      openExportPanel();
+
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
+      // After preflight (sync) the job is terminal — button must be re-enabled.
+      expect(screen.getByRole("button", { name: "Start export" })).not.toBeDisabled();
+    });
+  });
 });
