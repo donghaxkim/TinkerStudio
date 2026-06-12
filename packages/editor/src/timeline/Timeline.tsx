@@ -31,13 +31,15 @@ function formatTickTime(seconds: number): string {
 }
 
 function computeTickInterval(duration: number): number {
-  // Target ~6–8 ticks; pick a "nice" interval
-  const targets = [1, 2, 4, 5, 10, 15, 20, 30, 60];
+  // Target ~6–8 ticks; pick a "nice" interval.
+  // Extended to cover long recordings (up to multi-hour).
+  const targets = [1, 2, 4, 5, 10, 15, 20, 30, 60, 120, 300, 600, 1800, 3600];
   for (const t of targets) {
     const count = Math.floor(duration / t);
     if (count >= 4 && count <= 10) return t;
   }
-  return Math.ceil(duration / 7);
+  // Fallback: always guarantee a positive interval so the tick loop never hangs.
+  return Math.max(1, Math.ceil(duration / 7));
 }
 
 export function Timeline({ project, currentTime, selectedRange, width = 960, onSeek }: TimelineProps) {
@@ -60,11 +62,16 @@ export function Timeline({ project, currentTime, selectedRange, width = 960, onS
     ? rangeToPercent(Math.min(selectedRange.start, selectedRange.end), Math.max(selectedRange.start, selectedRange.end))
     : "0%";
 
-  // Compute tick marks for the ruler
+  // Compute tick marks for the ruler.
+  // Guard: if duration is zero or negative, emit a single tick at 0 and skip the loop.
   const tickInterval = computeTickInterval(project.duration);
   const ticks: number[] = [];
-  for (let t = 0; t <= project.duration; t += tickInterval) {
-    ticks.push(t);
+  if (project.duration <= 0) {
+    ticks.push(0);
+  } else {
+    for (let t = 0; t <= project.duration; t += tickInterval) {
+      ticks.push(t);
+    }
   }
 
   return (
@@ -105,45 +112,52 @@ export function Timeline({ project, currentTime, selectedRange, width = 960, onS
           style={{ ...laneStyle, cursor: "pointer", minHeight: "2.5rem" }}
         >
           {/* Tick labels */}
-          {ticks.map((t) => (
-            <div
-              key={t}
-              style={{
-                position: "absolute",
-                left: timeToPercent(t),
-                top: 0,
-                bottom: 0,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "flex-start",
-                pointerEvents: "none",
-              }}
-            >
-              {/* Tick mark line */}
+          {ticks.map((t, index) => {
+            const isLastTick = index === ticks.length - 1 && ticks.length > 1;
+            return (
               <div
+                key={t}
                 style={{
-                  width: 1,
-                  height: 6,
-                  background: "var(--tk-border, rgba(20,20,15,0.12))",
-                  marginTop: 0,
-                }}
-              />
-              {/* Tick label */}
-              <span
-                style={{
-                  fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
-                  fontSize: 10.5,
-                  color: "var(--tk-text-ter, #9D9B94)",
-                  lineHeight: 1,
-                  marginLeft: 3,
-                  userSelect: "none",
-                  whiteSpace: "nowrap",
+                  position: "absolute",
+                  left: timeToPercent(t),
+                  top: 0,
+                  bottom: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  // Right-align the last tick label so it doesn't clip at the ruler edge.
+                  alignItems: isLastTick ? "flex-end" : "flex-start",
+                  pointerEvents: "none",
                 }}
               >
-                {formatTickTime(t)}
-              </span>
-            </div>
-          ))}
+                {/* Tick mark line */}
+                <div
+                  style={{
+                    width: 1,
+                    height: 6,
+                    background: "var(--tk-border, rgba(20,20,15,0.12))",
+                    marginTop: 0,
+                  }}
+                />
+                {/* Tick label */}
+                <span
+                  style={{
+                    fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
+                    fontSize: 10.5,
+                    color: "var(--tk-text-ter, #9D9B94)",
+                    lineHeight: 1,
+                    // Last tick: shift label left so it stays inside the ruler.
+                    ...(isLastTick
+                      ? { marginRight: 0, transform: "translateX(-100%)" }
+                      : { marginLeft: 3 }),
+                    userSelect: "none",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {formatTickTime(t)}
+                </span>
+              </div>
+            );
+          })}
 
           {/* Selection band */}
           {selectedRange ? (

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { DemoProject } from "@tinker/project-schema";
 import { sampleProject } from "../test/sampleProject.js";
 import { Timeline } from "./Timeline.js";
 
@@ -55,5 +56,27 @@ describe("Timeline", () => {
     );
 
     expect(screen.getByTestId("selected-range")).toHaveAccessibleName("Selected range 12.0s to 18.0s");
+  });
+
+  it("does not hang and renders timeline-ruler when project duration is 0", () => {
+    // Construct a zero-duration project bypassing schema validation, since the
+    // Timeline component may receive such a project from freshly-created or empty
+    // projects before a valid duration is set.
+    const zeroDurationProject = {
+      ...sampleProject,
+      duration: 0,
+      tracks: [],
+      zooms: [],
+      cursorEvents: [],
+    } as unknown as DemoProject;
+
+    // This render must complete quickly — the infinite-loop bug would cause it to hang.
+    render(
+      <Timeline project={zeroDurationProject} currentTime={0} width={900} onSeek={() => undefined} />,
+    );
+
+    expect(screen.getByTestId("timeline-ruler")).toBeInTheDocument();
+    // A single "0:00" tick should be rendered for the empty timeline.
+    expect(screen.getByText("0:00")).toBeInTheDocument();
   });
 });
