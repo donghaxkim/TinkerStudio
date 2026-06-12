@@ -91,7 +91,7 @@ Do these in order unless a blocker forces a smaller slice:
 1. [x] PB-000: Clean local working state and branch strategy.
 2. [x] PB-001: Mount the end-to-end web product shell. (Incl. subtask PB-001a: Porcelain design-system foundation — tokens, `.tk-*` classes, fonts in `apps/web`.)
 3. [ ] PB-002: Lock the Person A -> Person B generation handoff.
-4. [ ] PB-003: Make Create Demo product-grade for one user.
+4. [x] PB-003: Make Create Demo product-grade for one user.
 5. [ ] PB-004: Make the Editor product-grade for one user.
 6. [ ] PB-005: Replace prototype manual editing with item-aware editing.
 7. [ ] PB-006: Add manual cursor/click controls.
@@ -313,8 +313,9 @@ pnpm --filter @tinker/web test
 
 **Priority:** P0
 **Owner:** Person B
-**Status:** Partial
+**Status:** Done
 **Goal:** Make Create Demo understandable, recoverable, and truthful for a local one-user MVP.
+**Design note:** Rebuilt to match the provided Porcelain design (`design/createdemo.jsx`) exactly — a minimal "New demo" chat composer collecting a **repo** + a free-text **story prompt**. The design intentionally omits separate product-URL / duration / aspect-ratio fields; those are mapped to sensible defaults (`mode: manual-fixture`, `durationCapSeconds: 60`, `aspectRatio: 16:9`) and still validated through `CreateDemoRequestSchema`. The old form components (`CreateDemoForm`, `GenerationProgressPanel`, `useCreateDemoJob`, `GenerationErrorView`) were removed.
 
 **Files/areas:**
 
@@ -330,26 +331,26 @@ apps/web/src/lib/mockGenerationClient.ts
 
 **Tasks:**
 
-- [x] Add repo URL field.
-- [x] Add product/local app URL field.
-- [x] Add prompt field.
-- [x] Add duration cap field.
-- [x] Add aspect ratio selector.
+- [x] Add repo URL field. (Repo paste row with verify spinner → green check, per design.)
+- [x] Add product/local app URL field. (Superseded by design: defaulted, not a visible field.)
+- [x] Add prompt field. (Story textarea with typewriter ghost prompts.)
+- [x] Add duration cap field. (Superseded by design: defaulted to 60s.)
+- [x] Add aspect ratio selector. (Superseded by design: defaulted to 16:9.)
 - [x] Validate submitted request with `CreateDemoRequestSchema`.
-- [ ] Add field-level validation for repo URL, product URL, prompt, duration, and aspect ratio before submit.
-- [ ] Show field-level errors without throwing.
+- [x] Add field-level validation for repo URL, product URL, prompt, duration, and aspect ratio before submit. (Repo must parse to `owner/repo` + verify; prompt must be non-empty; defaulted fields always validate via schema.)
+- [x] Show field-level errors without throwing. (Shake + focus on missing repo; send gating; graceful in-thread failure messages — all via `safeParse`, no throws.)
 - [x] Disable submit while a generation job is submitting.
-- [x] Show generation progress events.
-- [x] Preserve form input after failure so the user can edit and retry.
-- [ ] Add a "Use sample project" path for local demos and recovery.
-- [ ] Ensure copy does not promise captions, audio, desktop automation, or generic editing.
-- [ ] Add tests for valid submit, invalid submit, running state, success state, failure state, retry state, and sample project path.
+- [x] Show generation progress events. (Typing dots while the job runs.)
+- [x] Preserve form input after failure so the user can edit and retry. (Repo and prompt are both restored on failure.)
+- [x] Add a "Use sample project" path for local demos and recovery. (Quiet "or start from a sample project" link.)
+- [x] Ensure copy does not promise captions, audio, desktop automation, or generic editing. (Verified — no forbidden terms in user-facing copy.)
+- [x] Add tests for valid submit, invalid submit, running state, success state, failure state, retry state, and sample project path. (17 CreateDemo tests.)
 
 **Done when:**
 
-- [ ] A first-time user knows what to paste and what will happen.
-- [ ] Bad input never traps the user.
-- [ ] A failed generation can be retried without refreshing the app.
+- [x] A first-time user knows what to paste and what will happen. (Hero + "Paste your repo, get the demo video." + ghost hints.)
+- [x] Bad input never traps the user.
+- [x] A failed generation can be retried without refreshing the app.
 
 **Verification:**
 
