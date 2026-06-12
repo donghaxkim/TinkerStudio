@@ -128,9 +128,10 @@ describe("useWebExportJob", () => {
   });
 
   describe("duplicate-start prevention", () => {
-    it("does NOT start a second job while validating is in progress", () => {
-      // Since preflight is synchronous we can't test mid-flight without mocking.
-      // Instead, verify that calling start() on a succeeded terminal state DOES work.
+    it("allows re-running after a terminal (succeeded) job and produces a fresh job", () => {
+      // Because preflight is synchronous, the "validating" phase is never externally
+      // observable — the in-flight guard's user-facing protection is the disabled Start
+      // button (tested via the panel's isExportRunning prop).
       const { result } = renderHook(() => useWebExportJob());
 
       act(() => {

@@ -1,11 +1,10 @@
 import { prepareMp4Export } from "@tinker/editor";
 import type { DemoProject } from "@tinker/project-schema";
-import type { ExportJobState } from "@tinker/rendering/node";
-import type { ArtifactSummary } from "../../lib/useWebExportJob.js";
+import type { ArtifactSummary, WebExportJobState } from "../../lib/useWebExportJob.js";
 
 type ProjectExportPanelProps = {
   project: DemoProject;
-  exportJobState?: ExportJobState & { renderCommand?: string; artifactSummary?: ArtifactSummary };
+  exportJobState?: WebExportJobState;
   onStartExport?: () => void;
   isExportRunning?: boolean;
 };
@@ -71,12 +70,7 @@ export function ProjectExportPanel({
   );
 }
 
-type ExportJobStateWithExtras = ExportJobState & {
-  renderCommand?: string;
-  artifactSummary?: ArtifactSummary;
-};
-
-function ExportJobStatus({ state }: { state: ExportJobStateWithExtras }) {
+function ExportJobStatus({ state }: { state: WebExportJobState }) {
   const percent = Math.round(state.progress * 100);
   const phase = formatPhase(state.phase);
   const errorPhase = state.error ? formatPhase(state.error.phase) : undefined;
@@ -90,7 +84,7 @@ function ExportJobStatus({ state }: { state: ExportJobStateWithExtras }) {
     >
       <strong>{phase}</strong>
       <span aria-label="Export progress" aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} role="progressbar">{percent}%</span>
-      {state.outputPath ? <code style={wrappingCodeStyle}>{state.outputPath}</code> : null}
+      {state.outputPath ? <code style={wrappingCodeStyle}>{redactLocalPaths(state.outputPath)}</code> : null}
       {state.error ? (
         <p role="alert" style={{ margin: 0, color: "var(--tk-accent)" }}>
           {errorPhase} failed: {redactLocalPaths(state.error.message)}

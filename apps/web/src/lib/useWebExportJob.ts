@@ -16,8 +16,6 @@ import type { ExportJobState } from "@tinker/rendering/node";
  * No in-browser ffmpeg.  No fake rendered file.
  */
 
-export type WebExportPhase = "idle" | "validating" | "succeeded" | "failed";
-
 export type WebExportJobState = ExportJobState & {
   /** The render command the user should run locally to produce the MP4. */
   renderCommand?: string;
@@ -52,11 +50,9 @@ export function useWebExportJob(): UseWebExportJobReturn {
 
   const start = useCallback((project: DemoProject) => {
     // Duplicate-start prevention: refuse if a non-terminal job is in flight.
+    // We read the lock ref (not state) so this callback is stable with [] deps.
     if (currentJobIdRef.current !== null) {
-      const current = state;
-      if (current && current.phase !== "succeeded" && current.phase !== "failed") {
-        return;
-      }
+      return;
     }
 
     // Freeze a snapshot of the project at the moment start() is called.
@@ -114,7 +110,7 @@ export function useWebExportJob(): UseWebExportJobReturn {
     });
     // Job is terminal — clear the lock so the user can re-export.
     currentJobIdRef.current = null;
-  }, [state]);
+  }, []);
 
   return { state, start, isRunning };
 }

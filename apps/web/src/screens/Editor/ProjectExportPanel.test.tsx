@@ -34,7 +34,7 @@ describe("ProjectExportPanel", () => {
     expect(screen.getByText("Rendering")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Export job status" })).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Export progress" })).toHaveAttribute("aria-valuenow", "55");
-    expect(screen.getByText("/tmp/demo.mp4")).toBeInTheDocument();
+    expect(screen.getByText("[local path]")).toBeInTheDocument();
     expect(screen.getByText("sample-product-demo.mp4")).toBeInTheDocument();
   });
 
@@ -49,7 +49,7 @@ describe("ProjectExportPanel", () => {
           id: "job_wrapping",
           phase: "rendering",
           progress: 0.25,
-          outputPath: "/tmp/exports/a/really/long/output/path/with/no-natural-breaks/supercalifragilisticexpialidocious-demo-render-output-file-name.mp4",
+          outputPath: "generated/really/long/output/path/with/no-natural-breaks/supercalifragilisticexpialidocious-demo-render-output-file-name.mp4",
           error: {
             phase: "rendering",
             message: "ffmpeg exploded",
