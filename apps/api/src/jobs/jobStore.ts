@@ -8,7 +8,8 @@ import {
   type ManualFixtureProgressEvent,
 } from "@tinker/generation-contract";
 
-export type JobRecord = ApiGenerationJob & {
+export type JobRecord = Omit<ApiGenerationJob, "request"> & {
+  request: AiUrlPlanningCreateDemoRequest & { id: string };
   outputRoot: string;
 };
 
@@ -21,13 +22,15 @@ export type CreateJobInput = {
 
 export type JobStore = ReturnType<typeof createJobStore>;
 
-function toApiRequest(input: CreateJobInput): ApiGenerationJob["request"] {
-  const { outputDirectory: _outputDirectory, renderer, id, ...request } = input.request;
+function requestWithServerId(input: CreateJobInput): JobRecord["request"] {
   return {
-    ...request,
-    id: id ?? input.id,
-    ...(renderer === "hyperframes" ? { renderer } : {}),
+    ...input.request,
+    id: input.id,
   };
+}
+
+function isNonTerminalStatus(status: ManualFixtureProgressEvent["status"]): status is ApiGenerationJobStatus {
+  return status === "queued" || status === "running" || status === "capturing" || status === "assembling";
 }
 
 function snapshot(record: JobRecord): ApiGenerationJob {
@@ -43,7 +46,7 @@ export function createJobStore() {
       const record: JobRecord = {
         id: input.id,
         status: "queued",
-        request: toApiRequest(input),
+        request: requestWithServerId(input),
         createdAt: input.now,
         updatedAt: input.now,
         progressEvents: [],
@@ -67,7 +70,9 @@ export function createJobStore() {
       if (record === undefined) return;
 
       record.progressEvents.push(event);
-      record.status = event.status as ApiGenerationJobStatus;
+      if (isNonTerminalStatus(event.status)) {
+        record.status = event.status;
+      }
       record.updatedAt = event.time;
     },
 

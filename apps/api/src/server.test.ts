@@ -226,4 +226,59 @@ describe("job store", () => {
     expect(failed?.error).toEqual(error);
     expect(failed?.result).toBeUndefined();
   });
+
+  it("uses the server job id in request snapshots", () => {
+    const store = createJobStore();
+
+    const snapshot = store.create({
+      id: "server-job-id",
+      request: { ...request, id: "client-job-id" },
+      outputRoot: "/tmp/server-job-id",
+      now: "2026-06-11T00:00:00.000Z",
+    });
+
+    expect(snapshot.id).toBe("server-job-id");
+    expect(snapshot.request.id).toBe("server-job-id");
+  });
+
+  it("does not sanitize invalid API request fields into valid snapshots", () => {
+    const store = createJobStore();
+
+    expect(() => store.create({
+      id: "job-playwright",
+      request: { ...request, renderer: "playwright" },
+      outputRoot: "/tmp/job-playwright",
+      now: "2026-06-11T00:00:00.000Z",
+    })).toThrow();
+
+    expect(() => store.create({
+      id: "job-output-directory",
+      request: { ...request, outputDirectory: "/tmp/output" },
+      outputRoot: "/tmp/job-output-directory",
+      now: "2026-06-11T00:00:00.000Z",
+    })).toThrow();
+  });
+
+  it("ignores terminal progress statuses until complete or fail records terminal payloads", () => {
+    for (const status of ["completed", "failed"] as const) {
+      const store = createJobStore();
+      const id = `job-${status}`;
+      store.create({
+        id,
+        request: { ...request, id },
+        outputRoot: `/tmp/${id}`,
+        now: "2026-06-11T00:00:00.000Z",
+      });
+      store.appendProgress(id, { ...runningEvent, jobId: id });
+
+      store.appendProgress(id, {
+        jobId: id,
+        status,
+        message: `${status} progress event`,
+        time: "2026-06-11T00:00:02.000Z",
+      });
+
+      expect(store.getSnapshot(id)?.status).toBe("running");
+    }
+  });
 });
