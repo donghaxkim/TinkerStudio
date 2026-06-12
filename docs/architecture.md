@@ -42,10 +42,8 @@ type DemoProject = {
   aspectRatio: "16:9" | "9:16" | "1:1";
   assets: Asset[];
   tracks: Track[];
-  captions: Caption[];
   zooms: ZoomKeyframe[];
   cursorEvents: CursorEvent[];
-  callouts: Callout[];
   aiEditHistory: AIEdit[];
 };
 ```
@@ -80,7 +78,9 @@ V1 should not try to build:
 - final-only MP4 generation with no editable timeline
 - commercial code reuse from noncommercial or unclear-license repos
 
-The editor should be demo-specific: trim, zoom, captions, callouts, cursor/click effects, backgrounds, aspect ratio, and export.
+The editor should be demo-specific: trim, zoom/camera motion, cursor/click effects, backgrounds, aspect ratio, and export.
+
+Captions, callouts, text overlays, text rendering, audio/voiceover tracks, and audio mixing are out of MVP scope. They can be reconsidered after the captured-video plus motion/export spine works reliably.
 
 ## System Pipeline
 
@@ -117,7 +117,6 @@ User provides:
 - prompt: what features to show
 - duration cap
 - target aspect ratio/platform
-- optional voice/narration style
 
 For V1, the safest path is to analyze repositories as source material and automate already-running web apps through URLs. Automatically installing dependencies or executing arbitrary cloned repositories should remain future scope behind an explicit sandbox/security design.
 
@@ -162,7 +161,6 @@ type StoryboardBeat = {
   endHint?: number;
   type: "hook" | "screen_capture" | "feature" | "proof" | "cta";
   goal: string;
-  narration?: string;
   requiredUiState?: string;
 };
 ```
@@ -213,11 +211,11 @@ type CaptureEvent =
   | { time: number; type: "zoomTarget"; x: number; y: number; width: number; height: number; label?: string };
 ```
 
-Structured events matter because they let the editor add Screen Studio-style zooms, click effects, cursor paths, and callouts after recording.
+Structured events matter because they let the editor add Screen Studio-style zooms, click effects, cursor paths, and camera motion after recording.
 
 ### 6. DemoProject
 
-The compiler turns analysis, storyboard, capture output, narration, captions, and assets into the initial editable project.
+The compiler turns analysis, storyboard, capture output, cursor/click events, zoom suggestions, and assets into the initial editable project.
 
 The editor consumes this project directly. AI edits also operate on this same model.
 
@@ -250,7 +248,7 @@ Flow:
 
 ```text
 User selects 50s-56s on timeline
-  -> selection, thumbnails, captions, and project slice are attached to chat
+  -> selection, thumbnails, motion metadata, and project slice are attached to chat
   -> user asks for an edit
   -> AI returns structured edit operations
   -> editor previews changes
@@ -273,13 +271,7 @@ Example:
       "target": { "x": 720, "y": 420, "width": 480, "height": 240 },
       "easing": "easeInOut"
     },
-    {
-      "type": "add_callout",
-      "start": 51,
-      "end": 55,
-      "text": "Revenue impact",
-      "position": "top-right"
-    }
+    { "type": "remove_entity", "entityType": "zoom", "id": "zoom_003" }
   ]
 }
 ```
@@ -406,7 +398,7 @@ Responsibilities:
 - timeline
 - preview canvas
 - range selection
-- manual trim/zoom/caption/callout/background controls
+- manual trim/zoom/camera/background controls
 - AI chat side panel
 - AI operation applier
 - export/render path
