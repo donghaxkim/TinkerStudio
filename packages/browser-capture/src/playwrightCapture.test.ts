@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { checkpointTarget, fullPageDocumentDimensions, isAllowedCaptureUrl, locatorTarget, usableSelector } from "./playwrightCaptureInternals.js";
 import { runPlaywrightCapture } from "./playwrightCapture.js";
-import { CaptureError, type CapturePlan } from "./types.js";
+import { CaptureError, type CaptureEvent, type CapturePlan } from "./types.js";
 
 const outputDir = await mkdtemp(join(tmpdir(), "browser-capture-output-"));
 
@@ -93,6 +93,62 @@ try {
     await captureServer.close();
   }
 
+  // LongCut regression: scrolling past a target before clicking it must not
+  // record stale pre-scroll coordinates (negative y) for cursor/zoom events.
+  const tallPageServer = await startHtmlServer(`
+    <html>
+      <body style="margin:0">
+        <button data-testid="chat" style="position:absolute; top:10px; left:300px; width:120px; height:30px"
+          onclick="document.querySelector('[data-testid=state]').textContent = 'Chatted';">Chat</button>
+        <div style="height:2400px"></div>
+        <main data-testid="state">Idle</main>
+      </body>
+    </html>
+  `);
+  try {
+    const tallPlan: CapturePlan = {
+      targetUrl: tallPageServer.url,
+      viewport: { width: 640, height: 480 },
+      steps: [
+        { type: "goto", url: tallPageServer.url },
+        { type: "scroll", y: 600 },
+        { type: "click", selector: "[data-testid='chat']", label: "Chat" },
+      ],
+      expectedCheckpoints: [{ id: "chatted", label: "Chatted", text: "Chatted" }],
+    };
+    const tallResult = await runPlaywrightCapture(tallPlan, { outputDir });
+
+    assert.equal(tallResult.checkpoints[0]?.passed, true);
+
+    const clickEvent = tallResult.events.find(
+      (event): event is Extract<CaptureEvent, { type: "click" }> => event.type === "click",
+    );
+    assert.ok(clickEvent !== undefined, "expected a click event");
+    assert.ok(clickEvent.y >= 0 && clickEvent.y <= 480, `click y must be inside the viewport, got ${clickEvent.y}`);
+    assert.ok(clickEvent.x >= 0 && clickEvent.x <= 640, `click x must be inside the viewport, got ${clickEvent.x}`);
+
+    const zoomEvent = tallResult.events.find(
+      (event): event is Extract<CaptureEvent, { type: "zoomTarget" }> => event.type === "zoomTarget",
+    );
+    assert.ok(zoomEvent !== undefined, "expected a zoomTarget event");
+    assert.ok(zoomEvent.y >= 0, `zoom target y must be inside the viewport, got ${zoomEvent.y}`);
+
+    const cursorEvents = tallResult.events.filter(
+      (event): event is Extract<CaptureEvent, { type: "cursor" }> => event.type === "cursor",
+    );
+    assert.ok(cursorEvents.length >= 4, `expected an eased cursor path, got ${cursorEvents.length} cursor events`);
+    assert.deepEqual(
+      cursorEvents.map((event) => event.time),
+      [...cursorEvents.map((event) => event.time)].sort((left, right) => left - right),
+    );
+
+    const arrival = cursorEvents[cursorEvents.length - 1];
+    assert.equal(arrival?.x, clickEvent.x);
+    assert.equal(arrival?.y, clickEvent.y);
+  } finally {
+    await tallPageServer.close();
+  }
+
   const submitServer = await startHtmlServer(`
     <html>
       <body>
@@ -109,6 +165,7 @@ try {
       viewport: { width: 640, height: 480 },
       steps: [
         { type: "goto", url: submitServer.url },
+        { type: "hover", selector: "[data-testid='sample-url']" },
         { type: "type", selector: "[data-testid='sample-url']", text: "https://www.youtube.com/watch?v=jGwO_UgTS7I" },
         { type: "press", selector: "[data-testid='sample-url']", key: "Enter" },
       ],
@@ -117,6 +174,20 @@ try {
 
     const submitResult = await runPlaywrightCapture(submitPlan, { outputDir });
     assert.equal(submitResult.checkpoints[0]?.passed, true);
+
+    // Hover and type steps must leave a cursor trail and a focusing click.
+    const submitClicks = submitResult.events.filter(
+      (event): event is Extract<CaptureEvent, { type: "click" }> => event.type === "click",
+    );
+    assert.ok(submitClicks.length >= 1, "typing should click the field before entering text");
+
+    const submitCursorEvents = submitResult.events.filter(
+      (event): event is Extract<CaptureEvent, { type: "cursor" }> => event.type === "cursor",
+    );
+    assert.ok(
+      submitCursorEvents.length >= 8,
+      `hover and type should both emit cursor paths, got ${submitCursorEvents.length} cursor events`,
+    );
   } finally {
     await submitServer.close();
   }

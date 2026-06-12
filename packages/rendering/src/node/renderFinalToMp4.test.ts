@@ -815,8 +815,10 @@ describe("renderFinalToMp4", () => {
         },
       );
 
-      const transformedPosition = await sampleAverageRgb(outputPath, { time: 1.1, x: 952, y: 532 });
-      const unzoomedPosition = await sampleAverageRgb(outputPath, { time: 1.1, x: 472, y: 532 });
+      // Probe inside the full-zoom window (camera static at scale 1.7) so the
+      // assertion is robust to +/-1 frame of seek ambiguity during the ramp.
+      const transformedPosition = await sampleAverageRgb(outputPath, { time: 1.033, x: 800, y: 525 });
+      const unzoomedPosition = await sampleAverageRgb(outputPath, { time: 1.033, x: 472, y: 532 });
 
       expect(transformedPosition.r).toBeGreaterThan(150);
       expect(transformedPosition.g).toBeGreaterThan(110);

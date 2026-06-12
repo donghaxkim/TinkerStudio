@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   createClickEvent,
   createCursorEvent,
+  createCursorPathEvents,
   createScrollEvent,
   createZoomTargetEvent,
   secondsSince,
@@ -46,5 +47,61 @@ assert.deepEqual(
   label: "Export",
   },
 );
+
+// Eased cursor path ending at the action moment.
+const path = createCursorPathEvents({
+  startedAtMs: 1_000,
+  nowMs: 1_500,
+  from: { x: 0, y: 0 },
+  to: { x: 100, y: 200 },
+  durationMs: 400,
+  stepMs: 100,
+});
+
+assert.equal(path.length, 5);
+assert.deepEqual(
+  path.map((event) => event.time),
+  [0.1, 0.2, 0.3, 0.4, 0.5],
+);
+assert.deepEqual(path[0], { time: 0.1, type: "cursor", x: 0, y: 0 });
+assert.deepEqual(path[1], { time: 0.2, type: "cursor", x: 13, y: 25 });
+assert.deepEqual(path[2], { time: 0.3, type: "cursor", x: 50, y: 100 });
+assert.deepEqual(path[4], { time: 0.5, type: "cursor", x: 100, y: 200 });
+
+// Path start clamps to capture start while still arriving on time.
+const clamped = createCursorPathEvents({
+  startedAtMs: 1_000,
+  nowMs: 1_200,
+  from: { x: 0, y: 0 },
+  to: { x: 100, y: 200 },
+  durationMs: 400,
+  stepMs: 100,
+});
+
+assert.equal(clamped.length, 3);
+assert.equal(clamped[0]?.time, 0);
+assert.deepEqual(clamped[2], { time: 0.2, type: "cursor", x: 100, y: 200 });
+
+// Defaults produce a dense path (450ms at 50ms steps).
+const defaults = createCursorPathEvents({
+  startedAtMs: 1_000,
+  nowMs: 2_000,
+  from: { x: 0, y: 0 },
+  to: { x: 90, y: 0 },
+});
+
+assert.equal(defaults.length, 10);
+assert.equal(defaults[0]?.time, 0.55);
+assert.equal(defaults[9]?.time, 1);
+
+// A stationary cursor collapses to a single arrival sample.
+const stationary = createCursorPathEvents({
+  startedAtMs: 1_000,
+  nowMs: 1_500,
+  from: { x: 40, y: 40 },
+  to: { x: 40, y: 40 },
+});
+
+assert.deepEqual(stationary, [{ time: 0.5, type: "cursor", x: 40, y: 40 }]);
 
 console.log("captureEvents tests passed");
