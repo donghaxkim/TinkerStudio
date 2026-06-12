@@ -93,7 +93,7 @@ Do these in order unless a blocker forces a smaller slice:
 3. [ ] PB-002: Lock the Person A -> Person B generation handoff.
 4. [x] PB-003: Make Create Demo product-grade for one user.
 5. [x] PB-004: Make the Editor product-grade for one user. (Subtasks PB-004a shell/layout/tabs + PB-004b Timeline/Preview restyle.)
-6. [ ] PB-005: Replace prototype manual editing with item-aware editing.
+6. [x] PB-005: Replace prototype manual editing with item-aware editing.
 7. [ ] PB-006: Add manual cursor/click controls.
 8. [ ] PB-007: Harden project lifecycle, save/load, and recovery.
 9. [ ] PB-008: Make export UX first-class.
@@ -413,7 +413,7 @@ pnpm --filter @tinker/web build
 
 **Priority:** P0
 **Owner:** Person B
-**Status:** Not started
+**Status:** Done
 **Goal:** Manual editing should edit the selected real item, not rely on prototype defaults.
 
 **Files/areas:**
@@ -429,23 +429,23 @@ packages/editor/src/timeline/Timeline.tsx
 
 **Tasks:**
 
-- [ ] Add selected entity state for clips and zooms.
-- [ ] Allow selecting a clip from the timeline or controls.
-- [ ] Allow selecting a zoom from the timeline or controls.
-- [ ] Show clip-specific fields for the selected clip.
-- [ ] Show zoom-specific fields for the selected zoom.
-- [ ] Validate `start < end`, project bounds, source bounds, and non-negative values.
-- [ ] Apply clip trims through immutable manual edit operations.
-- [ ] Apply zoom target/time/easing changes through immutable manual edit operations.
-- [ ] Make delete actions explicit and scoped to the selected item.
-- [ ] Preserve undo/redo for every manual edit.
-- [ ] Add tests for selected clip edit, selected zoom edit, invalid values, delete, undo, and redo.
+- [x] Add selected entity state for clips and zooms. (`SelectedEntity` in editor state.)
+- [x] Allow selecting a clip from the timeline or controls. (Click a timeline clip → it highlights + the editor shows its fields.)
+- [x] Allow selecting a zoom from the timeline or controls. (Timeline zoom item or a zoom-move rowcard.)
+- [x] Show clip-specific fields for the selected clip. (start/end/source bounds, prefilled.)
+- [x] Show zoom-specific fields for the selected zoom. (start/end/target x·y·w·h/easing, prefilled.)
+- [x] Validate `start < end`, project bounds, source bounds, and non-negative values. (Range + new source-bounds validation; structured errors.)
+- [x] Apply clip trims through immutable manual edit operations.
+- [x] Apply zoom target/time/easing changes through immutable manual edit operations.
+- [x] Make delete actions explicit and scoped to the selected item. (Delete selected zoom; clip delete out of MVP, disabled with reason.)
+- [x] Preserve undo/redo for every manual edit.
+- [x] Add tests for selected clip edit, selected zoom edit, invalid values, delete, undo, and redo.
 
 **Done when:**
 
-- [ ] The user can select a visible timeline item and edit that exact item.
-- [ ] Invalid edits produce structured UI errors.
-- [ ] Every successful edit is undoable.
+- [x] The user can select a visible timeline item and edit that exact item.
+- [x] Invalid edits produce structured UI errors.
+- [x] Every successful edit is undoable.
 
 **Verification:**
 
