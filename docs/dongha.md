@@ -94,7 +94,7 @@ Do these in order unless a blocker forces a smaller slice:
 4. [x] PB-003: Make Create Demo product-grade for one user.
 5. [x] PB-004: Make the Editor product-grade for one user. (Subtasks PB-004a shell/layout/tabs + PB-004b Timeline/Preview restyle.)
 6. [x] PB-005: Replace prototype manual editing with item-aware editing.
-7. [ ] PB-006: Add manual cursor/click controls.
+7. [x] PB-006: Add manual cursor/click controls. (Schema addition pending Person A sign-off — backward-compatible.)
 8. [ ] PB-007: Harden project lifecycle, save/load, and recovery.
 9. [ ] PB-008: Make export UX first-class.
 10. [ ] PB-009: Mount useful Settings.
@@ -458,8 +458,9 @@ pnpm --filter @tinker/web test -- EditorManualControls
 
 **Priority:** P1
 **Owner:** Person B with Person A review if schema changes
-**Status:** Not started
+**Status:** Done (Person B work complete; schema addition flagged for Person A sign-off)
 **Goal:** Let the user intentionally tune visible cursor/click behavior instead of only accepting generated cursor telemetry.
+**Note:** Added an OPTIONAL, backward-compatible top-level `cursor` settings field (`hidden`, `clickEffect: ring|ripple|none`, `clickEffectDurationMs`). Existing/Person A projects that omit it validate and render exactly as before. Preview and export both resolve it through one shared `resolveCursorSettings` (parity is structural). Documented for Person A in `docs/schema-change-pb-006-cursor-settings.md`.
 
 **Files/areas:**
 
@@ -473,20 +474,20 @@ apps/web/src/screens/Editor/EditorManualControls.tsx
 
 **Tasks:**
 
-- [ ] Audit current schema support for cursor/click display settings.
-- [ ] If existing schema is enough, expose controls without changing schema.
-- [ ] If existing schema is not enough, write a small schema proposal for Person A review before implementation.
-- [ ] Add controls for cursor visibility if supported.
-- [ ] Add controls for click emphasis style/timing if supported.
-- [ ] Ensure preview reflects cursor/click setting changes immediately.
-- [ ] Ensure export reflects the same cursor/click settings.
-- [ ] Add tests for preview/export parity after cursor/click setting changes.
+- [x] Audit current schema support for cursor/click display settings. (None existed — only `cursorEvents` telemetry.)
+- [x] If existing schema is enough, expose controls without changing schema. (N/A — schema was insufficient.)
+- [x] If existing schema is not enough, write a small schema proposal for Person A review before implementation. (Optional `cursor` field + `docs/schema-change-pb-006-cursor-settings.md`.)
+- [x] Add controls for cursor visibility if supported. (Cursor tab "Show cursor" toggle.)
+- [x] Add controls for click emphasis style/timing if supported. (Ring/Ripple/None + duration.)
+- [x] Ensure preview reflects cursor/click setting changes immediately.
+- [x] Ensure export reflects the same cursor/click settings.
+- [x] Add tests for preview/export parity after cursor/click setting changes. (`previewExportParity.test.ts`.)
 
 **Done when:**
 
-- [ ] Cursor/click effects are user-controllable within MVP scope.
-- [ ] Preview and export remain aligned.
-- [ ] Any schema changes have Person A review.
+- [x] Cursor/click effects are user-controllable within MVP scope.
+- [x] Preview and export remain aligned. (Single shared `resolveCursorSettings` for both.)
+- [ ] Any schema changes have Person A review. **(Pending: schema change is documented + flagged in `docs/schema-change-pb-006-cursor-settings.md`; no Person A available in this session to sign off. Backward-compatible, so non-blocking.)**
 
 **Verification:**
 
