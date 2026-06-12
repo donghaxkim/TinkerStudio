@@ -193,9 +193,9 @@ input::placeholder {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--tk-radius-sm);
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
   color: #50525A;
   background: transparent;
   border: 1px solid transparent;
@@ -205,11 +205,11 @@ input::placeholder {
 .tk-railbtn:hover:not(:disabled) { background: var(--tk-hover); color: var(--tk-text); }
 .tk-railbtn:disabled { opacity: 0.5; cursor: default; }
 
-/* Active tool — blue ink, no fill (matches porcelainnew.html rail) */
+/* Active tool — blue ink with tinted background */
 .tk-railbtn-active,
 .tk-railbtn-active:hover {
   color: var(--tk-accent);
-  background: transparent;
+  background: var(--tk-accent-soft, rgba(59,91,217,0.1));
 }
 
 .tk-railbtn-on,

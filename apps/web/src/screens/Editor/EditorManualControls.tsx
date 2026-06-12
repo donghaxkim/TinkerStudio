@@ -432,16 +432,18 @@ export function EditorManualControls({
                       transition: "background 0.15s, border-color 0.15s",
                     }}
                   >
-                    <span style={{ color: "var(--tk-text)", display: "inline-flex" }}>
+                    <span style={{ color: "var(--tk-text)", display: "inline-flex", flexShrink: 0 }}>
                       <RowMagnifierIcon />
                     </span>
-                    <span style={{ fontSize: 11.5, fontWeight: 600 }}>{zoom.name ?? `Zoom ${index + 1}`}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{zoom.name ?? `Zoom ${index + 1}`}</span>
                     <span
                       style={{
                         marginLeft: "auto",
+                        flexShrink: 0,
                         fontFamily: "var(--tk-mono)",
-                        fontSize: 11,
+                        fontSize: 9.5,
                         color: "#9D9B94",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {formatTimecode(zoom.start)} → {formatTimecode(zoom.end)}
@@ -449,10 +451,12 @@ export function EditorManualControls({
                     {zoom.scale !== undefined ? (
                       <span
                         style={{
+                          flexShrink: 0,
                           fontFamily: "var(--tk-mono)",
-                          fontSize: 11,
-                          fontWeight: 600,
+                          fontSize: 10,
+                          fontWeight: 400,
                           color: "#3B5BD9",
+                          whiteSpace: "nowrap",
                         }}
                       >
                         ×{zoom.scale}

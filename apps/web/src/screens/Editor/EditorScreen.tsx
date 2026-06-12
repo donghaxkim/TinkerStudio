@@ -755,26 +755,30 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
               >
                 <button
                   type="button"
-                  className="tk-railbtn tk-railbtn-active"
+                  className="tk-railbtn"
                   aria-label="Cursor tool"
                   title="Cursor"
-                  aria-pressed={true}
+                  aria-pressed={false}
                 >
                   <CursorIcon />
                 </button>
                 <button type="button" className="tk-railbtn" aria-label="Split clip — not available in the MVP" title="Not available in the MVP" disabled>
                   <SplitIcon />
                 </button>
+                {/* Divider after button 2 */}
+                <div aria-hidden="true" style={{ width: 20, height: 1, background: "rgba(0,0,0,0.09)", flexShrink: 0 }} />
                 <button
                   type="button"
-                  className={`tk-railbtn${activeTab === "zoom" ? " tk-railbtn-active" : ""}`}
+                  className="tk-railbtn"
                   aria-label="Zoom move"
                   title="Add a zoom move (opens the Zoom panel)"
-                  aria-pressed={activeTab === "zoom"}
+                  aria-pressed={false}
                   onClick={() => setActiveTab("zoom")}
                 >
                   <ZoomMoveIcon />
                 </button>
+                {/* Divider after button 3 */}
+                <div aria-hidden="true" style={{ width: 20, height: 1, background: "rgba(0,0,0,0.09)", flexShrink: 0 }} />
                 <button type="button" className="tk-railbtn" aria-label="Auto frame — not available in the MVP" title="Not available in the MVP" disabled>
                   <FrameIcon />
                 </button>

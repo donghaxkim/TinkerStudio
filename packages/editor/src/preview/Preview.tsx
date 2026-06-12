@@ -24,7 +24,7 @@ const stageStyle: CSSProperties = {
 
 // Gradient wallpaper that sits behind the dashboard window (M1).
 // Inset from the stage so a warm-charcoal frame remains; the gradient itself
-// shows a ~34px margin around the dashboard (asymmetric — more at bottom-right).
+// shows an even ~34px margin around the dashboard on all sides.
 const wallpaperStyle: CSSProperties = {
   position: "absolute",
   inset: 12,
@@ -32,15 +32,17 @@ const wallpaperStyle: CSSProperties = {
   background: "var(--tk-preview-wallpaper, linear-gradient(135deg,#3D3A52 0%,#6B5876 52%,#C98B6E 100%))",
   display: "grid",
   placeItems: "center",
-  padding: "34px 44px 44px 34px",
+  padding: "34px",
 };
 
-// Dashboard window — fixed 749×443 with soft drop shadow (M3).
+// Dashboard window — fluid width with aspect-ratio-driven height and soft drop shadow (M3).
+// width:"100%" + aspectRatio fills the padded wallpaper box so all four gradient margins
+// stay an even ~34px; maxWidth/maxHeight guard against overflow.
 const dashboardWindowStyle: CSSProperties = {
   position: "relative",
-  width: 749,
-  height: 443,
+  width: "100%",
   maxWidth: "100%",
+  maxHeight: "100%",
   aspectRatio: "749 / 443",
   overflow: "hidden",
   borderRadius: 10,
