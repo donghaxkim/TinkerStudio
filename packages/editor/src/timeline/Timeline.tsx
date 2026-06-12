@@ -11,7 +11,7 @@ export type TimelineProps = {
   selectedEntity?: SelectedEntity;
   width?: number;
   onSeek: (time: number) => void;
-  onSelectItem?: (item: { id: string; kind: string }) => void;
+  onSelectItem?: (item: { id: string; kind: string; start: number; end: number }) => void;
 };
 
 const rowStyle: CSSProperties = {
@@ -238,7 +238,7 @@ export function Timeline({
                   type="button"
                   key={item.id}
                   aria-label={`${item.kind}: ${item.label}`}
-                  aria-current={isSelected ? "true" : undefined}
+                  aria-pressed={isSelected}
                   style={{
                     position: "absolute",
                     left,
@@ -302,7 +302,7 @@ export function Timeline({
                   }}
                   onClick={(event) => {
                     event.stopPropagation();
-                    onSelectItem?.({ id: item.id, kind: item.kind });
+                    onSelectItem?.({ id: item.id, kind: item.kind, start: item.start, end: item.end });
                     onSeek(item.start);
                   }}
                 >

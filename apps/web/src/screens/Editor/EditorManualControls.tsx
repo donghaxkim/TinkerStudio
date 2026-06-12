@@ -88,19 +88,16 @@ function NumberField({
   label,
   value,
   onChange,
-  ariaLabel,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  ariaLabel: string;
 }) {
   return (
     <label style={fieldStyle}>
       {label}
       <input
         type="number"
-        aria-label={ariaLabel}
         style={inputStyle}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -185,16 +182,15 @@ function ZoomEditor({
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-        <NumberField label="Start (s)" ariaLabel="Zoom start" value={start} onChange={setStart} />
-        <NumberField label="End (s)" ariaLabel="Zoom end" value={end} onChange={setEnd} />
-        <NumberField label="Target x" ariaLabel="Zoom target x" value={x} onChange={setX} />
-        <NumberField label="Target y" ariaLabel="Zoom target y" value={y} onChange={setY} />
-        <NumberField label="Target width" ariaLabel="Zoom target width" value={width} onChange={setWidth} />
-        <NumberField label="Target height" ariaLabel="Zoom target height" value={height} onChange={setHeight} />
+        <NumberField label="Zoom start" value={start} onChange={setStart} />
+        <NumberField label="Zoom end" value={end} onChange={setEnd} />
+        <NumberField label="Zoom target x" value={x} onChange={setX} />
+        <NumberField label="Zoom target y" value={y} onChange={setY} />
+        <NumberField label="Zoom target width" value={width} onChange={setWidth} />
+        <NumberField label="Zoom target height" value={height} onChange={setHeight} />
         <label style={{ ...fieldStyle, gridColumn: "1 / -1" }}>
-          Easing
+          Zoom easing
           <select
-            aria-label="Zoom easing"
             style={inputStyle}
             value={easing}
             onChange={(event) => setEasing(event.target.value as ZoomEasing)}
@@ -286,10 +282,10 @@ function ClipEditor({ clip, onApply }: { clip: Clip; onApply: (operation: Manual
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-        <NumberField label="Start (s)" ariaLabel="Clip start" value={start} onChange={setStart} />
-        <NumberField label="End (s)" ariaLabel="Clip end" value={end} onChange={setEnd} />
-        <NumberField label="Source start (s)" ariaLabel="Clip source start" value={sourceStart} onChange={setSourceStart} />
-        <NumberField label="Source end (s)" ariaLabel="Clip source end" value={sourceEnd} onChange={setSourceEnd} />
+        <NumberField label="Clip start" value={start} onChange={setStart} />
+        <NumberField label="Clip end" value={end} onChange={setEnd} />
+        <NumberField label="Clip source start" value={sourceStart} onChange={setSourceStart} />
+        <NumberField label="Clip source end" value={sourceEnd} onChange={setSourceEnd} />
       </div>
 
       {localError ? (
@@ -341,6 +337,9 @@ export function EditorManualControls({
     () => (selectedEntity?.type === "clip" ? clips.find((clip) => clip.id === selectedEntity.id) : undefined),
     [clips, selectedEntity],
   );
+
+  // I1: clear stale status banner when the user switches selected entity.
+  useEffect(() => { setStatus({ kind: "idle" }); }, [selectedEntity]);
 
   // Clear a stale selection when the referenced entity is no longer in the project.
   useEffect(() => {

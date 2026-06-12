@@ -4,7 +4,6 @@ import {
   Preview,
   Timeline,
   applyManualEditOperation,
-  buildTimelineRows,
   createEditorHistory,
   pushEditorCommand,
   redoEditorCommand,
@@ -405,13 +404,10 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
 
   // Selecting a timeline item maps its row-item kind → an editor entity type and
   // syncs the selected range to the item's bounds (so range-driven UX still works).
-  function handleSelectTimelineItem(item: { id: string; kind: string }) {
+  function handleSelectTimelineItem(item: { id: string; kind: string; start: number; end: number }) {
     const type: SelectedEntity["type"] = item.kind === "clip" ? "clip" : "zoom";
     setSelectedEntity({ type, id: item.id });
-
-    const rows = buildTimelineRows(project!);
-    const match = rows.flatMap((row) => row.items).find((candidate) => candidate.id === item.id && candidate.kind === item.kind);
-    if (match) setSelectedRange({ start: match.start, end: match.end });
+    setSelectedRange({ start: item.start, end: item.end });
   }
 
   // Delete is scoped to the currently-selected entity and only supports zooms in

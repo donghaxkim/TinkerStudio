@@ -73,11 +73,11 @@ describe("Timeline", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "zoom: Zoom 1" }));
 
-    expect(onSelectItem).toHaveBeenCalledWith({ id: "zoom_001", kind: "zoom" });
+    expect(onSelectItem).toHaveBeenCalledWith({ id: "zoom_001", kind: "zoom", start: 12, end: 18 });
     expect(onSeek).toHaveBeenCalledWith(12);
   });
 
-  it("marks the selected timeline item with aria-current", () => {
+  it("marks the selected timeline item with aria-pressed", () => {
     render(
       <Timeline
         project={sampleProject}
@@ -89,10 +89,10 @@ describe("Timeline", () => {
     );
 
     const selected = screen.getByRole("button", { name: "zoom: Zoom 1" });
-    expect(selected).toHaveAttribute("aria-current", "true");
+    expect(selected).toHaveAttribute("aria-pressed", "true");
 
     const clip = screen.getByRole("button", { name: "clip: Browser flow" });
-    expect(clip).not.toHaveAttribute("aria-current");
+    expect(clip).toHaveAttribute("aria-pressed", "false");
   });
 
   it("does not hang and renders timeline-ruler when project duration is 0", () => {

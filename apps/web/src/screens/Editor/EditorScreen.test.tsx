@@ -256,6 +256,33 @@ describe("EditorScreen", () => {
       expect(deleteButton).toBeDisabled();
       expect(deleteButton).toHaveAccessibleName(/clip deletion is not available in the mvp/i);
     });
+
+    it("trim-clip is undoable: trimming a clip enables Undo; undoing restores the original bounds", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      // Select the clip from the timeline.
+      fireEvent.click(screen.getByRole("button", { name: "clip: Browser flow" }));
+
+      // Clip editor fields should show the original bounds (start=0, end=45).
+      expect(screen.getByLabelText("Clip start")).toHaveValue(0);
+      expect(screen.getByLabelText("Clip end")).toHaveValue(45);
+
+      // Trim to [2, 40].
+      fireEvent.change(screen.getByLabelText("Clip start"), { target: { value: "2" } });
+      fireEvent.change(screen.getByLabelText("Clip end"), { target: { value: "40" } });
+      fireEvent.click(screen.getByRole("button", { name: "Trim clip" }));
+
+      // Undo should now be enabled.
+      expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
+
+      // Undo the trim — fields should revert to the original bounds.
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+      expect(screen.getByLabelText("Clip start")).toHaveValue(0);
+      expect(screen.getByLabelText("Clip end")).toHaveValue(45);
+
+      // Undo stack is now empty again.
+      expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    });
   });
 
   describe("tabbed right panel", () => {
