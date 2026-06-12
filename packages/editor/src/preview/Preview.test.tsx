@@ -47,6 +47,55 @@ describe("Preview", () => {
     expect(screen.getByTestId("missing-asset-placeholder")).toHaveTextContent("Primary browser capture");
   });
 
+  it("renders an image asset with an img element instead of a video", () => {
+    const imageProject = {
+      ...sampleProject,
+      assets: sampleProject.assets.map((asset) => ({
+        ...asset,
+        type: "image" as const,
+        uri: "https://example.com/dashboard.png",
+        mimeType: "image/png",
+      })),
+    };
+
+    render(<Preview project={imageProject} currentTime={0} />);
+
+    expect(screen.getByTestId("preview-image")).toHaveAttribute("src", "https://example.com/dashboard.png");
+    expect(screen.queryByTestId("preview-video")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("missing-asset-placeholder")).not.toBeInTheDocument();
+  });
+
+  it("renders the bundled dashboard image for the driftboard fixture", () => {
+    const dashboardProject = {
+      ...sampleProject,
+      assets: [
+        {
+          id: "asset_dashboard_png",
+          type: "image" as const,
+          uri: "assets/driftboard-dashboard.png",
+          source: "captured" as const,
+          name: "Driftboard dashboard screenshot",
+          mimeType: "image/png",
+          width: 750,
+          height: 444,
+          metadata: {},
+        },
+      ],
+      tracks: [
+        {
+          ...sampleProject.tracks[0],
+          clips: [{ ...sampleProject.tracks[0].clips[0], assetId: "asset_dashboard_png" }],
+        },
+      ],
+    };
+
+    render(<Preview project={dashboardProject} currentTime={0} />);
+
+    expect(screen.getByTestId("preview-image")).toHaveAttribute("src", expect.stringContaining("driftboard-dashboard.png"));
+    expect(screen.queryByTestId("preview-video")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("missing-asset-placeholder")).not.toBeInTheDocument();
+  });
+
   it("renders active zoom overlay at 14s", () => {
     render(<Preview project={sampleProject} currentTime={14} />);
 

@@ -99,7 +99,7 @@ export function Preview({ project, currentTime }: PreviewProps) {
   const camera = mapCameraToPreview(motion.camera, placement);
 
   useEffect(() => {
-    if (!clip || !videoRef.current) {
+    if (!clip || !videoRef.current || (previewAsset?.ok && previewAsset.kind === "image")) {
       return;
     }
 
@@ -108,7 +108,16 @@ export function Preview({ project, currentTime }: PreviewProps) {
     if (Math.abs(videoRef.current.currentTime - nextTime) > 0.15) {
       videoRef.current.currentTime = nextTime;
     }
-  }, [clip, currentTime]);
+  }, [clip, currentTime, previewAsset]);
+
+  const mediaStyle: CSSProperties = {
+    position: "absolute",
+    left: percent(placement.left),
+    top: percent(placement.top),
+    width: percent(placement.width),
+    height: percent(placement.height),
+    objectFit: "contain",
+  };
 
   return (
     <section aria-label="Preview">
@@ -125,20 +134,22 @@ export function Preview({ project, currentTime }: PreviewProps) {
           }}
         >
           {previewAsset?.ok ? (
-            <video
-              ref={videoRef}
-              data-testid="preview-video"
-              src={previewAsset.url}
-              muted
-              style={{
-                position: "absolute",
-                left: percent(placement.left),
-                top: percent(placement.top),
-                width: percent(placement.width),
-                height: percent(placement.height),
-                objectFit: "contain",
-              }}
-            />
+            previewAsset.kind === "image" ? (
+              <img
+                data-testid="preview-image"
+                src={previewAsset.url}
+                alt={asset?.name ?? asset?.id ?? "Preview image"}
+                style={mediaStyle}
+              />
+            ) : (
+              <video
+                ref={videoRef}
+                data-testid="preview-video"
+                src={previewAsset.url}
+                muted
+                style={mediaStyle}
+              />
+            )
           ) : (
             <div
               data-testid="missing-asset-placeholder"

@@ -63,14 +63,17 @@ describe("golden generated-project fixture (person-a-generated-project.sample.js
     expect(project.assets).toHaveLength(1);
     const asset = project.assets[0];
     expect(asset.source).toBe("captured");
-    expect(asset.type).toBe("video");
+    // The primary asset is the Driftboard dashboard screenshot (image).
+    expect(asset.type).toBe("image");
 
     for (const track of project.tracks) {
       for (const clip of track.clips) {
         expect(clip.assetId).toBe(asset.id);
         expect(clip.sourceStart).toBeGreaterThanOrEqual(0);
-        // Capture is 3s; reused segments must stay within the real asset duration.
-        expect(clip.sourceEnd ?? asset.duration ?? 0).toBeLessThanOrEqual(asset.duration ?? Infinity);
+        // Image assets have no meaningful duration; clips omit sourceEnd.
+        if (clip.sourceEnd !== undefined && asset.duration !== undefined) {
+          expect(clip.sourceEnd).toBeLessThanOrEqual(asset.duration);
+        }
       }
     }
   });

@@ -9,15 +9,14 @@
   "updatedAt": "2026-06-12T00:00:00.000Z",
   "assets": [
     {
-      "id": "asset_capture_001",
-      "type": "video",
-      "uri": "assets/capture-001.mp4",
+      "id": "asset_dashboard_png",
+      "type": "image",
+      "uri": "assets/driftboard-dashboard.png",
       "source": "captured",
-      "name": "Driftboard product capture",
-      "mimeType": "video/mp4",
-      "duration": 3,
-      "width": 320,
-      "height": 180
+      "name": "Driftboard dashboard screenshot",
+      "mimeType": "image/png",
+      "width": 750,
+      "height": 444
     }
   ],
   "tracks": [
@@ -28,38 +27,34 @@
       "clips": [
         {
           "id": "clip_open_dashboard",
-          "assetId": "asset_capture_001",
+          "assetId": "asset_dashboard_png",
           "start": 0,
           "end": 6,
           "sourceStart": 0,
-          "sourceEnd": 3,
           "name": "Open dashboard"
         },
         {
           "id": "clip_invite_teammates",
-          "assetId": "asset_capture_001",
+          "assetId": "asset_dashboard_png",
           "start": 6,
           "end": 13,
           "sourceStart": 0,
-          "sourceEnd": 3,
           "name": "Invite teammates"
         },
         {
           "id": "clip_workspace_settings",
-          "assetId": "asset_capture_001",
+          "assetId": "asset_dashboard_png",
           "start": 13,
           "end": 18.5,
           "sourceStart": 0,
-          "sourceEnd": 3,
           "name": "Workspace settings"
         },
         {
           "id": "clip_share_wrapup",
-          "assetId": "asset_capture_001",
+          "assetId": "asset_dashboard_png",
           "start": 18.5,
           "end": 24,
           "sourceStart": 0,
-          "sourceEnd": 3,
           "name": "Share & wrap-up"
         }
       ]
