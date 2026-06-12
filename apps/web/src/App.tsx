@@ -53,6 +53,11 @@ export function App() {
     setState((prev) => ({ ...prev, route: "create" }));
   }
 
+  function handleReturnToEditor() {
+    // Return to editor with the existing in-progress project — does NOT replace it
+    setState((prev) => ({ ...prev, route: "editor" }));
+  }
+
   if (state.route === "editor") {
     return (
       <EditorScreen
@@ -74,7 +79,7 @@ export function App() {
         generationClient={generationClient}
         onProjectGenerated={handleProjectGenerated}
       />
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
           type="button"
           className="tk-btn"
@@ -82,6 +87,15 @@ export function App() {
         >
           Use sample project
         </button>
+        {state.project !== undefined ? (
+          <button
+            type="button"
+            className="tk-btn"
+            onClick={handleReturnToEditor}
+          >
+            Return to editor
+          </button>
+        ) : null}
       </div>
     </main>
   );

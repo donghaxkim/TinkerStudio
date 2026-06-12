@@ -79,27 +79,45 @@ describe("App shell state machine", () => {
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
   });
 
-  it("returning from Editor to Create Demo preserves the project (re-entering Editor still works)", async () => {
+  it("'Return to editor' button is absent before any project exists", () => {
     render(<App />);
 
-    // Generate via mock to get a real project
+    // On the initial Create route with no project yet, the button must not exist
+    expect(screen.queryByRole("button", { name: "Return to editor" })).not.toBeInTheDocument();
+  });
+
+  it("returning from Editor to Create Demo preserves the in-progress project (identity check via title)", async () => {
+    render(<App />);
+
+    // Step 1: Drive a successful mock generation to open the Editor with a real project
     fillAndSubmitCreateDemoForm();
     await waitFor(() => {
       expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
     });
-    // Editor is open with the generated project
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
 
-    // Go back to Create Demo — project is NOT cleared
+    // Step 2: Capture the project title as shown in the Editor's <h1>
+    const generatedTitle = screen.getByRole("heading", { level: 1 }).textContent;
+    expect(generatedTitle).toBeTruthy();
+
+    // Step 3: Click "New demo" to return to the Create route
     fireEvent.click(screen.getByRole("button", { name: "New demo" }));
     expect(screen.getByLabelText("Create demo")).toBeInTheDocument();
     expect(screen.queryByLabelText("Project persistence")).not.toBeInTheDocument();
 
-    // Use sample project to go back to Editor — transition still works
-    fireEvent.click(screen.getByRole("button", { name: "Use sample project" }));
+    // Step 4: "Return to editor" button must now be visible (project is still in state)
+    const returnBtn = screen.getByRole("button", { name: "Return to editor" });
+    expect(returnBtn).toBeInTheDocument();
+
+    // Step 5: Click "Return to editor" — must NOT load the sample or replace the project
+    fireEvent.click(returnBtn);
     await waitFor(() => {
       expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
     });
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
+
+    // Step 6: Assert the Editor shows the same project (same title — project was NOT replaced)
+    const titleAfterReturn = screen.getByRole("heading", { level: 1 }).textContent;
+    expect(titleAfterReturn).toBe(generatedTitle);
   });
 });
