@@ -8,10 +8,6 @@
   box-sizing: border-box;
 }
 
-body {
-  margin: 0;
-}
-
 button,
 input,
 select,
@@ -80,6 +76,7 @@ button {
    ========================================================================== */
 
 body {
+  margin: 0;
   background: var(--tk-app-bg);
   color: var(--tk-text);
   font-family: var(--tk-font);
@@ -275,7 +272,7 @@ input::placeholder {
   color: var(--tk-text);
   background: var(--tk-card);
   border-color: var(--tk-border);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  box-shadow: var(--tk-shadow-sm);
 }
 
 /* --- Row card --- */
@@ -284,7 +281,7 @@ input::placeholder {
   display: flex;
   align-items: center;
   gap: 9px;
-  border: 1px solid;
+  border: 1px solid var(--tk-border);
   border-radius: var(--tk-radius-sm);
   padding: 8px 10px;
   cursor: pointer;
@@ -526,6 +523,7 @@ input::placeholder {
   border: 1px solid rgba(255,255,255,0.18);
 }
 
+/* Theme swatches: graphite/nocturne are deferred (Porcelain ships now); kept for the PB-009 Settings theme list. */
 .tk-swatch-graphite { background: linear-gradient(135deg, #17191f, #d89d35); }
 .tk-swatch-porcelain { background: linear-gradient(135deg, #fbfaf6, #386bd8); }
 .tk-swatch-nocturne { background: linear-gradient(135deg, #10192c, #e0639a); }
