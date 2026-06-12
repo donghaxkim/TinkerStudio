@@ -3,11 +3,18 @@ export type SelectedRange = {
   end: number;
 };
 
+export type SelectedEntityType = "clip" | "zoom";
+
+export type SelectedEntity = {
+  type: SelectedEntityType;
+  id: string;
+};
+
 export type EditorUiState = {
   currentTime: number;
   isPlaying: boolean;
   selectedRange?: SelectedRange;
-  selectedEntityId?: string;
+  selectedEntity?: SelectedEntity;
 };
 
 export function createInitialEditorState(duration = 0): EditorUiState {

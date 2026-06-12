@@ -1,6 +1,6 @@
 import type { CSSProperties, MouseEvent } from "react";
 import type { DemoProject } from "@tinker/project-schema";
-import type { SelectedRange } from "../state/editorState.js";
+import type { SelectedEntity, SelectedRange } from "../state/editorState.js";
 import { createTimeScale } from "./timeScale.js";
 import { buildTimelineRows } from "./timelineModel.js";
 
@@ -8,8 +8,10 @@ export type TimelineProps = {
   project: DemoProject;
   currentTime: number;
   selectedRange?: SelectedRange;
+  selectedEntity?: SelectedEntity;
   width?: number;
   onSeek: (time: number) => void;
+  onSelectItem?: (item: { id: string; kind: string }) => void;
 };
 
 const rowStyle: CSSProperties = {
@@ -42,7 +44,15 @@ function computeTickInterval(duration: number): number {
   return Math.max(1, Math.ceil(duration / 7));
 }
 
-export function Timeline({ project, currentTime, selectedRange, width = 960, onSeek }: TimelineProps) {
+export function Timeline({
+  project,
+  currentTime,
+  selectedRange,
+  selectedEntity,
+  width = 960,
+  onSeek,
+  onSelectItem,
+}: TimelineProps) {
   const rows = buildTimelineRows(project);
   const percentageScale = createTimeScale(project.duration, 100);
   const timeToPercent = (time: number) => `${percentageScale.secondsToPixels(time).toFixed(4)}%`;
@@ -217,12 +227,18 @@ export function Timeline({ project, currentTime, selectedRange, width = 960, onS
               const itemWidth = rangeToPercent(item.start, item.end);
               const isClip = item.kind === "clip";
               const durationSec = item.end - item.start;
+              // An item is selected when its id matches and the selected entity's
+              // type aligns with the item kind (clip → "clip", any zoom kind → "zoom").
+              const itemEntityType = isClip ? "clip" : "zoom";
+              const isSelected =
+                selectedEntity?.id === item.id && selectedEntity?.type === itemEntityType;
 
               return (
                 <button
                   type="button"
                   key={item.id}
                   aria-label={`${item.kind}: ${item.label}`}
+                  aria-current={isSelected ? "true" : undefined}
                   style={{
                     position: "absolute",
                     left,
@@ -234,8 +250,25 @@ export function Timeline({ project, currentTime, selectedRange, width = 960, onS
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
                     cursor: "pointer",
-                    // Clip: warm raised bar
-                    ...(isClip
+                    // Selected: accent border + accent-soft fill (overrides kind defaults below).
+                    ...(isSelected
+                      ? {
+                          background: "var(--tk-accent-soft, rgba(59,91,217,0.10))",
+                          border: "1px solid var(--tk-accent, #3B5BD9)",
+                          borderRadius: "var(--tk-radius-sm, 6px)",
+                          color: "var(--tk-accent, #3B5BD9)",
+                          boxShadow: "0 0 0 1px var(--tk-accent, #3B5BD9)",
+                          paddingLeft: isClip ? 8 : 6,
+                          paddingRight: isClip ? 8 : 6,
+                          fontSize: isClip ? 12 : 11,
+                          fontWeight: 600,
+                          textAlign: "left",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }
+                      : // Clip: warm raised bar
+                      isClip
                       ? {
                           background: "var(--tk-raised, #F3F1EA)",
                           border: "1px solid var(--tk-border, rgba(20,20,15,0.12))",
@@ -269,6 +302,7 @@ export function Timeline({ project, currentTime, selectedRange, width = 960, onS
                   }}
                   onClick={(event) => {
                     event.stopPropagation();
+                    onSelectItem?.({ id: item.id, kind: item.kind });
                     onSeek(item.start);
                   }}
                 >

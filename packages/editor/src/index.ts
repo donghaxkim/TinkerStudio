@@ -1,4 +1,4 @@
-export type { EditorUiState, SelectedRange } from "./state/editorState.js";
+export type { EditorUiState, SelectedEntity, SelectedEntityType, SelectedRange } from "./state/editorState.js";
 export { createInitialEditorState, normalizeSelectedRange } from "./state/editorState.js";
 export type { TimelineItem, TimelineItemKind, TimelineRow, TimelineRowKind } from "./timeline/timelineModel.js";
 export { buildTimelineRows } from "./timeline/timelineModel.js";

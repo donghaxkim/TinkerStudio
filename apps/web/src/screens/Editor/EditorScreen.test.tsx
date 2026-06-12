@@ -200,12 +200,61 @@ describe("EditorScreen", () => {
       expect(screen.getByRole("button", { name: "Redo" })).not.toBeDisabled();
     });
 
-    it("renders Delete selection disabled with an accessible MVP reason", () => {
+    it("renders Delete selection disabled with an accessible reason when nothing is selected", () => {
       render(<EditorScreen initialProject={sampleProject} />);
 
       const deleteButton = screen.getByRole("button", { name: /Delete selection/i });
       expect(deleteButton).toBeDisabled();
-      expect(deleteButton).toHaveAccessibleName(/not available in the mvp/i);
+      expect(deleteButton).toHaveAccessibleName(/select a zoom to delete it/i);
+    });
+  });
+
+  describe("item-aware manual editing", () => {
+    it("selecting a timeline item routes that item into the manual controls", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      // Nothing selected → calm hint, no zoom editor fields.
+      expect(screen.queryByLabelText("Zoom start")).not.toBeInTheDocument();
+
+      // Click the zoom bar in the timeline.
+      fireEvent.click(screen.getByRole("button", { name: "zoom: Zoom 1" }));
+
+      // The Zoom-tab manual controls now show that exact zoom's fields.
+      expect(screen.getByLabelText("Zoom start")).toHaveValue(12);
+      expect(screen.getByLabelText("Zoom end")).toHaveValue(18);
+    });
+
+    it("enables Delete selection for a selected zoom and deletes it undoably", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      // Select the zoom from the timeline.
+      fireEvent.click(screen.getByRole("button", { name: "zoom: Zoom 1" }));
+
+      const deleteButton = screen.getByRole("button", { name: /Delete selection/i });
+      expect(deleteButton).not.toBeDisabled();
+
+      // Delete it — the zoom rowcard disappears and undo becomes available.
+      fireEvent.click(deleteButton);
+      expect(screen.queryByRole("button", { name: "zoom: Zoom 1" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
+
+      // Undo restores the zoom.
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+      expect(screen.getByRole("button", { name: "zoom: Zoom 1" })).toBeInTheDocument();
+
+      // Redo removes it again.
+      fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+      expect(screen.queryByRole("button", { name: "zoom: Zoom 1" })).not.toBeInTheDocument();
+    });
+
+    it("keeps Delete selection disabled for a selected clip with an accessible reason", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "clip: Browser flow" }));
+
+      const deleteButton = screen.getByRole("button", { name: /Delete selection/i });
+      expect(deleteButton).toBeDisabled();
+      expect(deleteButton).toHaveAccessibleName(/clip deletion is not available in the mvp/i);
     });
   });
 

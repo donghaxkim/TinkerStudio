@@ -58,6 +58,43 @@ describe("Timeline", () => {
     expect(screen.getByTestId("selected-range")).toHaveAccessibleName("Selected range 12.0s to 18.0s");
   });
 
+  it("invokes onSelectItem with the item id/kind and still seeks on item click", () => {
+    const onSeek = vi.fn();
+    const onSelectItem = vi.fn();
+    render(
+      <Timeline
+        project={sampleProject}
+        currentTime={0}
+        width={900}
+        onSeek={onSeek}
+        onSelectItem={onSelectItem}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "zoom: Zoom 1" }));
+
+    expect(onSelectItem).toHaveBeenCalledWith({ id: "zoom_001", kind: "zoom" });
+    expect(onSeek).toHaveBeenCalledWith(12);
+  });
+
+  it("marks the selected timeline item with aria-current", () => {
+    render(
+      <Timeline
+        project={sampleProject}
+        currentTime={0}
+        width={900}
+        onSeek={() => undefined}
+        selectedEntity={{ type: "zoom", id: "zoom_001" }}
+      />,
+    );
+
+    const selected = screen.getByRole("button", { name: "zoom: Zoom 1" });
+    expect(selected).toHaveAttribute("aria-current", "true");
+
+    const clip = screen.getByRole("button", { name: "clip: Browser flow" });
+    expect(clip).not.toHaveAttribute("aria-current");
+  });
+
   it("does not hang and renders timeline-ruler when project duration is 0", () => {
     // Construct a zero-duration project bypassing schema validation, since the
     // Timeline component may receive such a project from freshly-created or empty

@@ -3,12 +3,15 @@ import { AIEditPanel } from "@tinker/ai-edit-ui";
 import {
   Preview,
   Timeline,
+  applyManualEditOperation,
+  buildTimelineRows,
   createEditorHistory,
   pushEditorCommand,
   redoEditorCommand,
   undoEditorCommand,
   type EditorCommand,
   type EditorHistory,
+  type SelectedEntity,
   type SelectedRange,
 } from "@tinker/editor";
 import type { DemoProject } from "@tinker/project-schema";
@@ -268,6 +271,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
   const [history, setHistory] = useState<EditorHistory>(() => createEditorHistory());
   const [currentTime, setCurrentTime] = useState(0);
   const [selectedRange, setSelectedRange] = useState<SelectedRange>({ start: 12, end: 18 });
+  const [selectedEntity, setSelectedEntity] = useState<SelectedEntity | undefined>();
   const [activeTab, setActiveTab] = useState<PanelTab>("zoom");
   const [isPlaying, setIsPlaying] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -390,6 +394,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
     setHistory(createEditorHistory());
     setCurrentTime(0);
     setSelectedRange({ start: 0, end: Math.min(loadedProject.duration, 6) });
+    setSelectedEntity(undefined);
   }
 
   function handleManualApply(updatedProject: DemoProject, command: EditorCommand) {
@@ -397,6 +402,42 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
     setPreviewState(undefined);
     setHistory((current) => pushEditorCommand(current, command));
   }
+
+  // Selecting a timeline item maps its row-item kind → an editor entity type and
+  // syncs the selected range to the item's bounds (so range-driven UX still works).
+  function handleSelectTimelineItem(item: { id: string; kind: string }) {
+    const type: SelectedEntity["type"] = item.kind === "clip" ? "clip" : "zoom";
+    setSelectedEntity({ type, id: item.id });
+
+    const rows = buildTimelineRows(project!);
+    const match = rows.flatMap((row) => row.items).find((candidate) => candidate.id === item.id && candidate.kind === item.kind);
+    if (match) setSelectedRange({ start: match.start, end: match.end });
+  }
+
+  // Delete is scoped to the currently-selected entity and only supports zooms in
+  // the MVP. Every successful delete is pushed as an undoable manual-edit command.
+  function handleDeleteSelection() {
+    if (!project || selectedEntity?.type !== "zoom") return;
+
+    const result = applyManualEditOperation(project, {
+      type: "remove_entity",
+      entityType: "zoom",
+      id: selectedEntity.id,
+    });
+    if (!result.ok) return;
+
+    setProject(result.project);
+    setPreviewState(undefined);
+    setHistory((current) => pushEditorCommand(current, result.command));
+    setSelectedEntity(undefined);
+  }
+
+  const canDeleteSelection = selectedEntity?.type === "zoom";
+  const deleteSelectionLabel = canDeleteSelection
+    ? "Delete selection"
+    : selectedEntity?.type === "clip"
+      ? "Delete selection — clip deletion is not available in the MVP"
+      : "Delete selection — select a zoom to delete it";
 
   function handleAcceptCommand(updatedProject: DemoProject, command: EditorCommand) {
     setProject(updatedProject);
@@ -687,9 +728,10 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             <button
               type="button"
               className="tk-iconbtn"
-              aria-label="Delete selection — not available in the MVP"
-              title="Not available in the MVP"
-              disabled
+              aria-label={deleteSelectionLabel}
+              title={canDeleteSelection ? "Delete the selected zoom" : "Select a zoom to delete it"}
+              disabled={!canDeleteSelection}
+              onClick={handleDeleteSelection}
             >
               <TrashIcon />
             </button>
@@ -708,7 +750,14 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
 
           {/* Timeline */}
           <section aria-label="Timeline" style={{ minHeight: 0 }}>
-            <Timeline project={displayProject} currentTime={currentTime} selectedRange={selectedRange} onSeek={setCurrentTime} />
+            <Timeline
+              project={displayProject}
+              currentTime={currentTime}
+              selectedRange={selectedRange}
+              selectedEntity={selectedEntity}
+              onSeek={setCurrentTime}
+              onSelectItem={handleSelectTimelineItem}
+            />
           </section>
         </div>
 
@@ -767,7 +816,13 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
                 }}
                 onAccept={handleAcceptCommand}
               />
-              <EditorManualControls project={project} selectedRange={selectedRange} onApply={handleManualApply} />
+              <EditorManualControls
+                project={project}
+                selectedRange={selectedRange}
+                selectedEntity={selectedEntity}
+                onSelectEntity={setSelectedEntity}
+                onApply={handleManualApply}
+              />
             </div>
 
             {/* Speed tab */}
