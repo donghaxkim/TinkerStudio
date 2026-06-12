@@ -95,7 +95,7 @@ Do these in order unless a blocker forces a smaller slice:
 5. [x] PB-004: Make the Editor product-grade for one user. (Subtasks PB-004a shell/layout/tabs + PB-004b Timeline/Preview restyle.)
 6. [x] PB-005: Replace prototype manual editing with item-aware editing.
 7. [x] PB-006: Add manual cursor/click controls. (Schema addition pending Person A sign-off — backward-compatible.)
-8. [ ] PB-007: Harden project lifecycle, save/load, and recovery.
+8. [x] PB-007: Harden project lifecycle, save/load, and recovery.
 9. [ ] PB-008: Make export UX first-class.
 10. [ ] PB-009: Mount useful Settings.
 11. [ ] PB-010: Add Samuel integration harness and golden project fixture.
@@ -501,7 +501,7 @@ pnpm --filter @tinker/rendering test
 
 **Priority:** P0
 **Owner:** Person B
-**Status:** Partial
+**Status:** Done
 **Goal:** A one-user local workflow should survive reloads, bad files, validation errors, and accidental navigation.
 
 **Files/areas:**
@@ -520,17 +520,17 @@ apps/web/src/screens/Settings/SettingsScreen.tsx
 - [x] Load full `DemoProject` JSON.
 - [x] Validate loaded project before opening.
 - [x] Show validation errors in UI.
-- [ ] Make the current persistence state visible: unsaved, saved locally, downloaded, loaded from file, or generated.
-- [ ] Reset undo/redo history when replacing the project.
-- [ ] Warn or clearly indicate before replacing an edited project.
-- [ ] Keep asset references by `asset.id`; do not duplicate paths in UI state.
-- [ ] Add tests for replacement, invalid JSON, invalid schema, history reset, and storage reset.
+- [x] Make the current persistence state visible: unsaved, saved locally, downloaded, loaded from file, or generated. (Top-bar status pill driven by `PersistenceState = {origin, dirty}`.)
+- [x] Reset undo/redo history when replacing the project. (Load resets history + currentTime + range + preview + selection.)
+- [x] Warn or clearly indicate before replacing an edited project. (Inline `alertdialog` confirm shown only when dirty; Cancel preserves the project; focus moves to Replace.)
+- [x] Keep asset references by `asset.id`; do not duplicate paths in UI state. (Audited — no path strings in component state.)
+- [x] Add tests for replacement, invalid JSON, invalid schema, history reset, and storage reset. (27 tests added.)
 
 **Done when:**
 
-- [ ] A user can save, reload, edit, and export a project without losing track of state.
-- [ ] Bad project files fail gracefully.
-- [ ] Replacing a project does not leave stale undo/redo history.
+- [x] A user can save, reload, edit, and export a project without losing track of state.
+- [x] Bad project files fail gracefully.
+- [x] Replacing a project does not leave stale undo/redo history.
 
 **Verification:**
 
