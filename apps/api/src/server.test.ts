@@ -401,6 +401,29 @@ describe("job queue", () => {
     expect(queue.hasCapacity()).toBe(true);
     expect(queue.isRunning()).toBe(false);
   });
+
+  it("continues draining after a job rejects", async () => {
+    const started: string[] = [];
+    const queue = createJobQueue({
+      maxPendingJobs: 2,
+      runJob: async (id) => {
+        started.push(id);
+        if (id === "job-1") {
+          throw new Error("first job failed");
+        }
+      },
+    });
+
+    expect(queue.enqueue("job-1")).toBe(true);
+    expect(queue.enqueue("job-2")).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(started).toEqual(["job-1", "job-2"]);
+    expect(queue.pendingCount()).toBe(0);
+    expect(queue.isRunning()).toBe(false);
+  });
 });
 
 describe("generation worker", () => {
@@ -446,6 +469,44 @@ describe("generation worker", () => {
     expect(completed?.status).toBe("completed");
     expect(completed?.progressEvents.map((event) => event.message)).toEqual(["AI URL analysis started"]);
     expect(completed?.result?.artifacts.map((artifact) => artifact.kind)).toEqual(["composition-index", "output-video"]);
+  });
+
+  it("ignores progress events for a different job id", async () => {
+    const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-progress-"));
+    const store = createJobStore();
+    store.create({ id: "job-test", request, outputRoot, now: "2026-06-11T00:00:00.000Z" });
+
+    const runner: GenerationRunner = async (_rawRequest, options) => {
+      options?.onProgress?.({
+        jobId: "other-job",
+        status: "running",
+        message: "Progress for another job",
+        time: "2026-06-11T00:00:01.000Z",
+      });
+      return {
+        jobId: "job-test",
+        status: "completed",
+        projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+        captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+        outputDirectory: outputRoot,
+        artifactPaths: [],
+        renderer: "hyperframes",
+        rendererResults: {
+          hyperframes: {
+            outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+            generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+            assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+          },
+        },
+      };
+    };
+
+    const worker = createGenerationWorker({ store, runner, now: () => "2026-06-11T00:00:02.000Z" });
+    await worker("job-test");
+
+    const completed = store.getSnapshot("job-test");
+    expect(completed?.status).toBe("completed");
+    expect(completed?.progressEvents).toEqual([]);
   });
 
   it("fails unknown empty-message errors with a non-empty typed generation error", async () => {

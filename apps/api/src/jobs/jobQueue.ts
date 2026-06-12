@@ -16,6 +16,8 @@ export function createJobQueue(options: JobQueueOptions) {
     running = true;
     try {
       await options.runJob(nextId);
+    } catch {
+      // Queue workers own job failure handling; the queue only guarantees draining.
     } finally {
       running = false;
       queueMicrotask(() => void drain());

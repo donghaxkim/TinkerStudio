@@ -41,7 +41,7 @@ export function createGenerationWorker(options: GenerationWorkerOptions) {
       const result = await runner(record.request, {
         onProgress: (event) => {
           const parsed = ManualFixtureProgressEventSchema.safeParse(event);
-          if (parsed.success) {
+          if (parsed.success && parsed.data.jobId === id) {
             options.store.appendProgress(id, parsed.data);
           }
         },
