@@ -77,8 +77,8 @@ Completed foundation:
 
 Important remaining truth:
 
-- [ ] `apps/web/src/App.tsx` still needs to mount the actual Create Demo -> Editor -> Settings workflow on `main`.
-- [ ] `apps/web/src/screens/Settings/SettingsScreen.tsx` exists but is not mounted in the app shell.
+- [x] `apps/web/src/App.tsx` still needs to mount the actual Create Demo -> Editor -> Settings workflow on `main`. (Done in PB-001 on `person-b/product-shell`.)
+- [x] `apps/web/src/screens/Settings/SettingsScreen.tsx` exists but is not mounted in the app shell. (Now reachable via the Editor; full Settings polish tracked in PB-009.)
 - [ ] Manual edit controls still need item-aware polish beyond prototype defaults.
 - [ ] Manual cursor/click effect controls still need a product surface.
 - [ ] Person A needs a crisp integration contract and golden fixture proving his output can open in Person B's editor.
@@ -89,7 +89,7 @@ Important remaining truth:
 Do these in order unless a blocker forces a smaller slice:
 
 1. [x] PB-000: Clean local working state and branch strategy.
-2. [ ] PB-001: Mount the end-to-end web product shell.
+2. [x] PB-001: Mount the end-to-end web product shell. (Incl. subtask PB-001a: Porcelain design-system foundation — tokens, `.tk-*` classes, fonts in `apps/web`.)
 3. [ ] PB-002: Lock the Person A -> Person B generation handoff.
 4. [ ] PB-003: Make Create Demo product-grade for one user.
 5. [ ] PB-004: Make the Editor product-grade for one user.
@@ -218,8 +218,9 @@ git remote -v
 
 **Priority:** P0
 **Owner:** Person B
-**Status:** Not started
+**Status:** Done
 **Goal:** Replace the placeholder app root with a real local product flow: Create Demo -> Editor -> Settings -> back.
+**Subtask PB-001a (done):** Ported the Porcelain design system (tokens as CSS vars, `.tk-*` component classes, Instrument Sans + IBM Plex Mono fonts) into `apps/web/src/styles.css` + `index.html` as the shared foundation for all screens.
 
 **Files/areas:**
 
@@ -235,22 +236,22 @@ apps/web/src/styles.css
 
 **Tasks:**
 
-- [ ] Replace placeholder `App.tsx` with explicit app state or lightweight routing.
-- [ ] Add top-level navigation between `Create Demo`, `Editor`, and `Settings`.
-- [ ] Use `mockGenerationClient` as the local default generation client.
-- [ ] When Create Demo succeeds, pass the generated `DemoProject` into `EditorScreen`.
-- [ ] Keep sample project loading available when no generated project exists.
-- [ ] Add a clear route/state for returning from Editor to Create Demo.
-- [ ] Add a clear route/state for opening Settings.
-- [ ] Ensure navigation state does not erase an in-progress project unless the user explicitly loads/replaces it.
-- [ ] Add component tests for initial screen, successful generation opening Editor, Settings navigation, and returning to Create Demo.
+- [x] Replace placeholder `App.tsx` with explicit app state or lightweight routing.
+- [x] Add top-level navigation between `Create Demo`, `Editor`, and `Settings`.
+- [x] Use `mockGenerationClient` as the local default generation client.
+- [x] When Create Demo succeeds, pass the generated `DemoProject` into `EditorScreen`.
+- [x] Keep sample project loading available when no generated project exists.
+- [x] Add a clear route/state for returning from Editor to Create Demo.
+- [x] Add a clear route/state for opening Settings.
+- [x] Ensure navigation state does not erase an in-progress project unless the user explicitly loads/replaces it. (Added a "Return to editor" affordance + identity-asserting test.)
+- [x] Add component tests for initial screen, successful generation opening Editor, Settings navigation, and returning to Create Demo.
 
 **Done when:**
 
-- [ ] Opening the web app shows the actual workflow, not only `Tinker`.
-- [ ] A one-user happy path works in the browser: Create Demo mock success -> Editor -> Save/Export panels visible.
-- [ ] Settings is reachable.
-- [ ] Tests cover the app shell behavior.
+- [x] Opening the web app shows the actual workflow, not only `Tinker`.
+- [x] A one-user happy path works in the browser: Create Demo mock success -> Editor -> Save/Export panels visible.
+- [x] Settings is reachable.
+- [x] Tests cover the app shell behavior. (51 web tests pass; build green.)
 
 **Verification:**
 
