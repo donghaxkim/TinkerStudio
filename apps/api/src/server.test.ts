@@ -1,9 +1,15 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolve } from "node:path";
 import { describe, expect, it, test } from "vitest";
-import type { AiUrlPlanningCreateDemoRequest, GenerationError, ManualFixtureProgressEvent } from "@tinker/generation-contract";
+import type {
+  AiUrlPlanningCreateDemoRequest,
+  GenerationError,
+  ManualFixtureGenerationResult,
+  ManualFixtureProgressEvent,
+} from "@tinker/generation-contract";
 import { readConfig } from "./config.js";
 import { indexArtifacts } from "./jobs/artifactIndex.js";
 import { createJobQueue } from "./jobs/jobQueue.js";
@@ -28,6 +34,15 @@ const runningEvent: ManualFixtureProgressEvent = {
   message: "AI URL analysis started",
   time: "2026-06-11T00:00:01.000Z",
 };
+
+function testConfig(repoRoot: string) {
+  return {
+    port: 4500,
+    host: "127.0.0.1" as const,
+    corsOrigins: ["http://localhost:5173"],
+    repoRoot,
+  };
+}
 
 describe("readConfig", () => {
   test("uses local development defaults", () => {
@@ -104,6 +119,228 @@ describe("buildServer", () => {
 
       expect(response.statusCode).toBe(422);
       expect(JSON.parse(response.body)).toEqual({ message: "Validation failed" });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+describe("job routes", () => {
+  const validBody = {
+    mode: "ai-url-planning",
+    repoUrl: "https://github.com/example/product",
+    productUrl: "https://example.com",
+    prompt: "Make a short demo.",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+  } as const;
+
+  it("accepts AI URL jobs, injects the server id, runs Hyperframes, and exposes completed snapshots", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (rawRequest, options): Promise<ManualFixtureGenerationResult> => {
+        expect(rawRequest).toEqual({
+          ...validBody,
+          id: "job-test",
+          renderer: "hyperframes",
+        });
+        expect(rawRequest).not.toMatchObject({ id: "client-id" });
+        options?.onProgress?.(runningEvent);
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>composition</html>");
+        await writeFile(join(outputRoot, "hyperframes", "output.mp4"), "video");
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [
+            join(outputRoot, "hyperframes", "index.html"),
+            join(outputRoot, "hyperframes", "output.mp4"),
+          ],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      const postResponse = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: { ...validBody, id: "client-id" },
+      });
+
+      expect(postResponse.statusCode).toBe(202);
+      expect(JSON.parse(postResponse.body)).toMatchObject({
+        id: "job-test",
+        status: "queued",
+        request: { id: "job-test", renderer: "hyperframes" },
+      });
+
+      await completed.promise;
+      await Promise.resolve();
+
+      const getResponse = await server.inject({ method: "GET", url: "/api/jobs/job-test" });
+
+      expect(getResponse.statusCode).toBe(200);
+      expect(JSON.parse(getResponse.body)).toMatchObject({
+        id: "job-test",
+        status: "completed",
+        result: {
+          artifacts: [
+            { kind: "composition-index", relativePath: "hyperframes/index.html" },
+            { kind: "output-video", relativePath: "hyperframes/output.mp4" },
+          ],
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects invalid job requests and caps pending queue capacity", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-validation-${randomUUID()}-`));
+    const validationServer = await buildServer({ config: testConfig(repoRoot) });
+
+    try {
+      for (const invalidBody of [
+        { ...validBody, renderer: "playwright" },
+        { ...validBody, renderer: "both" },
+        { ...validBody, outputDirectory: "generated/local-job/x" },
+        { ...validBody, mode: "manual-fixture" },
+        {
+          repoUrl: validBody.repoUrl,
+          productUrl: validBody.productUrl,
+          prompt: "Assisted",
+          durationCapSeconds: 12,
+          aspectRatio: "16:9",
+        },
+      ]) {
+        const response = await validationServer.inject({ method: "POST", url: "/api/jobs", payload: invalidBody });
+
+        expect(response.statusCode).toBe(422);
+        expect(JSON.parse(response.body)).toMatchObject({ status: "failed", stage: "validation" });
+      }
+    } finally {
+      await validationServer.close();
+    }
+
+    const blocker = deferred<void>();
+    let idCount = 0;
+    const capacityServer = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => `job-${++idCount}`,
+      maxPendingJobs: 1,
+      runner: async () => {
+        await blocker.promise;
+        return {
+          jobId: "job-blocked",
+          status: "completed",
+          projectPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "output.mp4"),
+          captureResultPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "generation-manifest.json"),
+          outputDirectory: join(repoRoot, "generated", "local-job", "job-blocked"),
+          artifactPaths: [],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "output.mp4"),
+              generationManifestPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const first = await capacityServer.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      const second = await capacityServer.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      const third = await capacityServer.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+
+      expect(first.statusCode).toBe(202);
+      expect(second.statusCode).toBe(202);
+      expect(third.statusCode).toBe(429);
+      expect(JSON.parse(third.body)).toEqual({ message: "Generation queue is full" });
+    } finally {
+      blocker.resolve();
+      await Promise.resolve();
+      await capacityServer.close();
+    }
+  });
+
+  it("serves safe job artifacts and rejects traversal or encoded slash paths", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-route-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        await mkdir(join(outputRoot, "hyperframes", "assets"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>composition</html>");
+        await writeFile(join(outputRoot, "hyperframes", "assets", "logo.png"), "png");
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [
+            join(outputRoot, "hyperframes", "index.html"),
+            join(outputRoot, "hyperframes", "assets", "logo.png"),
+          ],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+      await completed.promise;
+      await Promise.resolve();
+
+      const artifactResponse = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+      });
+
+      expect(artifactResponse.statusCode).toBe(200);
+      expect(artifactResponse.headers["x-content-type-options"]).toBe("nosniff");
+      expect(artifactResponse.headers["content-type"]).toContain("text/html");
+      expect(artifactResponse.body).toContain("composition");
+
+      for (const unsafeUrl of [
+        "/api/jobs/job-test/artifacts/../package.json",
+        "/api/jobs/job-test/artifacts/%2e%2e/package.json",
+        "/api/jobs/job-test/artifacts/hyperframes%2findex.html",
+        "/api/jobs/missing/artifacts/hyperframes/index.html",
+      ]) {
+        const response = await server.inject({ method: "GET", url: unsafeUrl });
+        expect(response.statusCode).toBe(404);
+      }
     } finally {
       await server.close();
     }
