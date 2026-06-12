@@ -70,7 +70,8 @@ describe("App shell state machine", () => {
 
     expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
-    expect(screen.getByLabelText("Export")).toBeInTheDocument();
+    // The Export section (aria-label="Export") must be reachable.
+    expect(screen.getAllByLabelText("Export").some((el) => el.tagName === "SECTION")).toBe(true);
   });
 
   it("'use sample project' path opens the Editor", async () => {
@@ -82,7 +83,8 @@ describe("App shell state machine", () => {
 
     expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
-    expect(screen.getByLabelText("Export")).toBeInTheDocument();
+    // The Export section (aria-label="Export") must be reachable.
+    expect(screen.getAllByLabelText("Export").some((el) => el.tagName === "SECTION")).toBe(true);
   });
 
   it("opening Settings from Editor shows Settings; closing returns to Editor", async () => {

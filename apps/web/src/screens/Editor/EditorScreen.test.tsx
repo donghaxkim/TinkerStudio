@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CursorEvent, DemoProject } from "@tinker/project-schema";
 import { sampleProject } from "../../../../../packages/editor/src/test/sampleProject.js";
@@ -97,8 +97,80 @@ describe("EditorScreen", () => {
       fireEvent.click(screen.getByRole("button", { name: "Settings" }));
       expect(onOpenSettings).toHaveBeenCalledTimes(1);
 
-      expect(screen.getByRole("button", { name: "Preview" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Preview (play)" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
+    });
+  });
+
+  describe("play/pause toggle", () => {
+    it("toggles between Play and Pause accessible names on each click", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      const playBtn = screen.getByRole("button", { name: "Play" });
+      expect(playBtn).toBeInTheDocument();
+
+      // First click → becomes Pause.
+      fireEvent.click(playBtn);
+      expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Play" })).not.toBeInTheDocument();
+
+      // Second click → back to Play.
+      fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+    });
+
+    it("rAF loop advances currentTime when requestAnimationFrame is available", () => {
+      // Mock requestAnimationFrame to capture the callback without auto-firing.
+      let rafCallback: ((ts: number) => void) | null = null;
+      const rafSpy = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
+        rafCallback = cb;
+        return 1;
+      });
+      const cafSpy = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
+
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      // Start playing.
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+      // Simulate first frame at t=0 (sets lastFrameTimeRef) — wrapped in act so state updates flush.
+      act(() => {
+        rafCallback?.(0);
+      });
+      // Simulate second frame at t=500ms → should advance 0.5s.
+      act(() => {
+        rafCallback?.(500);
+      });
+
+      // currentTime should have advanced (timecode no longer shows 0:00.0).
+      expect(screen.getByLabelText("Timecode")).not.toHaveTextContent("0:00.0 / 0:45.0");
+
+      rafSpy.mockRestore();
+      cafSpy.mockRestore();
+    });
+  });
+
+  describe("Export top-bar button", () => {
+    it("reveals the export panel when clicked", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      // There are two elements with aria-label "Export": the button and the section.
+      // Find the <section> (the export panel proper).
+      const exportSection = screen
+        .getAllByLabelText("Export")
+        .find((el) => el.tagName === "SECTION");
+      expect(exportSection).not.toBeUndefined();
+
+      const detailsEl = exportSection!.closest("details");
+      expect(detailsEl).not.toBeNull();
+      expect(detailsEl).not.toHaveAttribute("open");
+
+      // Click the top-bar Export button.
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+
+      // Now the <details> is open.
+      expect(detailsEl).toHaveAttribute("open");
     });
   });
 
@@ -175,7 +247,8 @@ describe("EditorScreen", () => {
 
       expect(screen.getByRole("button", { name: "Save project" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Load saved project" })).toBeInTheDocument();
-      expect(screen.getByLabelText("Export")).toBeInTheDocument();
+      // The Export section (aria-label="Export") must be reachable.
+      expect(screen.getAllByLabelText("Export").some((el) => el.tagName === "SECTION")).toBe(true);
     });
   });
 });

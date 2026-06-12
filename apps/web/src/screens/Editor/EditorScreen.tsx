@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AIEditPanel } from "@tinker/ai-edit-ui";
 import {
   Preview,
@@ -82,6 +82,15 @@ function PlayIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="6" y="4" width="4" height="16" />
+      <rect x="14" y="4" width="4" height="16" />
     </svg>
   );
 }
@@ -259,6 +268,71 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
   const [currentTime, setCurrentTime] = useState(0);
   const [selectedRange, setSelectedRange] = useState<SelectedRange>({ start: 12, end: 18 });
   const [activeTab, setActiveTab] = useState<PanelTab>("zoom");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+
+  // Refs for the rAF playback loop.
+  const lastFrameTimeRef = useRef<number | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
+  // Ref so the rAF callback always reads the latest currentTime without stale closure.
+  const currentTimeRef = useRef(currentTime);
+  currentTimeRef.current = currentTime;
+  // Ref for the export panel section (used to scroll it into view).
+  const exportPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      if (rafIdRef.current !== null) {
+        if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      lastFrameTimeRef.current = null;
+      return;
+    }
+
+    if (typeof requestAnimationFrame !== "function") return;
+
+    const duration = project?.duration ?? 0;
+
+    function tick(timestamp: number) {
+      if (!mountedRef.current) return;
+
+      if (lastFrameTimeRef.current === null) {
+        lastFrameTimeRef.current = timestamp;
+      }
+      const delta = (timestamp - lastFrameTimeRef.current) / 1000;
+      lastFrameTimeRef.current = timestamp;
+
+      const next = Math.min(currentTimeRef.current + delta, duration);
+      setCurrentTime(next);
+
+      if (next >= duration) {
+        setIsPlaying(false);
+        lastFrameTimeRef.current = null;
+        return;
+      }
+
+      rafIdRef.current = requestAnimationFrame(tick);
+    }
+
+    rafIdRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (rafIdRef.current !== null) {
+        if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      lastFrameTimeRef.current = null;
+    };
+  }, [isPlaying, project?.duration]);
 
   if (!loadResult.ok) {
     return (
@@ -394,10 +468,33 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             <span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", margin: -1, padding: 0, border: 0 }}>Settings</span>
           </button>
           <span className="tk-vr" />
-          <button type="button" className="tk-btn" onClick={() => setActiveTab("chat")} title="Preview the demo in the chat assistant">
+          <button
+            type="button"
+            className="tk-btn"
+            aria-label="Preview (play)"
+            title="Preview (play)"
+            onClick={() => {
+              if (project && currentTime >= project.duration) setCurrentTime(0);
+              setIsPlaying(true);
+            }}
+          >
             Preview
           </button>
-          <button type="button" className="tk-btn tk-btn-accent" onClick={() => setActiveTab("zoom")} title="Open the export panel">
+          <button
+            type="button"
+            className="tk-btn tk-btn-accent"
+            aria-label="Export"
+            title="Open the export panel"
+            onClick={() => {
+              setExportOpen(true);
+              // Scroll export panel into view after state update.
+              setTimeout(() => {
+                if (exportPanelRef.current && typeof exportPanelRef.current.scrollIntoView === "function") {
+                  exportPanelRef.current.scrollIntoView({ block: "nearest" });
+                }
+              }, 0);
+            }}
+          >
             Export
           </button>
         </div>
@@ -531,8 +628,19 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             >
               <PrevIcon />
             </button>
-            <button type="button" className="tk-play" aria-label="Play" title="Play from the start" onClick={() => setCurrentTime(0)}>
-              <PlayIcon />
+            <button
+              type="button"
+              className="tk-play"
+              aria-label={isPlaying ? "Pause" : "Play"}
+              title={isPlaying ? "Pause" : "Play"}
+              onClick={() => {
+                if (!isPlaying && project && currentTime >= project.duration) {
+                  setCurrentTime(0);
+                }
+                setIsPlaying((prev) => !prev);
+              }}
+            >
+              {isPlaying ? <PauseIcon /> : <PlayIcon />}
             </button>
             <button
               type="button"
@@ -676,6 +784,8 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
         Kept reachable + visually quiet in a collapsible footer; full placement is refined in PB-007/008.
       */}
       <details
+        open={exportOpen}
+        onToggle={(e) => setExportOpen((e.currentTarget as HTMLDetailsElement).open)}
         style={{
           borderTop: "1px solid var(--tk-border)",
           background: "var(--tk-app-bg)",
@@ -693,7 +803,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
         >
           Project file · save, load &amp; export
         </summary>
-        <div style={{ display: "grid", gap: 12, padding: "0 14px 14px" }}>
+        <div ref={exportPanelRef} style={{ display: "grid", gap: 12, padding: "0 14px 14px" }}>
           <ProjectSaveLoadControls project={project} onProjectLoaded={handleProjectLoaded} />
           <ProjectExportPanel project={displayProject} />
         </div>
