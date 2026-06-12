@@ -38,6 +38,15 @@ function snapshot(record: JobRecord): ApiGenerationJob {
   return ApiGenerationJobSchema.parse(job);
 }
 
+function isTerminalStatus(status: ApiGenerationJobStatus) {
+  return status === "completed" || status === "failed";
+}
+
+function hasValidSnapshotDatetime(record: JobRecord, updatedAt: string) {
+  const { outputRoot: _outputRoot, ...job } = { ...record, updatedAt };
+  return ApiGenerationJobSchema.safeParse(job).success;
+}
+
 export function createJobStore() {
   const records = new Map<string, JobRecord>();
 
@@ -52,8 +61,9 @@ export function createJobStore() {
         progressEvents: [],
         outputRoot: input.outputRoot,
       };
+      const created = snapshot(record);
       records.set(input.id, record);
-      return snapshot(record);
+      return created;
     },
 
     getRecord(id: string) {
@@ -70,10 +80,12 @@ export function createJobStore() {
       if (record === undefined) return;
 
       record.progressEvents.push(event);
-      if (isNonTerminalStatus(event.status)) {
+      if (!isTerminalStatus(record.status) && isNonTerminalStatus(event.status)) {
         record.status = event.status;
       }
-      record.updatedAt = event.time;
+      if (hasValidSnapshotDatetime(record, event.time)) {
+        record.updatedAt = event.time;
+      }
     },
 
     complete(id: string, result: ApiGenerationResult, now: string) {

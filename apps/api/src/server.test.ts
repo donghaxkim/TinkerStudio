@@ -259,6 +259,20 @@ describe("job store", () => {
     })).toThrow();
   });
 
+  it("does not persist invalid records when create validation fails", () => {
+    const store = createJobStore();
+
+    expect(() => store.create({
+      id: "job-invalid",
+      request: { ...request, renderer: "playwright" },
+      outputRoot: "/tmp/job-invalid",
+      now: "2026-06-11T00:00:00.000Z",
+    })).toThrow();
+
+    expect(store.getRecord("job-invalid")).toBeUndefined();
+    expect(store.getSnapshot("job-invalid")).toBeUndefined();
+  });
+
   it("ignores terminal progress statuses until complete or fail records terminal payloads", () => {
     for (const status of ["completed", "failed"] as const) {
       const store = createJobStore();
@@ -280,5 +294,48 @@ describe("job store", () => {
 
       expect(store.getSnapshot(id)?.status).toBe("running");
     }
+  });
+
+  it("keeps completed jobs terminal after later progress events", () => {
+    const store = createJobStore();
+    store.create({
+      id: "job-completed-terminal",
+      request: { ...request, id: "job-completed-terminal" },
+      outputRoot: "/tmp/job-completed-terminal",
+      now: "2026-06-11T00:00:00.000Z",
+    });
+    store.complete("job-completed-terminal", { artifacts: [] }, "2026-06-11T00:00:02.000Z");
+
+    store.appendProgress("job-completed-terminal", {
+      jobId: "job-completed-terminal",
+      status: "running",
+      message: "Late progress event",
+      time: "2026-06-11T00:00:03.000Z",
+    });
+
+    const snapshot = store.getSnapshot("job-completed-terminal");
+    expect(snapshot?.status).toBe("completed");
+    expect(snapshot?.result).toEqual({ artifacts: [] });
+  });
+
+  it("keeps the previous updatedAt for progress events without datetime times", () => {
+    const store = createJobStore();
+    store.create({
+      id: "job-invalid-progress-time",
+      request: { ...request, id: "job-invalid-progress-time" },
+      outputRoot: "/tmp/job-invalid-progress-time",
+      now: "2026-06-11T00:00:00.000Z",
+    });
+
+    store.appendProgress("job-invalid-progress-time", {
+      jobId: "job-invalid-progress-time",
+      status: "running",
+      message: "Progress with non-datetime time",
+      time: "not-a-datetime",
+    });
+
+    const snapshot = store.getSnapshot("job-invalid-progress-time");
+    expect(snapshot?.status).toBe("running");
+    expect(snapshot?.updatedAt).toBe("2026-06-11T00:00:00.000Z");
   });
 });
