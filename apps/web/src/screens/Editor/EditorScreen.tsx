@@ -203,10 +203,45 @@ function MaskIcon() {
   );
 }
 
+// ─── persistence state ────────────────────────────────────────────────────────
+
+/**
+ * How the project arrived in the editor and whether it has unsaved local changes.
+ * - origin: the last "clean" event that set the project
+ * - dirty: true whenever the project has been mutated since that clean event
+ */
+export type PersistenceOrigin = "generated" | "sample" | "imported" | "saved" | "downloaded";
+
+export type PersistenceState = {
+  origin: PersistenceOrigin;
+  dirty: boolean;
+};
+
+function persistenceLabel({ origin, dirty }: PersistenceState): string {
+  if (dirty) return "Unsaved changes";
+  switch (origin) {
+    case "saved":
+      return "Saved locally";
+    case "downloaded":
+      return "Downloaded";
+    case "imported":
+      return "Loaded from file";
+    case "sample":
+      return "Sample project";
+    case "generated":
+    default:
+      return "Generated";
+  }
+}
+
 // ─── types ──────────────────────────────────────────────────────────────────
+
+export type ProjectOrigin = "generated" | "sample";
 
 type EditorScreenProps = {
   initialProject?: DemoProject;
+  /** How the project was created — affects the initial persistence state label. */
+  projectOrigin?: ProjectOrigin;
   onOpenSettings?: () => void;
   onExitToCreate?: () => void;
 };
@@ -264,7 +299,7 @@ function EditorMessage({ title, children }: { title: string; children: ReactNode
 
 // ─── component ────────────────────────────────────────────────────────────────
 
-export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }: EditorScreenProps = {}) {
+export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, onExitToCreate }: EditorScreenProps = {}) {
   const loadResult = useMemo(() => (initialProject ? { ok: true as const, project: initialProject } : loadSampleProject()), [initialProject]);
   const [project, setProject] = useState<DemoProject | undefined>(loadResult.ok ? loadResult.project : undefined);
   const [previewState, setPreviewState] = useState<PreviewState | undefined>();
@@ -276,6 +311,15 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
   const [isPlaying, setIsPlaying] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [toolRailOpen, setToolRailOpen] = useState(true);
+
+  // ── Persistence state ────────────────────────────────────────────────────
+  // Derives the initial origin from the prop (generated vs sample).
+  // Falls back to "generated" for backward-compatibility when prop is absent.
+  const initialOrigin: PersistenceOrigin = projectOrigin ?? (initialProject ? "generated" : "sample");
+  const [persistenceState, setPersistenceState] = useState<PersistenceState>({
+    origin: initialOrigin,
+    dirty: false,
+  });
 
   // Refs for the rAF playback loop.
   const lastFrameTimeRef = useRef<number | null>(null);
@@ -379,6 +423,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
     setHistory(result.history);
     setProject(result.project);
     setPreviewState(undefined);
+    setPersistenceState((ps) => ({ ...ps, dirty: true }));
   }
 
   function handleRedo() {
@@ -386,21 +431,24 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
     setHistory(result.history);
     setProject(result.project);
     setPreviewState(undefined);
+    setPersistenceState((ps) => ({ ...ps, dirty: true }));
   }
 
-  function handleProjectLoaded(loadedProject: DemoProject) {
+  function handleProjectLoaded(loadedProject: DemoProject, origin: PersistenceOrigin) {
     setProject(loadedProject);
     setPreviewState(undefined);
     setHistory(createEditorHistory());
     setCurrentTime(0);
     setSelectedRange({ start: 0, end: Math.min(loadedProject.duration, 6) });
     setSelectedEntity(undefined);
+    setPersistenceState({ origin, dirty: false });
   }
 
   function handleManualApply(updatedProject: DemoProject, command: EditorCommand) {
     setProject(updatedProject);
     setPreviewState(undefined);
     setHistory((current) => pushEditorCommand(current, command));
+    setPersistenceState((ps) => ({ ...ps, dirty: true }));
   }
 
   // PB-006: apply a new `cursor` display-settings object as a single undoable command.
@@ -429,6 +477,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
     setProject(afterProject);
     setPreviewState(undefined);
     setHistory((current) => pushEditorCommand(current, command));
+    setPersistenceState((ps) => ({ ...ps, dirty: true }));
   }
 
   // Selecting a timeline item maps its row-item kind → an editor entity type and
@@ -455,6 +504,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
     setPreviewState(undefined);
     setHistory((current) => pushEditorCommand(current, result.command));
     setSelectedEntity(undefined);
+    setPersistenceState((ps) => ({ ...ps, dirty: true }));
   }
 
   const canDeleteSelection = selectedEntity?.type === "zoom";
@@ -468,6 +518,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
     setProject(updatedProject);
     setPreviewState(undefined);
     setHistory((current) => pushEditorCommand(current, command));
+    setPersistenceState((ps) => ({ ...ps, dirty: true }));
   }
 
   return (
@@ -529,7 +580,16 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
           >
             {project.title}
           </span>
-          <span style={{ fontSize: 11.5, color: "var(--tk-text-ter)" }}>Saved</span>
+          <span
+            aria-label="Persistence status"
+            style={{
+              fontSize: 11.5,
+              color: persistenceState.dirty ? "var(--tk-accent)" : "var(--tk-text-ter)",
+              fontWeight: persistenceState.dirty ? 600 : 400,
+            }}
+          >
+            {persistenceLabel(persistenceState)}
+          </span>
         </div>
 
         {/* The h1 carries the project title for navigation/identity (visually flush in the bar). */}
@@ -901,7 +961,13 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
           Project file · save, load &amp; export
         </summary>
         <div ref={exportPanelRef} style={{ display: "grid", gap: 12, padding: "0 14px 14px" }}>
-          <ProjectSaveLoadControls project={project} onProjectLoaded={handleProjectLoaded} />
+          <ProjectSaveLoadControls
+            project={project}
+            dirty={persistenceState.dirty}
+            onProjectLoaded={(loadedProject, origin) => handleProjectLoaded(loadedProject, origin)}
+            onSaved={() => setPersistenceState({ origin: "saved", dirty: false })}
+            onDownloaded={() => setPersistenceState({ origin: "downloaded", dirty: false })}
+          />
           <ProjectExportPanel project={displayProject} />
         </div>
       </details>

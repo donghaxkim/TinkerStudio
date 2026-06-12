@@ -6,16 +6,31 @@ import {
   loadProjectFromStorage,
   saveProjectToStorage,
 } from "../../lib/projectStorage.js";
+import type { PersistenceOrigin } from "./EditorScreen.js";
 
 export type ProjectSaveLoadControlsProps = {
   project: DemoProject;
-  onProjectLoaded: (project: DemoProject) => void;
+  /** True when the project has unsaved edits — triggers a confirm before replace. */
+  dirty?: boolean;
+  onProjectLoaded: (project: DemoProject, origin: PersistenceOrigin) => void;
+  /** Called after a successful save to storage. */
+  onSaved?: () => void;
+  /** Called after a successful download. */
+  onDownloaded?: () => void;
 };
 
 type ProjectPersistenceStatus =
   | { kind: "idle" }
   | { kind: "success"; message: string }
   | { kind: "error"; error: ProjectPersistenceError };
+
+/**
+ * A pending "replace" action that is waiting for the user to confirm when dirty=true.
+ * Stores the project and origin so the action can proceed after confirmation.
+ */
+type PendingReplace =
+  | { kind: "storage"; project: DemoProject; origin: PersistenceOrigin }
+  | { kind: "file"; project: DemoProject; origin: PersistenceOrigin };
 
 function ErrorList({ error }: { error: ProjectPersistenceError }) {
   return (
@@ -57,8 +72,9 @@ function projectFileTooLargeError(): ProjectPersistenceError {
   };
 }
 
-export function ProjectSaveLoadControls({ project, onProjectLoaded }: ProjectSaveLoadControlsProps) {
+export function ProjectSaveLoadControls({ project, dirty = false, onProjectLoaded, onSaved, onDownloaded }: ProjectSaveLoadControlsProps) {
   const [status, setStatus] = useState<ProjectPersistenceStatus>({ kind: "idle" });
+  const [pendingReplace, setPendingReplace] = useState<PendingReplace | undefined>();
   const download = useMemo(() => createProjectJsonDownload(project), [project]);
 
   function saveProject() {
@@ -69,9 +85,11 @@ export function ProjectSaveLoadControls({ project, onProjectLoaded }: ProjectSav
       return;
     }
 
+    onSaved?.();
     setStatus({ kind: "success", message: "Project saved to browser storage." });
   }
 
+  /** Attempt to load from storage — if dirty, show the inline confirm first. */
   function loadSavedProject() {
     const result = loadProjectFromStorage();
 
@@ -80,8 +98,12 @@ export function ProjectSaveLoadControls({ project, onProjectLoaded }: ProjectSav
       return;
     }
 
-    onProjectLoaded(result.project);
-    setStatus({ kind: "success", message: "Project loaded from browser storage." });
+    if (dirty) {
+      setPendingReplace({ kind: "storage", project: result.project, origin: "saved" });
+      return;
+    }
+
+    commitReplace(result.project, "saved", "Project loaded from browser storage.");
   }
 
   async function loadProjectFile(event: ChangeEvent<HTMLInputElement>) {
@@ -111,8 +133,32 @@ export function ProjectSaveLoadControls({ project, onProjectLoaded }: ProjectSav
       return;
     }
 
-    onProjectLoaded(result.project);
-    setStatus({ kind: "success", message: "Project loaded from JSON file." });
+    if (dirty) {
+      setPendingReplace({ kind: "file", project: result.project, origin: "imported" });
+      return;
+    }
+
+    commitReplace(result.project, "imported", "Project loaded from JSON file.");
+  }
+
+  function commitReplace(loaded: DemoProject, origin: PersistenceOrigin, message: string) {
+    onProjectLoaded(loaded, origin);
+    setPendingReplace(undefined);
+    setStatus({ kind: "success", message });
+  }
+
+  function handleConfirmReplace() {
+    if (!pendingReplace) return;
+    const message =
+      pendingReplace.kind === "storage"
+        ? "Project loaded from browser storage."
+        : "Project loaded from JSON file.";
+    commitReplace(pendingReplace.project, pendingReplace.origin, message);
+  }
+
+  function handleCancelReplace() {
+    setPendingReplace(undefined);
+    setStatus({ kind: "idle" });
   }
 
   return (
@@ -146,6 +192,7 @@ export function ProjectSaveLoadControls({ project, onProjectLoaded }: ProjectSav
             download={download.filename}
             href={`data:${download.mimeType};charset=utf-8,${encodeURIComponent(download.contents)}`}
             style={{ textDecoration: "none" }}
+            onClick={() => onDownloaded?.()}
           >
             Download JSON
           </a>
@@ -155,6 +202,36 @@ export function ProjectSaveLoadControls({ project, onProjectLoaded }: ProjectSav
           <input type="file" accept="application/json,.json" onChange={loadProjectFile} style={{ display: "none" }} />
         </label>
       </div>
+
+      {/* Inline warn-before-replace confirm — no window.confirm so it is testable */}
+      {pendingReplace ? (
+        <div
+          role="alert"
+          aria-label="Replace project confirmation"
+          style={{
+            padding: 12,
+            borderRadius: "var(--tk-radius-md)",
+            border: "1px solid var(--tk-accent-line)",
+            background: "var(--tk-accent-soft)",
+            color: "var(--tk-text)",
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>You have unsaved changes — replace anyway?</p>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--tk-text-sec)" }}>
+            The current project will be replaced and all unsaved edits will be lost.
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="tk-btn tk-btn-accent" onClick={handleConfirmReplace}>
+              Replace
+            </button>
+            <button type="button" className="tk-btn" onClick={handleCancelReplace}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {status.kind === "success" ? <p style={{ margin: 0, color: "var(--tk-ok)", fontSize: 12.5 }}>{status.message}</p> : null}
       {status.kind === "error" ? <ErrorList error={status.error} /> : null}

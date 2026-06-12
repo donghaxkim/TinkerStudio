@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CursorEvent, DemoProject } from "@tinker/project-schema";
+import { serializeDemoProject } from "@tinker/editor";
 import { sampleProject } from "../../../../../packages/editor/src/test/sampleProject.js";
+import { LOCAL_PROJECT_STORAGE_KEY, saveProjectToStorage } from "../../lib/projectStorage.js";
 import { EditorScreen } from "./EditorScreen.js";
 
 function dwellProject(): DemoProject {
@@ -425,6 +427,201 @@ describe("EditorScreen", () => {
       expect(screen.getByRole("button", { name: "Load saved project" })).toBeInTheDocument();
       // The Export section (aria-label="Export") must be reachable.
       expect(screen.getAllByLabelText("Export").some((el) => el.tagName === "SECTION")).toBe(true);
+    });
+  });
+
+  // ── PB-007: persistence state, dirty tracking, warn-before-replace ────────
+
+  describe("persistence state display", () => {
+    function getPersistenceStatus() {
+      return screen.getByLabelText("Persistence status");
+    }
+
+    it("shows 'Generated' when projectOrigin='generated' and project is clean", () => {
+      render(<EditorScreen initialProject={sampleProject} projectOrigin="generated" />);
+      expect(getPersistenceStatus()).toHaveTextContent("Generated");
+    });
+
+    it("shows 'Sample project' when projectOrigin='sample' and project is clean", () => {
+      render(<EditorScreen initialProject={sampleProject} projectOrigin="sample" />);
+      expect(getPersistenceStatus()).toHaveTextContent("Sample project");
+    });
+
+    it("defaults to 'Generated' when projectOrigin prop is absent and initialProject is provided", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+      expect(getPersistenceStatus()).toHaveTextContent("Generated");
+    });
+  });
+
+  describe("dirty tracking", () => {
+    function getPersistenceStatus() {
+      return screen.getByLabelText("Persistence status");
+    }
+
+    it("becomes dirty after accepting an auto-zoom suggestion", () => {
+      render(<EditorScreen initialProject={dwellProject()} />);
+      expect(getPersistenceStatus()).toHaveTextContent("Generated");
+
+      fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
+
+      expect(getPersistenceStatus()).toHaveTextContent("Unsaved changes");
+    });
+
+    it("becomes dirty after a manual edit (delete zoom)", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      // Select and delete the zoom — that is a manual edit
+      fireEvent.click(screen.getByRole("button", { name: "zoom: Zoom 1" }));
+      fireEvent.click(screen.getByRole("button", { name: /Delete selection/i }));
+
+      expect(getPersistenceStatus()).toHaveTextContent("Unsaved changes");
+    });
+
+    it("becomes dirty after an undo", () => {
+      render(<EditorScreen initialProject={dwellProject()} />);
+
+      // Create something to undo.
+      fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
+
+      // Save clears dirty
+      fireEvent.click(screen.getByRole("button", { name: "Save project" }));
+      expect(getPersistenceStatus()).toHaveTextContent("Saved locally");
+
+      // Undo makes it dirty again
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+      expect(getPersistenceStatus()).toHaveTextContent("Unsaved changes");
+    });
+
+    it("becomes dirty after a redo", () => {
+      render(<EditorScreen initialProject={dwellProject()} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "Save project" }));
+      expect(getPersistenceStatus()).toHaveTextContent("Saved locally");
+
+      fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+      expect(getPersistenceStatus()).toHaveTextContent("Unsaved changes");
+    });
+
+    it("shows 'Saved locally' and clears dirty after saving", () => {
+      render(<EditorScreen initialProject={dwellProject()} />);
+
+      // Make it dirty
+      fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
+      expect(getPersistenceStatus()).toHaveTextContent("Unsaved changes");
+
+      // Save
+      fireEvent.click(screen.getByRole("button", { name: "Save project" }));
+      expect(getPersistenceStatus()).toHaveTextContent("Saved locally");
+    });
+  });
+
+  describe("history reset on project replacement (import path)", () => {
+    beforeEach(() => {
+      window.localStorage.clear();
+    });
+
+    it("resets undo/redo history when a project is loaded from storage (clean project)", () => {
+      // Start with sampleProject (clean, no history), create history via suggest+accept,
+      // then save the project so it's no longer dirty, then load from storage.
+      render(<EditorScreen initialProject={dwellProject()} />);
+
+      // Create undo history
+      fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
+      expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
+
+      // Save the current project (clears dirty) so "Load saved project" doesn't trigger confirm
+      fireEvent.click(screen.getByRole("button", { name: "Save project" }));
+      expect(screen.getByLabelText("Persistence status")).toHaveTextContent("Saved locally");
+
+      // Now load a different project from storage (the one we just saved);
+      // since dirty=false, it loads immediately
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+
+      // History must be reset
+      expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
+    });
+
+    it("clears dirty and sets origin='saved' after loading from storage (via confirm)", () => {
+      render(<EditorScreen initialProject={dwellProject()} projectOrigin="generated" />);
+      const status = screen.getByLabelText("Persistence status");
+
+      // Make dirty
+      fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
+      expect(status).toHaveTextContent("Unsaved changes");
+
+      // Store a project and then try to load — dirty triggers confirm
+      saveProjectToStorage(sampleProject);
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+      expect(screen.getByRole("alert", { name: "Replace project confirmation" })).toBeInTheDocument();
+
+      // Confirm the replace
+      fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+
+      expect(status).toHaveTextContent("Saved locally");
+    });
+  });
+
+  describe("warn-before-replace in EditorScreen (dirty + import)", () => {
+    beforeEach(() => {
+      window.localStorage.clear();
+    });
+
+    it("shows inline confirm when loading from storage while dirty", () => {
+      render(<EditorScreen initialProject={dwellProject()} />);
+
+      // Make dirty
+      fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
+
+      // Attempt to load without saving
+      saveProjectToStorage(sampleProject);
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+
+      expect(screen.getByRole("alert", { name: "Replace project confirmation" })).toBeInTheDocument();
+      // Project is not yet replaced — undo still enabled
+      expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
+    });
+
+    it("Cancel preserves the dirty project", () => {
+      render(<EditorScreen initialProject={dwellProject()} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
+      expect(screen.getByLabelText("Persistence status")).toHaveTextContent("Unsaved changes");
+
+      saveProjectToStorage(sampleProject);
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Persistence status")).toHaveTextContent("Unsaved changes");
+      // Undo still works — project was not replaced
+      expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
+    });
+
+    it("Replace confirmed replaces project, resets history, clears dirty", () => {
+      render(<EditorScreen initialProject={dwellProject()} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
+
+      saveProjectToStorage(sampleProject);
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+      fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+
+      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Persistence status")).toHaveTextContent("Saved locally");
+      expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
     });
   });
 });

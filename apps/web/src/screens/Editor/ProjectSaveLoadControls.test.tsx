@@ -1,17 +1,29 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DemoProject } from "@tinker/project-schema";
 import { MAX_DEMO_PROJECT_JSON_BYTES, serializeDemoProject } from "@tinker/editor";
 import { loadSampleProject } from "../../fixtures/loadSampleProject.js";
 import { LOCAL_PROJECT_STORAGE_KEY, saveProjectToStorage } from "../../lib/projectStorage.js";
+import type { PersistenceOrigin } from "./EditorScreen.js";
 import { ProjectSaveLoadControls } from "./ProjectSaveLoadControls.js";
 
 const loadedSample = loadSampleProject();
 if (!loadedSample.ok) throw new Error("sample project fixture must be valid");
 const sampleProject = loadedSample.project;
 
-function renderControls(onProjectLoaded: (project: DemoProject) => void = () => undefined) {
-  render(<ProjectSaveLoadControls project={sampleProject} onProjectLoaded={onProjectLoaded} />);
+function renderControls(
+  onProjectLoaded: (project: DemoProject, origin: PersistenceOrigin) => void = () => undefined,
+  options: { dirty?: boolean; onSaved?: () => void; onDownloaded?: () => void } = {},
+) {
+  render(
+    <ProjectSaveLoadControls
+      project={sampleProject}
+      onProjectLoaded={onProjectLoaded}
+      dirty={options.dirty}
+      onSaved={options.onSaved}
+      onDownloaded={options.onDownloaded}
+    />,
+  );
 }
 
 describe("ProjectSaveLoadControls", () => {
@@ -91,5 +103,195 @@ describe("ProjectSaveLoadControls", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Project JSON is too large");
     expect(loadedIds).toEqual([]);
+  });
+
+  // ── New tests for PB-007 ──────────────────────────────────────────────────
+
+  describe("onSaved / onDownloaded callbacks", () => {
+    it("calls onSaved after a successful save to storage", () => {
+      const onSaved = vi.fn();
+      renderControls(undefined, { onSaved });
+
+      fireEvent.click(screen.getByRole("button", { name: "Save project" }));
+
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call onSaved when storage is empty (no save made)", () => {
+      const onSaved = vi.fn();
+      renderControls(undefined, { onSaved });
+      // No "Save project" click — onSaved must not fire.
+      expect(onSaved).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("origin passed to onProjectLoaded", () => {
+    it("passes origin='saved' when loading from browser storage", () => {
+      const loadedOrigins: PersistenceOrigin[] = [];
+      saveProjectToStorage(sampleProject);
+      renderControls((_project, origin) => loadedOrigins.push(origin));
+
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+
+      expect(loadedOrigins).toEqual(["saved"]);
+    });
+
+    it("passes origin='imported' when loading from a JSON file", async () => {
+      const loadedOrigins: PersistenceOrigin[] = [];
+      const serialized = serializeDemoProject(sampleProject);
+      if (!serialized.ok) throw new Error("expected sample serialization success");
+      renderControls((_project, origin) => loadedOrigins.push(origin));
+
+      fireEvent.change(screen.getByLabelText("Load project JSON file"), {
+        target: { files: [new File([serialized.json], "project.json", { type: "application/json" })] },
+      });
+
+      await screen.findByText("Project loaded from JSON file.");
+      expect(loadedOrigins).toEqual(["imported"]);
+    });
+  });
+
+  describe("invalid JSON and schema errors — no replacement", () => {
+    it("shows an error for invalid JSON without calling onProjectLoaded", async () => {
+      const onProjectLoaded = vi.fn();
+      renderControls(onProjectLoaded);
+
+      fireEvent.change(screen.getByLabelText("Load project JSON file"), {
+        target: { files: [new File(["{bad json"], "bad.json", { type: "application/json" })] },
+      });
+
+      await waitFor(() => expect(screen.getByText("Project JSON could not be parsed")).toBeInTheDocument());
+      expect(onProjectLoaded).not.toHaveBeenCalled();
+    });
+
+    it("shows schema validation errors without calling onProjectLoaded", async () => {
+      const onProjectLoaded = vi.fn();
+      const serialized = serializeDemoProject({ ...sampleProject, duration: -1 } as DemoProject);
+      const badJson = serialized.ok ? serialized.json : JSON.stringify({ ...sampleProject, duration: -1 });
+      renderControls(onProjectLoaded);
+
+      fireEvent.change(screen.getByLabelText("Load project JSON file"), {
+        target: { files: [new File([badJson], "invalid.json", { type: "application/json" })] },
+      });
+
+      await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+      expect(onProjectLoaded).not.toHaveBeenCalled();
+    });
+
+    it("shows validation errors for invalid stored project without calling onProjectLoaded", () => {
+      const onProjectLoaded = vi.fn();
+      window.localStorage.setItem(LOCAL_PROJECT_STORAGE_KEY, JSON.stringify({ ...sampleProject, duration: -1 }));
+      renderControls(onProjectLoaded);
+
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(onProjectLoaded).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("warn-before-replace inline confirm (dirty=true)", () => {
+    it("shows an inline confirm when loading from storage with dirty=true", () => {
+      const onProjectLoaded = vi.fn();
+      saveProjectToStorage(sampleProject);
+      renderControls(onProjectLoaded, { dirty: true });
+
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+
+      expect(screen.getByRole("alert", { name: "Replace project confirmation" })).toBeInTheDocument();
+      expect(screen.getByText(/You have unsaved changes — replace anyway\?/i)).toBeInTheDocument();
+      // onProjectLoaded has NOT been called yet
+      expect(onProjectLoaded).not.toHaveBeenCalled();
+    });
+
+    it("Cancel preserves the current project and hides the confirm", () => {
+      const onProjectLoaded = vi.fn();
+      saveProjectToStorage(sampleProject);
+      renderControls(onProjectLoaded, { dirty: true });
+
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+      expect(screen.getByRole("alert", { name: "Replace project confirmation" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(onProjectLoaded).not.toHaveBeenCalled();
+    });
+
+    it("Replace proceeds after confirmation and calls onProjectLoaded with correct origin", () => {
+      const loadedOrigins: PersistenceOrigin[] = [];
+      const onProjectLoaded = vi.fn((_p: DemoProject, origin: PersistenceOrigin) => loadedOrigins.push(origin));
+      saveProjectToStorage(sampleProject);
+      renderControls(onProjectLoaded, { dirty: true });
+
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+      fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+
+      expect(onProjectLoaded).toHaveBeenCalledTimes(1);
+      expect(loadedOrigins).toEqual(["saved"]);
+      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(screen.getByText("Project loaded from browser storage.")).toBeInTheDocument();
+    });
+
+    it("shows inline confirm when importing a JSON file while dirty=true", async () => {
+      const onProjectLoaded = vi.fn();
+      const serialized = serializeDemoProject(sampleProject);
+      if (!serialized.ok) throw new Error("expected sample serialization success");
+      renderControls(onProjectLoaded, { dirty: true });
+
+      fireEvent.change(screen.getByLabelText("Load project JSON file"), {
+        target: { files: [new File([serialized.json], "project.json", { type: "application/json" })] },
+      });
+
+      expect(await screen.findByRole("alert", { name: "Replace project confirmation" })).toBeInTheDocument();
+      expect(onProjectLoaded).not.toHaveBeenCalled();
+    });
+
+    it("file import: Cancel preserves the project", async () => {
+      const onProjectLoaded = vi.fn();
+      const serialized = serializeDemoProject(sampleProject);
+      if (!serialized.ok) throw new Error("expected sample serialization success");
+      renderControls(onProjectLoaded, { dirty: true });
+
+      fireEvent.change(screen.getByLabelText("Load project JSON file"), {
+        target: { files: [new File([serialized.json], "project.json", { type: "application/json" })] },
+      });
+
+      await screen.findByRole("alert", { name: "Replace project confirmation" });
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(onProjectLoaded).not.toHaveBeenCalled();
+    });
+
+    it("file import: Replace confirmed replaces and passes origin='imported'", async () => {
+      const loadedOrigins: PersistenceOrigin[] = [];
+      const onProjectLoaded = vi.fn((_p: DemoProject, origin: PersistenceOrigin) => loadedOrigins.push(origin));
+      const serialized = serializeDemoProject(sampleProject);
+      if (!serialized.ok) throw new Error("expected sample serialization success");
+      renderControls(onProjectLoaded, { dirty: true });
+
+      fireEvent.change(screen.getByLabelText("Load project JSON file"), {
+        target: { files: [new File([serialized.json], "project.json", { type: "application/json" })] },
+      });
+
+      await screen.findByRole("alert", { name: "Replace project confirmation" });
+      fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+
+      expect(onProjectLoaded).toHaveBeenCalledTimes(1);
+      expect(loadedOrigins).toEqual(["imported"]);
+      expect(screen.getByText("Project loaded from JSON file.")).toBeInTheDocument();
+    });
+
+    it("does NOT show confirm when dirty=false (loads immediately)", () => {
+      const onProjectLoaded = vi.fn();
+      saveProjectToStorage(sampleProject);
+      renderControls(onProjectLoaded, { dirty: false });
+
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+
+      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(onProjectLoaded).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -3,7 +3,7 @@ import type { DemoProject } from "@tinker/project-schema";
 import { createMockGenerationClient } from "./lib/mockGenerationClient.js";
 import { loadSampleProject } from "./fixtures/loadSampleProject.js";
 import { CreateDemoScreen } from "./screens/CreateDemo/CreateDemoScreen.js";
-import { EditorScreen } from "./screens/Editor/EditorScreen.js";
+import { EditorScreen, type ProjectOrigin } from "./screens/Editor/EditorScreen.js";
 import { SettingsScreen } from "./screens/Settings/SettingsScreen.js";
 
 // Route before settings (so Settings knows where to return)
@@ -13,6 +13,7 @@ type Route = "create" | "editor" | "settings";
 type AppState = {
   route: Route;
   project: DemoProject | undefined;
+  projectOrigin: ProjectOrigin;
   preSettingsRoute: PreSettingsRoute;
 };
 
@@ -22,17 +23,18 @@ export function App() {
   const [state, setState] = useState<AppState>({
     route: "create",
     project: undefined,
+    projectOrigin: "generated",
     preSettingsRoute: "create",
   });
 
   function handleProjectGenerated(project: DemoProject) {
-    setState((prev) => ({ ...prev, route: "editor", project }));
+    setState((prev) => ({ ...prev, route: "editor", project, projectOrigin: "generated" }));
   }
 
   function handleUseSampleProject() {
     const result = loadSampleProject();
     if (result.ok) {
-      setState((prev) => ({ ...prev, route: "editor", project: result.project }));
+      setState((prev) => ({ ...prev, route: "editor", project: result.project, projectOrigin: "sample" }));
     }
   }
 
@@ -63,6 +65,7 @@ export function App() {
     return (
       <EditorScreen
         initialProject={state.project}
+        projectOrigin={state.projectOrigin}
         onOpenSettings={handleOpenSettings}
         onExitToCreate={handleExitToCreate}
       />
