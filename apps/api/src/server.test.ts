@@ -458,6 +458,136 @@ describe("job routes", () => {
       await server.close();
     }
   });
+
+  it("rejects completed job files that were not recorded as artifacts", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-unlisted-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>composition</html>");
+        await writeFile(join(outputRoot, "hyperframes", "secret.txt"), "not listed");
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [join(outputRoot, "hyperframes", "index.html")],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+      await completed.promise;
+      await waitForJobStatus(server, "job-test", "completed");
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/secret.txt",
+      });
+
+      expect(response.statusCode).toBe(404);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects existing artifact files while a job is still running", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-running-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const running = deferred<void>();
+    const unblock = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (_rawRequest, options): Promise<ManualFixtureGenerationResult> => {
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>partial</html>");
+        options?.onProgress?.(runningEvent);
+        running.resolve();
+        await unblock.promise;
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [join(outputRoot, "hyperframes", "index.html")],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+      await running.promise;
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+      });
+
+      expect(response.statusCode).toBe(404);
+    } finally {
+      unblock.resolve();
+      await server.close();
+    }
+  });
+
+  it("rejects existing artifact files after a job fails", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-failed-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const wroteFile = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async () => {
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>failed</html>");
+        wroteFile.resolve();
+        throw new Error("generation failed");
+      },
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+      await wroteFile.promise;
+      await waitForJobStatus(server, "job-test", "failed");
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+      });
+
+      expect(response.statusCode).toBe(404);
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 describe("artifact indexing", () => {
@@ -700,6 +830,21 @@ function deferred<T>() {
     reject = innerReject;
   });
   return { promise, resolve, reject };
+}
+
+async function waitForJobStatus(
+  server: Awaited<ReturnType<typeof buildServer>>,
+  id: string,
+  status: "completed" | "failed",
+) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const response = await server.inject({ method: "GET", url: `/api/jobs/${id}` });
+    const snapshot = JSON.parse(response.body) as { status?: string };
+    if (snapshot.status === status) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  throw new Error(`Timed out waiting for ${id} to become ${status}`);
 }
 
 describe("job queue", () => {
