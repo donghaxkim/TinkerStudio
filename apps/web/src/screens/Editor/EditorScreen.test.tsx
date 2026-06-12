@@ -226,6 +226,24 @@ describe("EditorScreen", () => {
       openTab("Cursor");
       expect(screen.getByText(/cursor smoothing and click styling/i)).toBeInTheDocument();
     });
+
+    it("shows only the active tab's panel — inactive panels are hidden, not stacked", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      // Default is the Zoom tab: its content is visible; the other panels' content
+      // exists in the DOM (panels stay mounted) but must NOT be visible.
+      // (getByText finds elements regardless of visibility; toBeVisible respects hidden/display:none.)
+      expect(screen.getByText("Suggest zooms")).toBeVisible();
+      expect(screen.getByText(/per-clip speed ramps/i)).not.toBeVisible();
+      expect(screen.getByText(/cursor smoothing and click styling/i)).not.toBeVisible();
+      expect(screen.getByText(/background and framing controls/i)).not.toBeVisible();
+
+      // Switching to Speed reveals Speed and hides Zoom + the others.
+      openTab("Speed");
+      expect(screen.getByText(/per-clip speed ramps/i)).toBeVisible();
+      expect(screen.getByText("Suggest zooms")).not.toBeVisible();
+      expect(screen.getByText(/cursor smoothing and click styling/i)).not.toBeVisible();
+    });
   });
 
   describe("AI preview banner", () => {

@@ -758,7 +758,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             </div>
 
             {/* Zoom tab — auto-zoom + manual zoom/clip controls */}
-            <div role="tabpanel" id="panel-zoom" aria-labelledby="tab-zoom" hidden={activeTab !== "zoom"} style={{ display: "grid", gap: 12, padding: 14 }}>
+            <div role="tabpanel" id="panel-zoom" aria-labelledby="tab-zoom" hidden={activeTab !== "zoom"} style={{ display: activeTab === "zoom" ? "grid" : "none", gap: 12, padding: 14 }}>
               <EditorAutoZoomPanel
                 project={project}
                 previewSource={previewSource}
@@ -771,7 +771,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             </div>
 
             {/* Speed tab */}
-            <div role="tabpanel" id="panel-speed" aria-labelledby="tab-speed" hidden={activeTab !== "speed"} style={{ display: "block", padding: 14 }}>
+            <div role="tabpanel" id="panel-speed" aria-labelledby="tab-speed" hidden={activeTab !== "speed"} style={{ display: activeTab === "speed" ? "block" : "none", padding: 14 }}>
               <PlaceholderPanel
                 kind="Clip speed"
                 lead="Per-clip speed ramps land in a later step."
@@ -780,7 +780,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             </div>
 
             {/* Cursor tab */}
-            <div role="tabpanel" id="panel-cursor" aria-labelledby="tab-cursor" hidden={activeTab !== "cursor"} style={{ display: "block", padding: 14 }}>
+            <div role="tabpanel" id="panel-cursor" aria-labelledby="tab-cursor" hidden={activeTab !== "cursor"} style={{ display: activeTab === "cursor" ? "block" : "none", padding: 14 }}>
               <PlaceholderPanel
                 kind="Cursor & clicks"
                 lead="Cursor smoothing and click styling arrive in a later step."
@@ -789,7 +789,7 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
             </div>
 
             {/* Frame tab */}
-            <div role="tabpanel" id="panel-frame" aria-labelledby="tab-frame" hidden={activeTab !== "frame"} style={{ display: "block", padding: 14 }}>
+            <div role="tabpanel" id="panel-frame" aria-labelledby="tab-frame" hidden={activeTab !== "frame"} style={{ display: activeTab === "frame" ? "block" : "none", padding: 14 }}>
               <PlaceholderPanel
                 kind="Frame & wallpaper"
                 lead="Background and framing controls arrive in a later step."
