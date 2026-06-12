@@ -8,10 +8,19 @@ export type ProjectLoadPanelProps = {
 export function ProjectLoadPanel({ result }: ProjectLoadPanelProps) {
   if (!result.ok) {
     return (
-      <section aria-label="Project validation errors" style={{ padding: 16, border: "1px solid #7f1d1d", borderRadius: 12, background: "#450a0a" }}>
-        <h2>Invalid DemoProject</h2>
-        <p>{result.error.message}</p>
-        <ul>
+      <section
+        aria-label="Project validation errors"
+        style={{
+          padding: 16,
+          border: "1px solid var(--tk-border)",
+          borderRadius: "var(--tk-radius-lg)",
+          background: "var(--tk-card)",
+          color: "var(--tk-text)",
+        }}
+      >
+        <h2 style={{ margin: "0 0 6px", fontSize: 15 }}>This project could not be validated</h2>
+        <p style={{ margin: "0 0 8px", color: "var(--tk-text-sec)", fontSize: 13 }}>{result.error.message}</p>
+        <ul style={{ margin: 0, paddingLeft: 18, color: "var(--tk-text-sec)", fontSize: 12.5 }}>
           {result.error.issues.map((issue) => (
             <li key={issue}>{issue}</li>
           ))}
@@ -34,13 +43,22 @@ export function ProjectMetadata({ project }: { project: DemoProject }) {
   ];
 
   return (
-    <section aria-label="Project metadata" style={{ padding: 16, border: "1px solid #334155", borderRadius: 12, background: "#0f172a" }}>
-      <h2 style={{ marginTop: 0 }}>DemoProject loaded</h2>
-      <dl style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, margin: 0 }}>
+    <section
+      aria-label="Project metadata"
+      style={{
+        padding: 16,
+        border: "1px solid var(--tk-border)",
+        borderRadius: "var(--tk-radius-lg)",
+        background: "var(--tk-card)",
+        color: "var(--tk-text)",
+      }}
+    >
+      <h2 style={{ marginTop: 0, fontSize: 15 }}>Project details</h2>
+      <dl style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, margin: 0 }}>
         {metadata.map(([label, value]) => (
-          <div key={label} style={{ padding: 12, borderRadius: 10, background: "#111827" }}>
-            <dt style={{ color: "#94a3b8", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</dt>
-            <dd style={{ margin: "4px 0 0", fontWeight: 800 }}>{value}</dd>
+          <div key={label} style={{ padding: 12, borderRadius: "var(--tk-radius-md)", background: "var(--tk-raised)" }}>
+            <dt style={{ color: "var(--tk-text-sec)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</dt>
+            <dd style={{ margin: "4px 0 0", fontWeight: 700 }}>{value}</dd>
           </div>
         ))}
       </dl>

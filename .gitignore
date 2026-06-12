@@ -1,7 +1,6 @@
 node_modules/
 dist/
 generated/
-docs/superpowers/plans/
 .worktrees/
 .DS_Store
 .env
@@ -11,3 +10,12 @@ docs/superpowers/plans/
 # Local per-person agent instructions. Do not commit personal AGENTS.md files.
 AGENTS.md
 agents.md
+
+# Playwright MCP scratch output
+.playwright-mcp/
+
+# Design reference screenshots (scratch, not committed)
+.design-ref/
+
+# Stray Playwright/audit screenshots at repo root (scratch)
+/*.png

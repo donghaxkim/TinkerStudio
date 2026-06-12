@@ -14,10 +14,11 @@ const stageStyle: CSSProperties = {
   width: "100%",
   minHeight: 320,
   overflow: "hidden",
-  borderRadius: 16,
-  border: "1px solid #334155",
-  background: "radial-gradient(circle at 50% 30%, #1e3a8a 0%, #0f172a 55%, #020617 100%)",
+  borderRadius: "var(--tk-radius-lg, 11px)",
+  border: "1px solid var(--tk-border, rgba(20,20,15,0.12))",
+  background: "var(--tk-preview-bg, #10192C)",
   color: "white",
+  boxShadow: "var(--tk-shadow-md, 0 10px 28px rgba(20,20,15,0.09))",
 };
 
 type PreviewPlacement = {
@@ -98,7 +99,7 @@ export function Preview({ project, currentTime }: PreviewProps) {
   const camera = mapCameraToPreview(motion.camera, placement);
 
   useEffect(() => {
-    if (!clip || !videoRef.current) {
+    if (!clip || !videoRef.current || (previewAsset?.ok && previewAsset.kind === "image")) {
       return;
     }
 
@@ -107,14 +108,19 @@ export function Preview({ project, currentTime }: PreviewProps) {
     if (Math.abs(videoRef.current.currentTime - nextTime) > 0.15) {
       videoRef.current.currentTime = nextTime;
     }
-  }, [clip, currentTime]);
+  }, [clip, currentTime, previewAsset]);
+
+  const mediaStyle: CSSProperties = {
+    position: "absolute",
+    left: percent(placement.left),
+    top: percent(placement.top),
+    width: percent(placement.width),
+    height: percent(placement.height),
+    objectFit: "contain",
+  };
 
   return (
     <section aria-label="Preview">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-        <h2 style={{ margin: 0 }}>Preview</h2>
-        <output aria-label="Current preview time">{currentTime.toFixed(1)}s</output>
-      </div>
       <div data-testid="preview-stage" style={{ ...stageStyle, aspectRatio: aspectRatioToCss(project.aspectRatio) }}>
         <div
           data-testid="preview-motion-layer"
@@ -128,27 +134,55 @@ export function Preview({ project, currentTime }: PreviewProps) {
           }}
         >
           {previewAsset?.ok ? (
-            <video
-              ref={videoRef}
-              data-testid="preview-video"
-              src={previewAsset.url}
-              muted
-              controls
+            previewAsset.kind === "image" ? (
+              <img
+                data-testid="preview-image"
+                src={previewAsset.url}
+                alt={asset?.name ?? asset?.id ?? "Preview image"}
+                style={mediaStyle}
+              />
+            ) : (
+              <video
+                ref={videoRef}
+                data-testid="preview-video"
+                src={previewAsset.url}
+                muted
+                style={mediaStyle}
+              />
+            )
+          ) : (
+            <div
+              data-testid="missing-asset-placeholder"
               style={{
                 position: "absolute",
-                left: percent(placement.left),
-                top: percent(placement.top),
-                width: percent(placement.width),
-                height: percent(placement.height),
-                objectFit: "contain",
+                inset: 0,
+                display: "grid",
+                placeItems: "center",
+                padding: 24,
+                textAlign: "center",
               }}
-            />
-          ) : (
-            <div data-testid="missing-asset-placeholder" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: 24, textAlign: "center" }}>
+            >
               <div>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>▣</div>
-                <strong>Preview placeholder</strong>
-                <p style={{ color: "#cbd5e1" }}>
+                <div
+                  style={{
+                    fontSize: 40,
+                    marginBottom: 12,
+                    color: "rgba(255,255,255,0.25)",
+                  }}
+                >
+                  ▣
+                </div>
+                <strong style={{ color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: 600 }}>
+                  Preview placeholder
+                </strong>
+                <p
+                  style={{
+                    color: "rgba(255,255,255,0.45)",
+                    fontSize: 12,
+                    marginTop: 6,
+                    lineHeight: 1.5,
+                  }}
+                >
                   {asset
                     ? `Sample asset '${asset.name ?? asset.id}' is referenced at ${asset.uri}, but no browser-resolvable media is available.`
                     : "No media asset is available for the active clip."}
@@ -160,6 +194,10 @@ export function Preview({ project, currentTime }: PreviewProps) {
           {motion.cursor ? (
             (() => {
               const point = mapSourcePointToPreview(motion.cursor.cx, motion.cursor.cy, placement);
+              // PB-006: the thick accent ring on the cursor dot is click emphasis, so it
+              // only applies when click emphasis is enabled (clickEffect !== "none").
+              const emphasizeClick =
+                motion.cursor.type === "click" && motion.cursorSettings.clickEffect !== "none";
 
               return (
                 <div
@@ -172,8 +210,10 @@ export function Preview({ project, currentTime }: PreviewProps) {
                     width: 18,
                     height: 18,
                     borderRadius: 999,
-                    border: motion.cursor.type === "click" ? "5px solid #facc15" : "3px solid white",
-                    background: "rgba(15,23,42,0.5)",
+                    border: emphasizeClick
+                      ? `5px solid var(--tk-accent, #3B5BD9)`
+                      : "3px solid rgba(255,255,255,0.90)",
+                    background: "rgba(16,25,44,0.45)",
                     transform: "translate(-50%, -50%)",
                   }}
                 />
@@ -183,22 +223,30 @@ export function Preview({ project, currentTime }: PreviewProps) {
 
           {motion.clickEvents.map((event, index) => {
             const point = mapSourcePointToPreview(event.cx, event.cy, placement);
+            // PB-006: "ripple" reads as an expanding hollow ring; "ring" (default) is the
+            // filled accent dot. "none" never reaches here (clickEvents is empty upstream).
+            const isRipple = motion.cursorSettings.clickEffect === "ripple";
 
             return (
               <div
                 key={`${event.time}-${index}`}
                 data-testid="click-event"
+                data-click-effect={motion.cursorSettings.clickEffect}
                 aria-label="Click indicator"
                 style={{
                   position: "absolute",
                   left: percent(point.left),
                   top: percent(point.top),
-                  width: 24,
-                  height: 24,
+                  width: isRipple ? 34 : 24,
+                  height: isRipple ? 34 : 24,
                   borderRadius: 999,
-                  background: "#facc15",
-                  border: "3px solid rgba(17,24,39,0.85)",
-                  boxShadow: "0 0 0 8px rgba(250,204,21,0.25)",
+                  background: isRipple ? "transparent" : "var(--tk-accent, #3B5BD9)",
+                  border: isRipple
+                    ? "3px solid var(--tk-accent, #3B5BD9)"
+                    : "3px solid rgba(16,25,44,0.70)",
+                  boxShadow: isRipple
+                    ? "0 0 0 5px var(--tk-accent-soft, rgba(59,91,217,0.18))"
+                    : "0 0 0 8px var(--tk-accent-soft, rgba(59,91,217,0.25))",
                   transform: "translate(-50%, -50%)",
                 }}
               />
@@ -206,7 +254,14 @@ export function Preview({ project, currentTime }: PreviewProps) {
           })}
         </div>
       </div>
-      <div style={{ marginTop: 8, color: "#94a3b8" }}>
+      <div
+        style={{
+          marginTop: 8,
+          color: "var(--tk-text-ter, #9D9B94)",
+          fontSize: 11,
+          fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
+        }}
+      >
         Primary media: {asset?.name ?? asset?.id ?? "none"} {asset?.type ? `(${asset.type})` : ""}
       </div>
     </section>

@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { DemoProjectSchema } from "@tinker/project-schema";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import sampleProjectInput from "../../../../../packages/project-schema/fixtures/demo-project.sample.json";
+import type { ArtifactSummary } from "../../lib/useWebExportJob.js";
 import { ProjectExportPanel } from "./ProjectExportPanel.js";
 
 const sampleProject = DemoProjectSchema.parse(sampleProjectInput);
@@ -33,7 +34,7 @@ describe("ProjectExportPanel", () => {
     expect(screen.getByText("Rendering")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Export job status" })).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Export progress" })).toHaveAttribute("aria-valuenow", "55");
-    expect(screen.getByText("/tmp/demo.mp4")).toBeInTheDocument();
+    expect(screen.getByText("[local path]")).toBeInTheDocument();
     expect(screen.getByText("sample-product-demo.mp4")).toBeInTheDocument();
   });
 
@@ -48,7 +49,7 @@ describe("ProjectExportPanel", () => {
           id: "job_wrapping",
           phase: "rendering",
           progress: 0.25,
-          outputPath: "/tmp/exports/a/really/long/output/path/with/no-natural-breaks/supercalifragilisticexpialidocious-demo-render-output-file-name.mp4",
+          outputPath: "generated/really/long/output/path/with/no-natural-breaks/supercalifragilisticexpialidocious-demo-render-output-file-name.mp4",
           error: {
             phase: "rendering",
             message: "ffmpeg exploded",
@@ -280,5 +281,192 @@ describe("ProjectExportPanel", () => {
     expect(alert).not.toHaveTextContent("/Users/jane");
     expect(alert).not.toHaveTextContent("private");
     expect(alert).not.toHaveTextContent("capture.mp4");
+  });
+
+  // ── PB-008: full export UX — start control, artifact summary, succeeded, failed, duplicates ──
+
+  describe("Start export control", () => {
+    it("renders the Start export button when onStartExport is provided", () => {
+      render(<ProjectExportPanel project={sampleProject} onStartExport={vi.fn()} />);
+      expect(screen.getByRole("button", { name: "Start export" })).toBeInTheDocument();
+    });
+
+    it("does NOT render the Start export button when onStartExport is absent", () => {
+      render(<ProjectExportPanel project={sampleProject} />);
+      expect(screen.queryByRole("button", { name: "Start export" })).not.toBeInTheDocument();
+    });
+
+    it("calls onStartExport when the button is clicked", () => {
+      const onStart = vi.fn();
+      render(<ProjectExportPanel project={sampleProject} onStartExport={onStart} />);
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
+      expect(onStart).toHaveBeenCalledTimes(1);
+    });
+
+    it("disables the Start export button while isExportRunning=true", () => {
+      render(<ProjectExportPanel project={sampleProject} onStartExport={vi.fn()} isExportRunning />);
+      expect(screen.getByRole("button", { name: "Start export" })).toBeDisabled();
+    });
+
+    it("re-enables the Start export button when isExportRunning=false", () => {
+      render(<ProjectExportPanel project={sampleProject} onStartExport={vi.fn()} isExportRunning={false} />);
+      expect(screen.getByRole("button", { name: "Start export" })).not.toBeDisabled();
+    });
+
+    it("does not fire onStartExport when the button is disabled (running)", () => {
+      const onStart = vi.fn();
+      render(<ProjectExportPanel project={sampleProject} onStartExport={onStart} isExportRunning />);
+      // Button is disabled — clicking should not call the handler.
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
+      expect(onStart).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("succeeded state — artifact summary", () => {
+    const succeededSummary: ArtifactSummary = {
+      dimensions: "1920×1080",
+      timeline: "45s @ 30fps",
+      codec: "h264 mp4 (video/mp4)",
+      outputPath: "generated/demo_project_sample.mp4",
+      renderCommand: "pnpm --filter @tinker/rendering render:sample -- generated/demo_project_sample.mp4",
+    };
+
+    it("shows the artifact summary section when job succeeded", () => {
+      render(
+        <ProjectExportPanel
+          project={sampleProject}
+          exportJobState={{
+            id: "job_ok",
+            phase: "succeeded",
+            progress: 1,
+            outputPath: "generated/demo_project_sample.mp4",
+            renderCommand: "pnpm --filter @tinker/rendering render:sample -- generated/demo_project_sample.mp4",
+            artifactSummary: succeededSummary,
+          }}
+        />,
+      );
+
+      expect(screen.getByLabelText("Artifact summary")).toBeInTheDocument();
+    });
+
+    it("shows dimensions and timeline in the artifact summary", () => {
+      render(
+        <ProjectExportPanel
+          project={sampleProject}
+          exportJobState={{
+            id: "job_ok2",
+            phase: "succeeded",
+            progress: 1,
+            outputPath: "generated/demo_project_sample.mp4",
+            renderCommand: "pnpm --filter @tinker/rendering render:sample -- generated/demo_project_sample.mp4",
+            artifactSummary: succeededSummary,
+          }}
+        />,
+      );
+
+      expect(screen.getByText("1920×1080")).toBeInTheDocument();
+      expect(screen.getByText("45s @ 30fps")).toBeInTheDocument();
+      expect(screen.getByText(/h264 mp4/)).toBeInTheDocument();
+    });
+
+    it("shows the local render command in the artifact summary", () => {
+      render(
+        <ProjectExportPanel
+          project={sampleProject}
+          exportJobState={{
+            id: "job_cmd",
+            phase: "succeeded",
+            progress: 1,
+            outputPath: "generated/demo_project_sample.mp4",
+            renderCommand: "pnpm --filter @tinker/rendering render:sample -- generated/demo_project_sample.mp4",
+            artifactSummary: succeededSummary,
+          }}
+        />,
+      );
+
+      expect(screen.getByLabelText("Local render command")).toBeInTheDocument();
+      expect(screen.getByText(/render:sample/)).toBeInTheDocument();
+    });
+
+    it("shows honest copy that preflight validated (not that file was written by browser)", () => {
+      render(
+        <ProjectExportPanel
+          project={sampleProject}
+          exportJobState={{
+            id: "job_honest",
+            phase: "succeeded",
+            progress: 1,
+            outputPath: "generated/demo_project_sample.mp4",
+            renderCommand: "pnpm --filter @tinker/rendering render:sample -- generated/demo_project_sample.mp4",
+            artifactSummary: succeededSummary,
+          }}
+        />,
+      );
+
+      expect(screen.getByText(/preflight validated/i)).toBeInTheDocument();
+      expect(screen.getByText(/browser does not write the file/i)).toBeInTheDocument();
+    });
+
+    it("does NOT show the artifact summary for non-succeeded phases", () => {
+      render(
+        <ProjectExportPanel
+          project={sampleProject}
+          exportJobState={{
+            id: "job_running",
+            phase: "validating",
+            progress: 0,
+          }}
+        />,
+      );
+
+      expect(screen.queryByLabelText("Artifact summary")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("failed state — error + retry", () => {
+    it("shows the export error when the job failed with a preflight error", () => {
+      render(
+        <ProjectExportPanel
+          project={sampleProject}
+          exportJobState={{
+            id: "job_pf_fail",
+            phase: "failed",
+            progress: 0.1,
+            error: {
+              phase: "validating",
+              message: "No video tracks found in the project",
+            },
+          }}
+        />,
+      );
+
+      expect(screen.getByRole("alert")).toHaveTextContent(/Validating failed: No video tracks found/);
+    });
+
+    it("re-enables the Start export button after failure so the user can retry", () => {
+      const onStart = vi.fn();
+      render(
+        <ProjectExportPanel
+          project={sampleProject}
+          onStartExport={onStart}
+          isExportRunning={false}
+          exportJobState={{
+            id: "job_retry",
+            phase: "failed",
+            progress: 0.1,
+            error: {
+              phase: "validating",
+              message: "preflight error",
+            },
+          }}
+        />,
+      );
+
+      const btn = screen.getByRole("button", { name: "Start export" });
+      expect(btn).not.toBeDisabled();
+
+      fireEvent.click(btn);
+      expect(onStart).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -51,7 +51,7 @@ describe("AIEditPanel", () => {
     render(<AIEditPanel project={sampleProject} />);
 
     expect(screen.getByRole("button", { name: /generate mock proposal/i })).toBeDisabled();
-    expect(screen.getByText(/select a non-empty timeline range/i)).toBeInTheDocument();
+    expect(screen.getByText(/select a timeline range to edit it with the assistant/i)).toBeInTheDocument();
   });
 
   it("mock-generates and previews operations", async () => {

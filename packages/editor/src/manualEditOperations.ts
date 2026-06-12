@@ -87,6 +87,43 @@ function validateRange(range: TimedRange, duration: number, label: string): Manu
   return undefined;
 }
 
+function validateSourceBounds(
+  project: DemoProject,
+  assetId: string,
+  sourceStart: number | undefined,
+  sourceEnd: number | undefined,
+): ManualEditOperationsError | undefined {
+  // Source bounds are optional; only validate what was provided.
+  if (sourceStart === undefined && sourceEnd === undefined) return undefined;
+
+  if (sourceStart !== undefined) {
+    if (!Number.isFinite(sourceStart)) {
+      return { code: "invalid_range", message: "Clip sourceStart must be a finite number" };
+    }
+    if (sourceStart < 0) {
+      return { code: "invalid_range", message: "Clip sourceStart must be non-negative" };
+    }
+  }
+
+  if (sourceEnd !== undefined) {
+    if (!Number.isFinite(sourceEnd)) {
+      return { code: "invalid_range", message: "Clip sourceEnd must be a finite number" };
+    }
+
+    const lowerBound = sourceStart ?? 0;
+    if (sourceEnd <= lowerBound) {
+      return { code: "invalid_range", message: "Clip sourceEnd must be greater than sourceStart" };
+    }
+
+    const asset = project.assets.find((candidate) => candidate.id === assetId);
+    if (asset?.duration !== undefined && sourceEnd > asset.duration) {
+      return { code: "invalid_range", message: "Clip sourceEnd must be within the source asset duration" };
+    }
+  }
+
+  return undefined;
+}
+
 function allEntityIds(project: DemoProject) {
   return new Set([
     ...project.assets.map((asset) => asset.id),
@@ -182,6 +219,12 @@ export function applyManualEditOperation(
     if (!location) {
       return { ok: false, error: { code: "unknown_entity", message: `Cannot trim unknown clip '${operation.id}'` } };
     }
+
+    const existingClip = project.tracks[location.trackIndex]?.clips[location.clipIndex];
+    const sourceBoundsError = existingClip
+      ? validateSourceBounds(project, existingClip.assetId, operation.sourceStart, operation.sourceEnd)
+      : undefined;
+    if (sourceBoundsError) return { ok: false, error: sourceBoundsError };
 
     project.tracks = project.tracks.map((track, trackIndex) =>
       trackIndex === location.trackIndex

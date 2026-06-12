@@ -1,6 +1,9 @@
 import type { DemoProject } from "@tinker/project-schema";
 import { DemoProjectSchema } from "@tinker/project-schema";
-import sampleProjectInput from "../../../../packages/project-schema/fixtures/demo-project.sample.json";
+// Golden generated-project fixture (PB-010): matches the editor design reference
+// (driftboard demo — 4 named clips + 2 zoom moves). Used as the "Use sample project"
+// content so the editor timeline matches the mock.
+import sampleProjectInput from "../../../../packages/project-schema/fixtures/person-a-generated-project.sample.json";
 
 export type ProjectLoadResult =
   | { ok: true; project: DemoProject }

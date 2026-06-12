@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tinker Studio — Create a demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  html, body { margin: 0; padding: 0; min-height: 100%; background: #F1F0ED; }
+
+  .tk-chip {
+    font-size: 10.5px; font-weight: 500; line-height: 1; font-family: inherit;
+    color: var(--tk-text-sec); background: transparent;
+    border: 1px solid var(--tk-border); border-radius: 99px;
+    padding: 6px 11px; cursor: pointer; white-space: nowrap;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .tk-chip:hover { background: var(--tk-accent-soft); color: var(--tk-text); border-color: var(--tk-accent); }
+
+  .tk-spin { animation: tkSpin 0.7s linear infinite; transform-origin: 50% 50%; }
+  @keyframes tkSpin { to { transform: rotate(360deg); } }
+
+  .tk-caret {
+    display: inline-block; width: 1.5px; height: 1em; margin-left: 1px;
+    background: currentColor; vertical-align: text-bottom;
+    animation: tkBlink 1s steps(2) infinite;
+  }
+  @keyframes tkBlink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+  .tk-shake { animation: tkShake 0.4s ease; }
+  @keyframes tkShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(3px); }
+  }
+
+  .tk-dot {
+    width: 5px; height: 5px; border-radius: 99px; display: inline-block;
+    animation: tkPulse 1s ease-in-out infinite;
+  }
+  @keyframes tkPulse { 0%, 100% { opacity: 0.25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+
+  textarea::placeholder, input::placeholder { color: var(--tk-text-ter); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="tinker/themes.js"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="tinker/create-demo-v2.jsx"></script>
+
+<script type="text/babel">
+  const CD2_TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "accent": "#3B5BD9"
+  }/*EDITMODE-END*/;
+
+  function Page() {
+    const [t, setTweak] = useTweaks(CD2_TWEAK_DEFAULTS);
+    const theme = window.tinkerAccentize(window.TINKER_THEMES.porcelain, t.accent);
+    return (
+      <React.Fragment>
+        <CreateDemo theme={theme} />
+        <TweaksPanel>
+          <TweakSection label="Porcelain" />
+          <TweakColor label="Accent" value={t.accent} options={["#3B5BD9", "#2E8B57", "#C84B3C", "#1B1A17"]} onChange={(v) => setTweak("accent", v)} />
+        </TweaksPanel>
+      </React.Fragment>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById("root")).render(<Page />);
+</script>
+</body>
+</html>

@@ -13,12 +13,14 @@ export type AssetResolutionIssue = {
 };
 
 export type BrowserAssetResolution =
-  | { ok: true; assetId: string; consumer: string; url: string }
+  | { ok: true; assetId: string; consumer: string; url: string; kind: "video" | "image" }
   | { ok: false; error: AssetResolutionIssue };
 
 const BROWSER_RENDERABLE_PROTOCOLS = new Set(["http:", "https:", "data:", "blob:"]);
+const BROWSER_RENDERABLE_ASSET_TYPES = new Set(["video", "image"]);
 const BROWSER_PREVIEW_FIXTURE_URLS: Record<string, string> = {
   "assets/capture-001.mp4": new URL("../../../project-schema/fixtures/assets/capture-001.mp4", import.meta.url).href,
+  "assets/driftboard-dashboard.png": new URL("../../../project-schema/fixtures/assets/driftboard-dashboard.png", import.meta.url).href,
 };
 
 export function getAssetById(project: DemoProject, assetId: string): Asset | undefined {
@@ -61,7 +63,7 @@ export function isBrowserRenderableMedia(asset: Asset | undefined): boolean {
 }
 
 export function resolveBrowserPreviewAsset(asset: Asset, consumer: string): BrowserAssetResolution {
-  if (asset.type !== "video") {
+  if (!BROWSER_RENDERABLE_ASSET_TYPES.has(asset.type)) {
     return {
       ok: false,
       error: {
@@ -69,11 +71,12 @@ export function resolveBrowserPreviewAsset(asset: Asset, consumer: string): Brow
         assetId: asset.id,
         assetUri: asset.uri,
         consumer,
-        message: `Asset '${asset.id}' is type '${asset.type}', but ${consumer} requires a video asset`,
+        message: `Asset '${asset.id}' is type '${asset.type}', but ${consumer} requires a video or image asset`,
       },
     };
   }
 
+  const kind: "video" | "image" = asset.type === "image" ? "image" : "video";
   const protocol = getUriProtocol(asset.uri);
   const fixtureUrl = resolveBrowserPreviewFixtureUrl(asset.uri);
 
@@ -83,6 +86,7 @@ export function resolveBrowserPreviewAsset(asset: Asset, consumer: string): Brow
       assetId: asset.id,
       consumer,
       url: fixtureUrl,
+      kind,
     };
   }
 
@@ -104,6 +108,7 @@ export function resolveBrowserPreviewAsset(asset: Asset, consumer: string): Brow
     assetId: asset.id,
     consumer,
     url: asset.uri,
+    kind,
   };
 }
 
