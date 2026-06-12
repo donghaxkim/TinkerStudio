@@ -20,10 +20,12 @@ export type GenerationWorkerOptions = {
 };
 
 function unknownError(error: unknown): GenerationError {
+  const message = error instanceof Error ? error.message : String(error);
+
   return GenerationErrorSchema.parse({
     status: "failed",
     stage: "unknown",
-    message: error instanceof Error ? error.message : String(error),
+    message: message.trim().length > 0 ? message : "Unknown generation error",
   });
 }
 

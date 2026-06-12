@@ -368,9 +368,24 @@ describe("job queue", () => {
       },
     });
 
+    expect(queue.pendingCount()).toBe(0);
+    expect(queue.hasCapacity()).toBe(true);
+    expect(queue.isRunning()).toBe(false);
+
     expect(queue.enqueue("job-1")).toBe(true);
+    expect(queue.pendingCount()).toBe(0);
+    expect(queue.hasCapacity()).toBe(true);
+    expect(queue.isRunning()).toBe(true);
+
     expect(queue.enqueue("job-2")).toBe(true);
+    expect(queue.pendingCount()).toBe(1);
+    expect(queue.hasCapacity()).toBe(false);
+    expect(queue.isRunning()).toBe(true);
+
     expect(queue.enqueue("job-3")).toBe(false);
+    expect(queue.pendingCount()).toBe(1);
+    expect(queue.hasCapacity()).toBe(false);
+    expect(queue.isRunning()).toBe(true);
 
     await Promise.resolve();
     expect(started).toEqual(["job-1"]);
@@ -382,6 +397,9 @@ describe("job queue", () => {
 
     expect(started).toEqual(["job-1", "job-2"]);
     expect(finished).toEqual(["job-1", "job-2"]);
+    expect(queue.pendingCount()).toBe(0);
+    expect(queue.hasCapacity()).toBe(true);
+    expect(queue.isRunning()).toBe(false);
   });
 });
 
@@ -428,5 +446,28 @@ describe("generation worker", () => {
     expect(completed?.status).toBe("completed");
     expect(completed?.progressEvents.map((event) => event.message)).toEqual(["AI URL analysis started"]);
     expect(completed?.result?.artifacts.map((artifact) => artifact.kind)).toEqual(["composition-index", "output-video"]);
+  });
+
+  it("fails unknown empty-message errors with a non-empty typed generation error", async () => {
+    for (const [id, thrown] of [
+      ["job-empty-error", new Error("")],
+      ["job-empty-string", ""],
+    ] as const) {
+      const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-error-"));
+      const store = createJobStore();
+      store.create({ id, request: { ...request, id }, outputRoot, now: "2026-06-11T00:00:00.000Z" });
+
+      const runner: GenerationRunner = async () => {
+        throw thrown;
+      };
+      const worker = createGenerationWorker({ store, runner, now: () => "2026-06-11T00:00:02.000Z" });
+
+      await expect(worker(id)).resolves.toBeUndefined();
+
+      const failed = store.getSnapshot(id);
+      expect(failed?.status).toBe("failed");
+      expect(failed?.error).toMatchObject({ status: "failed", stage: "unknown" });
+      expect(failed?.error?.message.trim().length).toBeGreaterThan(0);
+    }
   });
 });
