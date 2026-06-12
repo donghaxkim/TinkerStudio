@@ -19,22 +19,14 @@ type ManualEditStatus =
   | { kind: "success"; message: string }
   | { kind: "error"; error: ManualEditOperationsError };
 
-const fieldStyle = { display: "grid", gap: 5 };
+const fieldStyle = { display: "grid", gap: 5, fontSize: 12, color: "var(--tk-text-sec)" } as const;
 const inputStyle = {
   padding: "8px 10px",
-  borderRadius: 8,
-  border: "1px solid #334155",
-  background: "#020617",
-  color: "white",
-};
-const buttonStyle = {
-  padding: "8px 10px",
-  borderRadius: 8,
-  border: "1px solid #334155",
-  background: "#111827",
-  color: "white",
-  fontWeight: 700,
-};
+  borderRadius: "var(--tk-radius-sm)",
+  border: "1px solid var(--tk-border)",
+  background: "var(--tk-card)",
+  color: "var(--tk-text)",
+} as const;
 
 function formatRange(range: SelectedRange | undefined) {
   if (!range) return "No selected range";
@@ -51,10 +43,10 @@ function rangeOrDefault(project: DemoProject, selectedRange: SelectedRange | und
 
 function ErrorList({ error }: { error: ManualEditOperationsError }) {
   return (
-    <div role="alert" style={{ padding: 10, borderRadius: 8, border: "1px solid #7f1d1d", background: "#450a0a" }}>
-      <strong>{error.message}</strong>
+    <div role="alert" style={{ padding: 10, borderRadius: "var(--tk-radius-md)", border: "1px solid var(--tk-accent-line)", background: "var(--tk-accent-soft)", color: "var(--tk-text)" }}>
+      <strong style={{ fontSize: 12.5 }}>{error.message}</strong>
       {error.issues ? (
-        <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+        <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, color: "var(--tk-text-sec)" }}>
           {error.issues.map((issue) => (
             <li key={issue}>{issue}</li>
           ))}
@@ -99,11 +91,22 @@ export function EditorManualControls({ project, selectedRange, onApply }: Editor
   }
 
   return (
-    <section aria-label="Manual edit controls" style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #334155", borderRadius: 12, background: "#0f172a" }}>
+    <section
+      aria-label="Manual edit controls"
+      style={{
+        display: "grid",
+        gap: 12,
+        padding: 14,
+        border: "1px solid var(--tk-border)",
+        borderRadius: "var(--tk-radius-lg)",
+        background: "var(--tk-card)",
+        color: "var(--tk-text)",
+      }}
+    >
       <div>
-        <p style={{ margin: 0, color: "#60a5fa", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>Manual edits</p>
-        <h2 style={{ margin: "4px 0 0" }}>Edit selected range</h2>
-        <p style={{ margin: "6px 0 0", color: "#94a3b8" }}>Target: {formatRange(range)}</p>
+        <p style={{ margin: 0, color: "var(--tk-text-ter)", fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Zoom moves</p>
+        <h2 style={{ margin: "4px 0 0", fontSize: 14 }}>Edit selected range</h2>
+        <p style={{ margin: "6px 0 0", color: "var(--tk-text-sec)", fontSize: 12.5 }}>Target: {formatRange(range)}</p>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
@@ -116,10 +119,10 @@ export function EditorManualControls({ project, selectedRange, onApply }: Editor
             ))}
           </select>
         </label>
-        <button type="button" style={buttonStyle} onClick={() => apply({ type: "upsert_zoom", start: range.start, end: range.end, target: defaultTarget, easing: "easeInOut" })}>
+        <button type="button" className="tk-btn" onClick={() => apply({ type: "upsert_zoom", start: range.start, end: range.end, target: defaultTarget, easing: "easeInOut" })}>
           Add zoom
         </button>
-        <button type="button" style={buttonStyle} disabled={!selectedZoom} onClick={() => selectedZoom ? apply({ type: "upsert_zoom", id: selectedZoom.id, start: range.start, end: range.end, target: selectedZoom.target, easing: selectedZoom.easing }) : undefined}>
+        <button type="button" className="tk-btn" disabled={!selectedZoom} onClick={() => selectedZoom ? apply({ type: "upsert_zoom", id: selectedZoom.id, start: range.start, end: range.end, target: selectedZoom.target, easing: selectedZoom.easing }) : undefined}>
           Update zoom
         </button>
 
@@ -131,16 +134,16 @@ export function EditorManualControls({ project, selectedRange, onApply }: Editor
             ))}
           </select>
         </label>
-        <button type="button" style={buttonStyle} disabled={!clipId} onClick={() => apply({ type: "trim_clip", id: clipId, start: range.start, end: range.end })}>
+        <button type="button" className="tk-btn" disabled={!clipId} onClick={() => apply({ type: "trim_clip", id: clipId, start: range.start, end: range.end })}>
           Trim clip to range
         </button>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" style={buttonStyle} disabled={!zoomId} onClick={() => apply({ type: "remove_entity", entityType: "zoom", id: zoomId })}>Delete zoom</button>
+        <button type="button" className="tk-btn" disabled={!zoomId} onClick={() => apply({ type: "remove_entity", entityType: "zoom", id: zoomId })}>Delete zoom</button>
       </div>
 
-      {status.kind === "success" ? <p role="status" style={{ margin: 0, color: "#bbf7d0" }}>{status.message}</p> : null}
+      {status.kind === "success" ? <p role="status" style={{ margin: 0, color: "var(--tk-ok)", fontSize: 12.5 }}>{status.message}</p> : null}
       {status.kind === "error" ? <ErrorList error={status.error} /> : null}
     </section>
   );

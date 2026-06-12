@@ -19,9 +19,9 @@ type ProjectPersistenceStatus =
 
 function ErrorList({ error }: { error: ProjectPersistenceError }) {
   return (
-    <div role="alert" style={{ padding: 12, borderRadius: 10, border: "1px solid #7f1d1d", background: "#450a0a" }}>
-      <strong>{error.message}</strong>
-      <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
+    <div role="alert" style={{ padding: 12, borderRadius: "var(--tk-radius-md)", border: "1px solid var(--tk-accent-line)", background: "var(--tk-accent-soft)", color: "var(--tk-text)" }}>
+      <strong style={{ fontSize: 12.5 }}>{error.message}</strong>
+      <ul style={{ margin: "8px 0 0", paddingLeft: 20, fontSize: 12, color: "var(--tk-text-sec)" }}>
         {error.issues.map((issue) => (
           <li key={issue}>{issue}</li>
         ))}
@@ -116,35 +116,47 @@ export function ProjectSaveLoadControls({ project, onProjectLoaded }: ProjectSav
   }
 
   return (
-    <section aria-label="Project persistence" style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #334155", borderRadius: 12, background: "#0f172a" }}>
+    <section
+      aria-label="Project persistence"
+      style={{
+        display: "grid",
+        gap: 12,
+        padding: 14,
+        border: "1px solid var(--tk-border)",
+        borderRadius: "var(--tk-radius-lg)",
+        background: "var(--tk-card)",
+        color: "var(--tk-text)",
+      }}
+    >
       <div>
-        <h2 style={{ margin: 0 }}>Project save/load</h2>
-        <p style={{ margin: "6px 0 0", color: "#94a3b8" }}>Persists the full validated DemoProject JSON. Asset references stay by asset.id.</p>
+        <h2 style={{ margin: 0, fontSize: 14 }}>Project save / load</h2>
+        <p style={{ margin: "6px 0 0", color: "var(--tk-text-sec)", fontSize: 12.5 }}>Persists the full validated DemoProject JSON. Asset references stay by asset.id.</p>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button type="button" onClick={saveProject} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white" }}>
+        <button type="button" className="tk-btn" onClick={saveProject}>
           Save project
         </button>
-        <button type="button" onClick={loadSavedProject} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white" }}>
+        <button type="button" className="tk-btn" onClick={loadSavedProject}>
           Load saved project
         </button>
         {download.ok ? (
           <a
+            className="tk-btn"
             download={download.filename}
             href={`data:${download.mimeType};charset=utf-8,${encodeURIComponent(download.contents)}`}
-            style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white", textDecoration: "none" }}
+            style={{ textDecoration: "none" }}
           >
             Download JSON
           </a>
         ) : null}
-        <label style={{ display: "inline-flex", gap: 8, alignItems: "center", padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white", cursor: "pointer" }}>
+        <label className="tk-btn" style={{ cursor: "pointer" }}>
           Load project JSON file
           <input type="file" accept="application/json,.json" onChange={loadProjectFile} style={{ display: "none" }} />
         </label>
       </div>
 
-      {status.kind === "success" ? <p style={{ margin: 0, color: "#bbf7d0" }}>{status.message}</p> : null}
+      {status.kind === "success" ? <p style={{ margin: 0, color: "var(--tk-ok)", fontSize: 12.5 }}>{status.message}</p> : null}
       {status.kind === "error" ? <ErrorList error={status.error} /> : null}
       {!download.ok ? <ErrorList error={download.error} /> : null}
     </section>
