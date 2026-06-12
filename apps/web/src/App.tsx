@@ -40,7 +40,8 @@ export function App() {
     setState((prev) => ({
       ...prev,
       route: "settings",
-      preSettingsRoute: prev.route as PreSettingsRoute,
+      // Narrow without a cast: Settings is only reachable from create/editor, never from itself.
+      preSettingsRoute: prev.route === "editor" ? "editor" : "create",
     }));
   }
 
