@@ -88,11 +88,9 @@ export function registerArtifactsRoutes(server: FastifyInstance, options: Artifa
       return reply.status(404).send({ message: "Artifact not found" });
     }
 
-    const mediaType = mediaTypeForPath(relativePath);
+    const mediaType = mediaTypeForPath(relativePath) ?? "application/octet-stream";
     reply.header("X-Content-Type-Options", "nosniff");
-    if (mediaType !== undefined) {
-      reply.type(mediaType);
-    }
+    reply.type(mediaType);
 
     return reply.send(createReadStream(realArtifactPath));
   });

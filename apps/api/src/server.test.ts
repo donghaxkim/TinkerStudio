@@ -342,6 +342,7 @@ describe("job routes", () => {
         await mkdir(join(outputRoot, "hyperframes", "assets"), { recursive: true });
         await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>composition</html>");
         await writeFile(join(outputRoot, "hyperframes", "assets", "logo.png"), "png");
+        await writeFile(join(outputRoot, "hyperframes", "artifact.unknownext"), "unknown");
         completed.resolve();
         return {
           jobId: "job-test",
@@ -352,6 +353,7 @@ describe("job routes", () => {
           artifactPaths: [
             join(outputRoot, "hyperframes", "index.html"),
             join(outputRoot, "hyperframes", "assets", "logo.png"),
+            join(outputRoot, "hyperframes", "artifact.unknownext"),
           ],
           renderer: "hyperframes",
           rendererResults: {
@@ -380,6 +382,15 @@ describe("job routes", () => {
       expect(artifactResponse.headers["x-content-type-options"]).toBe("nosniff");
       expect(artifactResponse.headers["content-type"]).toContain("text/html");
       expect(artifactResponse.body).toContain("composition");
+
+      const unknownArtifactResponse = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/artifact.unknownext",
+      });
+
+      expect(unknownArtifactResponse.statusCode).toBe(200);
+      expect(unknownArtifactResponse.headers["x-content-type-options"]).toBe("nosniff");
+      expect(unknownArtifactResponse.headers["content-type"]).toContain("application/octet-stream");
 
       for (const unsafeUrl of [
         "/api/jobs/job-test/artifacts/../package.json",
