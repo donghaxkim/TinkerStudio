@@ -1,10 +1,19 @@
 import { act, renderHook } from "@testing-library/react";
 import { DemoProjectSchema } from "@tinker/project-schema";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import sampleProjectInput from "../../../../packages/project-schema/fixtures/demo-project.sample.json";
+import {
+  DEFAULT_EXPORT_DIRECTORY,
+  EXPORT_DIRECTORY_STORAGE_KEY,
+  setExportDirectory,
+} from "./appSettings.js";
 import { useWebExportJob } from "./useWebExportJob.js";
 
 const sampleProject = DemoProjectSchema.parse(sampleProjectInput);
+
+afterEach(() => {
+  window.localStorage.removeItem(EXPORT_DIRECTORY_STORAGE_KEY);
+});
 
 // ─── helpers ───────────────────────────────────────────────────────────────────
 
@@ -188,6 +197,50 @@ describe("useWebExportJob", () => {
       // Summary must be unchanged.
       expect(result.current.state?.artifactSummary?.outputPath).toContain("snap-id-1");
       expect(result.current.state?.artifactSummary?.outputPath).not.toContain("snap-id-2");
+    });
+  });
+
+  // ─── export directory wiring ─────────────────────────────────────────────────
+
+  describe("export directory wiring", () => {
+    it("uses 'generated' as the default export directory", () => {
+      const { result } = renderHook(() => useWebExportJob());
+
+      act(() => {
+        result.current.start(sampleProject);
+      });
+
+      expect(result.current.state?.outputPath).toMatch(
+        new RegExp(`^${DEFAULT_EXPORT_DIRECTORY}/.*\\.mp4$`),
+      );
+    });
+
+    it("uses a custom export directory when set", () => {
+      setExportDirectory("my-renders");
+
+      const { result } = renderHook(() => useWebExportJob());
+
+      act(() => {
+        result.current.start(sampleProject);
+      });
+
+      expect(result.current.state?.outputPath).toMatch(/^my-renders\/.*\.mp4$/);
+      expect(result.current.state?.artifactSummary?.outputPath).toMatch(
+        /^my-renders\/.*\.mp4$/,
+      );
+    });
+
+    it("the outputPath is <exportDir>/<project.id>.mp4", () => {
+      setExportDirectory("exports");
+      const project = { ...sampleProject, id: "proj-abc" };
+
+      const { result } = renderHook(() => useWebExportJob());
+
+      act(() => {
+        result.current.start(project);
+      });
+
+      expect(result.current.state?.outputPath).toBe("exports/proj-abc.mp4");
     });
   });
 });

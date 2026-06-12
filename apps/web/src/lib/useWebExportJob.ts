@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { prepareMp4Export } from "@tinker/editor";
 import type { DemoProject } from "@tinker/project-schema";
 import type { ExportJobState } from "@tinker/rendering/node";
+import { getExportDirectory } from "./appSettings.js";
 
 /**
  * Web-side export controller.
@@ -89,7 +90,8 @@ export function useWebExportJob(): UseWebExportJobReturn {
 
     // Preflight succeeded — build the artifact summary.
     const { plan } = result;
-    const outputPath = `generated/${snapshot.id}.mp4`;
+    const exportDir = getExportDirectory();
+    const outputPath = `${exportDir}/${snapshot.id}.mp4`;
     const renderCommand = `pnpm --filter @tinker/rendering render:sample -- ${outputPath}`;
 
     const summary: ArtifactSummary = {
