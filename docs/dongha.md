@@ -97,7 +97,7 @@ Do these in order unless a blocker forces a smaller slice:
 7. [x] PB-006: Add manual cursor/click controls. (Schema addition pending Person A sign-off — backward-compatible.)
 8. [x] PB-007: Harden project lifecycle, save/load, and recovery.
 9. [x] PB-008: Make export UX first-class.
-10. [ ] PB-009: Mount useful Settings.
+10. [x] PB-009: Mount useful Settings.
 11. [ ] PB-010: Add Samuel integration harness and golden project fixture.
 12. [ ] PB-011: Final one-user acceptance gate.
 13. [ ] PB-012: Repo/product hygiene pass.
@@ -591,7 +591,7 @@ pnpm --filter @tinker/rendering render:sample -- /tmp/tinker-person-b-export-smo
 
 **Priority:** P1
 **Owner:** Person B
-**Status:** Partial
+**Status:** Done
 **Goal:** Settings should expose only local prototype controls that help one user operate or recover.
 
 **Files/areas:**
@@ -609,15 +609,15 @@ apps/web/src/lib/projectStorage.ts
 - [x] Add local storage reset.
 - [x] Show current local storage key and generation mode.
 - [x] Avoid API key, auth, billing, and secret management settings.
-- [ ] Mount Settings in app navigation.
-- [ ] Add app/runtime diagnostics useful for local debugging.
-- [ ] Add export directory/default naming settings only if they are actually used by export.
-- [ ] Add tests for navigation to Settings and reset behavior from the mounted app.
+- [x] Mount Settings in app navigation. (Reachable from the Editor gear; `onClose` returns to the prior route — PB-001.)
+- [x] Add app/runtime diagnostics useful for local debugging. (App version, schema version, generation mode, storage key, saved-project summary.)
+- [x] Add export directory/default naming settings only if they are actually used by export. (Persisted export directory wired into `useWebExportJob` outputPath; traversal-safe sanitization.)
+- [x] Add tests for navigation to Settings and reset behavior from the mounted app.
 
 **Done when:**
 
-- [ ] Settings helps recovery/debugging without expanding product scope.
-- [ ] Settings is reachable from the product shell.
+- [x] Settings helps recovery/debugging without expanding product scope.
+- [x] Settings is reachable from the product shell.
 
 **Verification:**
 
