@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { chromium, type Page, type Route } from "playwright";
 import {
   createClickEvent,
-  createCursorEvent,
+  createCursorPathEvents,
   createScrollEvent,
   createZoomTargetEvent,
   secondsSince,
@@ -13,6 +13,28 @@ import { assertValidCapturePlan } from "./verifyCapturePlan.js";
 import { CaptureError, type CaptureAsset, type CaptureEvent, type CapturePlan, type CaptureResult } from "./types.js";
 
 export type RunPlaywrightCaptureOptions = { outputDir: string; headless?: boolean };
+
+const TYPE_KEYSTROKE_DELAY_MS = 40;
+
+type CursorPosition = { x: number; y: number };
+
+async function settledCenter(locator: ReturnType<Page["locator"]>): Promise<
+  { center: CursorPosition; box: { x: number; y: number; width: number; height: number } } | undefined
+> {
+  // Scroll the target into view BEFORE measuring; otherwise the click
+  // auto-scroll invalidates the recorded coordinates (LongCut regression).
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+
+  if (box === null) {
+    return undefined;
+  }
+
+  return {
+    box,
+    center: { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) },
+  };
+}
 
 function assetUri(outputDir: string, path: string) {
   return relative(outputDir, path).split("\\").join("/");
@@ -157,6 +179,10 @@ export async function runPlaywrightCapture(
     });
 
     const page = await context.newPage();
+    let lastCursor: CursorPosition = {
+      x: Math.round(plan.viewport.width / 2),
+      y: Math.round(plan.viewport.height / 2),
+    };
 
     context.on("page", (newPage) => {
       if (newPage === page) {
@@ -181,7 +207,13 @@ export async function runPlaywrightCapture(
             break;
           case "click": {
             const locator = resolveStepLocator(page, step);
-            const box = await locator.boundingBox();
+            const target = await settledCenter(locator);
+
+            if (target !== undefined) {
+              events.push(...createCursorPathEvents({ startedAtMs, from: lastCursor, to: target.center }));
+              lastCursor = target.center;
+            }
+
             const popupPromise = page.waitForEvent("popup", { timeout: 250 }).catch(() => undefined);
             await locator.click();
             const popup = await popupPromise;
@@ -191,26 +223,39 @@ export async function runPlaywrightCapture(
               await popup.close().catch(() => undefined);
             }
 
-            if (box !== null) {
-              const x = Math.round(box.x + box.width / 2);
-              const y = Math.round(box.y + box.height / 2);
+            if (target !== undefined) {
               const label = step.label ?? step.text;
-              events.push(createCursorEvent({ startedAtMs, x, y }));
-              events.push(createClickEvent({ startedAtMs, x, y, label }));
+              events.push(createClickEvent({ startedAtMs, x: target.center.x, y: target.center.y, label }));
               events.push(createZoomTargetEvent({
                 startedAtMs,
-                x: Math.round(box.x),
-                y: Math.round(box.y),
-                width: Math.round(box.width),
-                height: Math.round(box.height),
+                x: Math.round(target.box.x),
+                y: Math.round(target.box.y),
+                width: Math.round(target.box.width),
+                height: Math.round(target.box.height),
                 label,
               }));
             }
             break;
           }
-          case "type":
-            await page.locator(step.selector).fill(step.text);
+          case "type": {
+            const locator = page.locator(step.selector);
+            const target = await settledCenter(locator);
+
+            if (target !== undefined) {
+              events.push(...createCursorPathEvents({ startedAtMs, from: lastCursor, to: target.center }));
+              lastCursor = target.center;
+            }
+
+            await locator.click();
+
+            if (target !== undefined) {
+              events.push(createClickEvent({ startedAtMs, x: target.center.x, y: target.center.y }));
+            }
+
+            await locator.fill("");
+            await locator.pressSequentially(step.text, { delay: TYPE_KEYSTROKE_DELAY_MS });
             break;
+          }
           case "press":
             await page.locator(step.selector).press(step.key);
             break;
@@ -227,9 +272,18 @@ export async function runPlaywrightCapture(
             events.push(createScrollEvent({ startedAtMs, x: position.x, y: position.y, deltaX, deltaY }));
             break;
           }
-          case "hover":
-            await resolveStepLocator(page, step).hover();
+          case "hover": {
+            const locator = resolveStepLocator(page, step);
+            const target = await settledCenter(locator);
+
+            if (target !== undefined) {
+              events.push(...createCursorPathEvents({ startedAtMs, from: lastCursor, to: target.center }));
+              lastCursor = target.center;
+            }
+
+            await locator.hover();
             break;
+          }
           case "pause":
             await page.waitForTimeout(step.ms);
             break;

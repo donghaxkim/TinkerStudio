@@ -30,9 +30,9 @@ describe("camera transform", () => {
 
     expect(first).toEqual(second);
     expect(first).toEqual({
-      scale: 4,
-      x: 0.375,
-      y: 0.375,
+      scale: 2.4,
+      x: 0.175,
+      y: 0.175,
       focus: { cx: 0.375, cy: 0.375 },
       strength: 1,
       activeZoomId: "zoom_001",
@@ -74,8 +74,8 @@ describe("camera transform", () => {
     );
 
     expect(regions[0]).toMatchObject({
-      scale: 5,
-      focus: { cx: 0.1, cy: 0.1 },
+      scale: 2.4,
+      focus: { cx: 0.208333333333, cy: 0.208333333333 },
     });
 
     const farEdge = normalizeZoomRegions(
@@ -88,8 +88,8 @@ describe("camera transform", () => {
     );
 
     expect(farEdge[0]).toMatchObject({
-      scale: 50,
-      focus: { cx: 0.99, cy: 0.99 },
+      scale: 2.4,
+      focus: { cx: 0.791666666667, cy: 0.791666666667 },
     });
   });
 
@@ -230,7 +230,7 @@ describe("camera transform", () => {
     });
 
     expect(second).toEqual(first);
-    expect(first.focus).toEqual({ cx: 0.82, cy: 0.2 });
+    expect(first.focus).toEqual({ cx: 0.791666666667, cy: 0.208333333333 });
     expect(first.activeZoomId).toBe("zoom_001");
   });
 
@@ -243,8 +243,10 @@ describe("camera transform", () => {
       transitionSeconds: 0,
     });
 
-    expect(transform.focus).toEqual({ cx: 0.84, cy: 0.18 });
-    expect(transform.scale).toBe(4);
+    // Full zoom locks at t=2 on the cursor's in-flight position; the final
+    // cursor sample at t=2.2 lands inside the safe zone so focus holds steady.
+    expect(transform.focus).toEqual({ cx: 0.782, cy: 0.254 });
+    expect(transform.scale).toBe(2.4);
   });
 
   it("preserves zoom ramp and easing strength at deterministic timestamps", () => {
@@ -255,9 +257,9 @@ describe("camera transform", () => {
 
     expect(ramp.activeZoomId).toBe("zoom_001");
     expect(ramp.strength).toBeCloseTo(0.02);
-    expect(ramp.scale).toBeCloseTo(1.06);
+    expect(ramp.scale).toBeCloseTo(1.028);
     expect(full.strength).toBe(1);
-    expect(full.scale).toBe(4);
+    expect(full.scale).toBe(2.4);
   });
 
   it("matches stateful playback for short zooms whose transition is clamped to half duration", () => {
@@ -307,5 +309,100 @@ describe("camera transform", () => {
     expect(deterministic).toEqual(stateful);
     expect(deterministic.activeZoomId).toBe("second");
     expect(deterministic.focus).toEqual({ cx: 0.375, cy: 0.375 });
+  });
+});
+
+describe("zoom scale safety and pacing", () => {
+  const frame = { width: 1920, height: 1080 };
+
+  it("caps derived zoom scale for tiny targets instead of filling the frame", () => {
+    // LongCut regression: 188x29 "Chat" button produced a 10.2x zoom.
+    const regions = normalizeZoomRegions(
+      [
+        {
+          id: "zoom-3",
+          start: 6.062,
+          end: 8.562,
+          target: { x: 1451, y: -29, width: 188, height: 29 },
+          easing: "easeInOut",
+        },
+      ],
+      frame,
+    );
+
+    expect(regions[0]?.scale).toBe(2.4);
+
+    const inset = 1 / (2 * 2.4);
+    expect(regions[0]?.focus.cy).toBeCloseTo(inset, 9);
+    expect(regions[0]?.focus.cx).toBeCloseTo(1 - inset, 9);
+  });
+
+  it("pads derived zoom scale with surrounding context below the cap", () => {
+    const regions = normalizeZoomRegions(
+      [
+        {
+          id: "zoom-pad",
+          start: 0,
+          end: 2,
+          target: { x: 460, y: 290, width: 1000, height: 500 },
+          easing: "easeInOut",
+        },
+      ],
+      frame,
+    );
+
+    expect(regions[0]?.scale).toBeCloseTo(1.92 * 0.85, 5);
+  });
+
+  it("respects an explicit keyframe scale override", () => {
+    const regions = normalizeZoomRegions(
+      [
+        {
+          id: "zoom-explicit",
+          start: 0,
+          end: 2,
+          scale: 3.1,
+          target: { x: 800, y: 400, width: 188, height: 29 },
+          easing: "easeInOut",
+        },
+      ],
+      frame,
+    );
+
+    expect(regions[0]?.scale).toBe(3.1);
+  });
+
+  it("derives per-zoom transition seconds from the zoom duration", () => {
+    const target = { x: 800, y: 400, width: 320, height: 180 };
+    const [medium] = normalizeZoomRegions(
+      [{ id: "medium", start: 6.062, end: 8.562, target, easing: "easeInOut" }],
+      frame,
+    );
+    const [long] = normalizeZoomRegions([{ id: "long", start: 0, end: 6, target, easing: "easeInOut" }], frame);
+    const [short] = normalizeZoomRegions([{ id: "short", start: 0, end: 0.8, target, easing: "easeInOut" }], frame);
+
+    expect(medium?.transitionSeconds).toBeCloseTo(0.875, 5);
+    expect(long?.transitionSeconds).toBe(1);
+    expect(short?.transitionSeconds).toBeCloseTo(0.45, 5);
+  });
+
+  it("lets the per-zoom transition override a renderer-supplied transition", () => {
+    const regions = normalizeZoomRegions(
+      [
+        {
+          id: "zoom-pace",
+          start: 1,
+          end: 5,
+          target: { x: 250, y: 125, width: 250, height: 125 },
+          easing: "linear",
+        },
+      ],
+      { width: 1000, height: 500 },
+    );
+
+    const ramping = resolveCameraTransform(regions, 1.2, { transitionSeconds: 0.2 });
+
+    expect(ramping.strength).toBeCloseTo(0.2, 5);
+    expect(ramping.strength).toBeLessThan(1);
   });
 });
