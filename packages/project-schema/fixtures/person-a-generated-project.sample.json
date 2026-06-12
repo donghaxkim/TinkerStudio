@@ -1,0 +1,634 @@
+{
+  "schemaVersion": "0.1.0",
+  "id": "driftboard_demo",
+  "title": "Driftboard Demo",
+  "duration": 24,
+  "fps": 60,
+  "aspectRatio": "16:9",
+  "createdAt": "2026-06-12T00:00:00.000Z",
+  "updatedAt": "2026-06-12T00:00:00.000Z",
+  "assets": [
+    {
+      "id": "asset_capture_001",
+      "type": "video",
+      "uri": "assets/capture-001.mp4",
+      "source": "captured",
+      "name": "Driftboard product capture",
+      "mimeType": "video/mp4",
+      "duration": 3,
+      "width": 320,
+      "height": 180
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track_video_main",
+      "type": "video",
+      "name": "Main capture",
+      "clips": [
+        {
+          "id": "clip_open_dashboard",
+          "assetId": "asset_capture_001",
+          "start": 0,
+          "end": 6,
+          "sourceStart": 0,
+          "sourceEnd": 3,
+          "name": "Open dashboard"
+        },
+        {
+          "id": "clip_invite_teammates",
+          "assetId": "asset_capture_001",
+          "start": 6,
+          "end": 13,
+          "sourceStart": 0,
+          "sourceEnd": 3,
+          "name": "Invite teammates"
+        },
+        {
+          "id": "clip_workspace_settings",
+          "assetId": "asset_capture_001",
+          "start": 13,
+          "end": 18.5,
+          "sourceStart": 0,
+          "sourceEnd": 3,
+          "name": "Workspace settings"
+        },
+        {
+          "id": "clip_share_wrapup",
+          "assetId": "asset_capture_001",
+          "start": 18.5,
+          "end": 24,
+          "sourceStart": 0,
+          "sourceEnd": 3,
+          "name": "Share & wrap-up"
+        }
+      ]
+    }
+  ],
+  "zooms": [
+    {
+      "id": "zoom_invite_modal",
+      "start": 8,
+      "end": 12.4,
+      "target": {
+        "x": 700,
+        "y": 280,
+        "width": 560,
+        "height": 420
+      },
+      "scale": 1.6,
+      "easing": "easeInOut"
+    },
+    {
+      "id": "zoom_share_button",
+      "start": 19.6,
+      "end": 22.6,
+      "target": {
+        "x": 940,
+        "y": 110,
+        "width": 520,
+        "height": 360
+      },
+      "scale": 1.5,
+      "easing": "easeInOut"
+    }
+  ],
+  "cursorEvents": [
+    {
+      "time": 0,
+      "type": "move",
+      "x": 298,
+      "y": 235
+    },
+    {
+      "time": 0.31,
+      "type": "move",
+      "x": 352,
+      "y": 251
+    },
+    {
+      "time": 0.63,
+      "type": "move",
+      "x": 411,
+      "y": 273
+    },
+    {
+      "time": 0.94,
+      "type": "move",
+      "x": 475,
+      "y": 291
+    },
+    {
+      "time": 1.25,
+      "type": "move",
+      "x": 536,
+      "y": 300
+    },
+    {
+      "time": 1.56,
+      "type": "move",
+      "x": 591,
+      "y": 309
+    },
+    {
+      "time": 1.88,
+      "type": "move",
+      "x": 643,
+      "y": 327
+    },
+    {
+      "time": 2.19,
+      "type": "move",
+      "x": 697,
+      "y": 349
+    },
+    {
+      "time": 2.5,
+      "type": "move",
+      "x": 756,
+      "y": 365
+    },
+    {
+      "time": 2.81,
+      "type": "move",
+      "x": 793,
+      "y": 374
+    },
+    {
+      "time": 3.13,
+      "type": "move",
+      "x": 814,
+      "y": 404
+    },
+    {
+      "time": 3.44,
+      "type": "move",
+      "x": 837,
+      "y": 419
+    },
+    {
+      "time": 3.75,
+      "type": "move",
+      "x": 875,
+      "y": 438
+    },
+    {
+      "time": 4.06,
+      "type": "move",
+      "x": 899,
+      "y": 465
+    },
+    {
+      "time": 4.38,
+      "type": "move",
+      "x": 919,
+      "y": 474
+    },
+    {
+      "time": 4.69,
+      "type": "move",
+      "x": 956,
+      "y": 505
+    },
+    {
+      "time": 5,
+      "type": "move",
+      "x": 983,
+      "y": 519
+    },
+    {
+      "time": 5.3,
+      "type": "move",
+      "x": 1026,
+      "y": 451
+    },
+    {
+      "time": 5.6,
+      "type": "move",
+      "x": 1062,
+      "y": 366
+    },
+    {
+      "time": 5.9,
+      "type": "move",
+      "x": 1096,
+      "y": 301
+    },
+    {
+      "time": 6.2,
+      "type": "move",
+      "x": 1134,
+      "y": 226
+    },
+    {
+      "time": 6.5,
+      "type": "move",
+      "x": 1180,
+      "y": 145
+    },
+    {
+      "time": 6.8,
+      "type": "move",
+      "x": 1181,
+      "y": 155
+    },
+    {
+      "time": 7.1,
+      "type": "move",
+      "x": 1197,
+      "y": 149
+    },
+    {
+      "time": 7.4,
+      "type": "move",
+      "x": 1199,
+      "y": 146
+    },
+    {
+      "time": 7.7,
+      "type": "move",
+      "x": 1198,
+      "y": 156
+    },
+    {
+      "time": 8,
+      "type": "move",
+      "x": 1214,
+      "y": 147
+    },
+    {
+      "time": 8,
+      "type": "click",
+      "x": 1210,
+      "y": 150,
+      "label": "Invite teammates"
+    },
+    {
+      "time": 8.32,
+      "type": "move",
+      "x": 1165,
+      "y": 220
+    },
+    {
+      "time": 8.64,
+      "type": "move",
+      "x": 1117,
+      "y": 279
+    },
+    {
+      "time": 8.96,
+      "type": "move",
+      "x": 1068,
+      "y": 336
+    },
+    {
+      "time": 9.28,
+      "type": "move",
+      "x": 1021,
+      "y": 407
+    },
+    {
+      "time": 9.6,
+      "type": "move",
+      "x": 974,
+      "y": 476
+    },
+    {
+      "time": 9.88,
+      "type": "move",
+      "x": 978,
+      "y": 490
+    },
+    {
+      "time": 10.16,
+      "type": "move",
+      "x": 982,
+      "y": 500
+    },
+    {
+      "time": 10.44,
+      "type": "move",
+      "x": 987,
+      "y": 521
+    },
+    {
+      "time": 10.72,
+      "type": "move",
+      "x": 991,
+      "y": 547
+    },
+    {
+      "time": 11,
+      "type": "move",
+      "x": 996,
+      "y": 563
+    },
+    {
+      "time": 11,
+      "type": "click",
+      "x": 1000,
+      "y": 560,
+      "label": "Send invites"
+    },
+    {
+      "time": 11.28,
+      "type": "move",
+      "x": 1001,
+      "y": 554
+    },
+    {
+      "time": 11.56,
+      "type": "move",
+      "x": 1006,
+      "y": 562
+    },
+    {
+      "time": 11.84,
+      "type": "move",
+      "x": 1011,
+      "y": 564
+    },
+    {
+      "time": 12.12,
+      "type": "move",
+      "x": 1016,
+      "y": 554
+    },
+    {
+      "time": 12.4,
+      "type": "move",
+      "x": 1021,
+      "y": 561
+    },
+    {
+      "time": 12.7,
+      "type": "move",
+      "x": 648,
+      "y": 518
+    },
+    {
+      "time": 13,
+      "type": "move",
+      "x": 283,
+      "y": 475
+    },
+    {
+      "time": 13.29,
+      "type": "move",
+      "x": 361,
+      "y": 469
+    },
+    {
+      "time": 13.57,
+      "type": "move",
+      "x": 439,
+      "y": 462
+    },
+    {
+      "time": 13.86,
+      "type": "move",
+      "x": 517,
+      "y": 455
+    },
+    {
+      "time": 14.14,
+      "type": "move",
+      "x": 595,
+      "y": 447
+    },
+    {
+      "time": 14.43,
+      "type": "move",
+      "x": 672,
+      "y": 440
+    },
+    {
+      "time": 14.6,
+      "type": "click",
+      "x": 280,
+      "y": 470,
+      "label": "Open workspace settings"
+    },
+    {
+      "time": 14.71,
+      "type": "move",
+      "x": 748,
+      "y": 432
+    },
+    {
+      "time": 15,
+      "type": "move",
+      "x": 824,
+      "y": 424
+    },
+    {
+      "time": 15.29,
+      "type": "move",
+      "x": 825,
+      "y": 442
+    },
+    {
+      "time": 15.57,
+      "type": "move",
+      "x": 848,
+      "y": 466
+    },
+    {
+      "time": 15.86,
+      "type": "move",
+      "x": 853,
+      "y": 498
+    },
+    {
+      "time": 16.14,
+      "type": "move",
+      "x": 863,
+      "y": 529
+    },
+    {
+      "time": 16.43,
+      "type": "move",
+      "x": 883,
+      "y": 551
+    },
+    {
+      "time": 16.71,
+      "type": "move",
+      "x": 883,
+      "y": 570
+    },
+    {
+      "time": 17,
+      "type": "move",
+      "x": 904,
+      "y": 595
+    },
+    {
+      "time": 17.3,
+      "type": "move",
+      "x": 940,
+      "y": 506
+    },
+    {
+      "time": 17.6,
+      "type": "move",
+      "x": 993,
+      "y": 423
+    },
+    {
+      "time": 17.9,
+      "type": "move",
+      "x": 1026,
+      "y": 336
+    },
+    {
+      "time": 18.2,
+      "type": "move",
+      "x": 1082,
+      "y": 239
+    },
+    {
+      "time": 18.5,
+      "type": "move",
+      "x": 1114,
+      "y": 144
+    },
+    {
+      "time": 18.77,
+      "type": "move",
+      "x": 1121,
+      "y": 153
+    },
+    {
+      "time": 19.05,
+      "type": "move",
+      "x": 1131,
+      "y": 153
+    },
+    {
+      "time": 19.33,
+      "type": "move",
+      "x": 1130,
+      "y": 144
+    },
+    {
+      "time": 19.6,
+      "type": "move",
+      "x": 1125,
+      "y": 152
+    },
+    {
+      "time": 19.6,
+      "type": "click",
+      "x": 1130,
+      "y": 150,
+      "label": "Share workspace"
+    },
+    {
+      "time": 19.88,
+      "type": "move",
+      "x": 1104,
+      "y": 197
+    },
+    {
+      "time": 20.16,
+      "type": "move",
+      "x": 1067,
+      "y": 240
+    },
+    {
+      "time": 20.44,
+      "type": "move",
+      "x": 1042,
+      "y": 279
+    },
+    {
+      "time": 20.72,
+      "type": "move",
+      "x": 1009,
+      "y": 317
+    },
+    {
+      "time": 21,
+      "type": "move",
+      "x": 980,
+      "y": 355
+    },
+    {
+      "time": 21.32,
+      "type": "move",
+      "x": 984,
+      "y": 361
+    },
+    {
+      "time": 21.4,
+      "type": "click",
+      "x": 980,
+      "y": 360,
+      "label": "Copy share link"
+    },
+    {
+      "time": 21.64,
+      "type": "move",
+      "x": 989,
+      "y": 363
+    },
+    {
+      "time": 21.96,
+      "type": "move",
+      "x": 994,
+      "y": 354
+    },
+    {
+      "time": 22.28,
+      "type": "move",
+      "x": 999,
+      "y": 365
+    },
+    {
+      "time": 22.6,
+      "type": "move",
+      "x": 1003,
+      "y": 359
+    },
+    {
+      "time": 22.88,
+      "type": "move",
+      "x": 947,
+      "y": 344
+    },
+    {
+      "time": 23.16,
+      "type": "move",
+      "x": 910,
+      "y": 342
+    },
+    {
+      "time": 23.44,
+      "type": "move",
+      "x": 850,
+      "y": 319
+    },
+    {
+      "time": 23.72,
+      "type": "move",
+      "x": 813,
+      "y": 314
+    },
+    {
+      "time": 24,
+      "type": "move",
+      "x": 760,
+      "y": 300
+    }
+  ],
+  "aiEditHistory": [],
+  "metadata": {
+    "productUrl": "https://driftboard.example.com",
+    "prompt": "Make a 24-second product demo of Driftboard: open the dashboard, invite teammates, adjust workspace settings, and share.",
+    "notes": [
+      "Golden generated-project fixture (PB-010). Canonical example of Person A's expected generation output.",
+      "Captured media reused across clips because the sample capture is 3s; replace with the real per-scene capture when available."
+    ]
+  }
+}

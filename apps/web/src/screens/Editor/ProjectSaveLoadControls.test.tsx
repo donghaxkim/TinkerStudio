@@ -51,7 +51,7 @@ describe("ProjectSaveLoadControls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
 
     expect(screen.getByText("Project loaded from browser storage.")).toBeInTheDocument();
-    expect(loadedIds).toEqual(["demo_project_sample"]);
+    expect(loadedIds).toEqual(["driftboard_demo"]);
   });
 
   it("shows validation errors for invalid saved projects", () => {
@@ -77,14 +77,14 @@ describe("ProjectSaveLoadControls", () => {
     });
 
     expect(await screen.findByText("Project loaded from JSON file.")).toBeInTheDocument();
-    expect(loadedIds).toEqual(["demo_project_sample"]);
+    expect(loadedIds).toEqual(["driftboard_demo"]);
 
     fireEvent.change(screen.getByLabelText("Load project JSON file"), {
       target: { files: [new File(["{bad json"], "bad.json", { type: "application/json" })] },
     });
 
     await waitFor(() => expect(screen.getByText("Project JSON could not be parsed")).toBeInTheDocument());
-    expect(loadedIds).toEqual(["demo_project_sample"]);
+    expect(loadedIds).toEqual(["driftboard_demo"]);
   });
 
   it("rejects oversized project files before reading them", async () => {

@@ -4,7 +4,15 @@ import type { CursorEvent, DemoProject } from "@tinker/project-schema";
 import { serializeDemoProject } from "@tinker/editor";
 import { sampleProject } from "../../../../../packages/editor/src/test/sampleProject.js";
 import { LOCAL_PROJECT_STORAGE_KEY, saveProjectToStorage } from "../../lib/projectStorage.js";
+import { loadSampleProject } from "../../fixtures/loadSampleProject.js";
 import { EditorScreen } from "./EditorScreen.js";
+
+/** The golden driftboard fixture (PB-010) — the app's sample + mock generation output. */
+function goldenProject(): DemoProject {
+  const loaded = loadSampleProject();
+  if (!loaded.ok) throw new Error("golden fixture must be valid");
+  return loaded.project;
+}
 
 function dwellProject(): DemoProject {
   const cursorEvents: CursorEvent[] = [
@@ -736,6 +744,49 @@ describe("EditorScreen", () => {
       fireEvent.click(screen.getByRole("button", { name: "Start export" }));
       // After preflight (sync) the job is terminal — button must be re-enabled.
       expect(screen.getByRole("button", { name: "Start export" })).not.toBeDisabled();
+    });
+  });
+
+  // ── PB-010: the golden driftboard fixture opens in the editor ──────────────
+
+  describe("golden driftboard fixture (PB-010)", () => {
+    it("opens the golden fixture and shows the 4 named clips from the reference", () => {
+      render(<EditorScreen initialProject={goldenProject()} />);
+
+      // The top bar shows the driftboard title.
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Driftboard Demo");
+
+      // The 24s duration is reflected in the timecode.
+      expect(screen.getByLabelText("Timecode")).toHaveTextContent("0:00.0 / 0:24.0");
+
+      // All four reference clips render as selectable timeline bars.
+      expect(screen.getByRole("button", { name: "clip: Open dashboard" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "clip: Invite teammates" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "clip: Workspace settings" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "clip: Share & wrap-up" })).toBeInTheDocument();
+    });
+
+    it("shows the 2 zoom moves from the reference timeline", () => {
+      render(<EditorScreen initialProject={goldenProject()} />);
+
+      // Two zoom bars on the event lane (timeline labels them Zoom 1 / Zoom 2).
+      expect(screen.getByRole("button", { name: "zoom: Zoom 1" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "zoom: Zoom 2" })).toBeInTheDocument();
+
+      // The Zoom panel rowcards carry the reference time ranges and factors.
+      expect(screen.getByText(/0:08\.0 → 0:12\.4\s+×1\.6/)).toBeInTheDocument();
+      expect(screen.getByText(/0:19\.6 → 0:22\.6\s+×1\.5/)).toBeInTheDocument();
+    });
+
+    it("export preflight succeeds on the golden fixture", () => {
+      render(<EditorScreen initialProject={goldenProject()} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+
+      expect(screen.getByRole("status", { name: "Export job status" })).toBeInTheDocument();
+      expect(screen.getByText("Succeeded")).toBeInTheDocument();
+      // Artifact summary reflects the golden fixture's 24s @ 60fps timeline.
+      expect(screen.getByText("24s @ 60fps")).toBeInTheDocument();
     });
   });
 });

@@ -213,7 +213,8 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
 
     expect(screen.getByText("Record & open in editor")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Record & open in editor"));
-    expect(generated).toEqual(["demo_project_sample"]);
+    // Mock generation returns the golden driftboard fixture.
+    expect(generated).toEqual(["driftboard_demo"]);
   });
 
   // ─── failure state ────────────────────────────────────────────────────────

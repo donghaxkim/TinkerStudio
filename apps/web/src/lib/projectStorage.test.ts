@@ -79,7 +79,7 @@ describe("projectStorage", () => {
 
     expect(download.ok).toBe(true);
     if (!download.ok) throw new Error("expected download success");
-    expect(download.filename).toBe("sample-product-demo-demo-project-sample.json");
+    expect(download.filename).toBe("driftboard-demo-driftboard-demo.json");
     expect(download.mimeType).toBe("application/json");
     expect(JSON.parse(download.contents)).toEqual(sampleProject);
   });
