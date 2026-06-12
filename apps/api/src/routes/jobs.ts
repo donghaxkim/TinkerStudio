@@ -26,9 +26,18 @@ function formatZodIssues(issues: Array<{ path: PropertyKey[]; message: string }>
     .join("; ");
 }
 
+function requestBodyWithoutClientId(body: unknown) {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return body;
+  }
+
+  const { id: _id, ...requestBody } = body as Record<string, unknown>;
+  return requestBody;
+}
+
 export function registerJobsRoutes(server: FastifyInstance, options: JobsRoutesOptions) {
   server.post("/api/jobs", async (request, reply) => {
-    const parsed = AiUrlPlanningCreateDemoRequestSchema.safeParse(request.body);
+    const parsed = AiUrlPlanningCreateDemoRequestSchema.safeParse(requestBodyWithoutClientId(request.body));
     if (!parsed.success) {
       return reply.status(422).send(validationError(formatZodIssues(parsed.error.issues)));
     }

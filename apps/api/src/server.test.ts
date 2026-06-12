@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolve } from "node:path";
@@ -212,6 +212,55 @@ describe("job routes", () => {
     }
   });
 
+  it("ignores malformed client ids before validating job requests", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-client-id-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
+        expect(rawRequest).toMatchObject({ id: "job-test", mode: "ai-url-planning", renderer: "hyperframes" });
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: { ...validBody, id: "" },
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(JSON.parse(response.body)).toMatchObject({
+        id: "job-test",
+        status: "queued",
+        request: { id: "job-test" },
+      });
+      await completed.promise;
+    } finally {
+      await server.close();
+    }
+  });
+
   it("rejects invalid job requests and caps pending queue capacity", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-validation-${randomUUID()}-`));
     const validationServer = await buildServer({ config: testConfig(repoRoot) });
@@ -341,6 +390,70 @@ describe("job routes", () => {
         const response = await server.inject({ method: "GET", url: unsafeUrl });
         expect(response.statusCode).toBe(404);
       }
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects symlinked artifacts that resolve outside the job output root", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-symlink-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const outsidePath = join(repoRoot, "outside.txt");
+    const symlinkPath = join(outputRoot, "hyperframes", "outside.txt");
+    const completed = deferred<void>();
+    let symlinkUnsupported = false;
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(outsidePath, "outside output root");
+        try {
+          await symlink(outsidePath, symlinkPath);
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "EACCES" || code === "EPERM" || code === "ENOSYS" || code === "ENOTSUP") {
+            symlinkUnsupported = true;
+          } else {
+            throw error;
+          }
+        }
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: symlinkUnsupported ? [] : [symlinkPath],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+      await completed.promise;
+      await Promise.resolve();
+
+      if (symlinkUnsupported) {
+        return;
+      }
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/outside.txt",
+      });
+
+      expect(response.statusCode).toBe(404);
     } finally {
       await server.close();
     }

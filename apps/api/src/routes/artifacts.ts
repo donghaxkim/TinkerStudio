@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { mediaTypeForPath } from "../jobs/artifactIndex.js";
@@ -49,6 +49,14 @@ function safeArtifactPath(outputRoot: string, rawPath: string, decodedPath: stri
   return isInsideDirectory(outputRoot, artifactPath) ? artifactPath : undefined;
 }
 
+async function realArtifactPathInsideOutputRoot(outputRoot: string, artifactPath: string) {
+  const paths = await Promise.all([realpath(outputRoot), realpath(artifactPath)]).catch(() => undefined);
+  if (paths === undefined) return undefined;
+
+  const [realOutputRoot, realArtifactPath] = paths;
+  return isInsideDirectory(realOutputRoot, realArtifactPath) ? realArtifactPath : undefined;
+}
+
 export function registerArtifactsRoutes(server: FastifyInstance, options: ArtifactsRoutesOptions) {
   server.get<{ Params: { id: string; "*": string } }>("/api/jobs/:id/artifacts/*", async (request, reply) => {
     const record = options.store.getRecord(request.params.id);
@@ -62,7 +70,12 @@ export function registerArtifactsRoutes(server: FastifyInstance, options: Artifa
       return reply.status(404).send({ message: "Artifact not found" });
     }
 
-    const fileStat = await stat(artifactPath).catch(() => undefined);
+    const realArtifactPath = await realArtifactPathInsideOutputRoot(record.outputRoot, artifactPath);
+    if (realArtifactPath === undefined) {
+      return reply.status(404).send({ message: "Artifact not found" });
+    }
+
+    const fileStat = await stat(realArtifactPath).catch(() => undefined);
     if (fileStat === undefined || !fileStat.isFile()) {
       return reply.status(404).send({ message: "Artifact not found" });
     }
@@ -74,6 +87,6 @@ export function registerArtifactsRoutes(server: FastifyInstance, options: Artifa
       reply.type(mediaType);
     }
 
-    return reply.send(createReadStream(artifactPath));
+    return reply.send(createReadStream(realArtifactPath));
   });
 }
