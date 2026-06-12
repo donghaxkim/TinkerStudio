@@ -75,29 +75,12 @@ export function App() {
 
   // route === "create"
   return (
-    <main style={{ padding: 24 }}>
-      <CreateDemoScreen
-        generationClient={generationClient}
-        onProjectGenerated={handleProjectGenerated}
-      />
-      <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          className="tk-btn"
-          onClick={handleUseSampleProject}
-        >
-          Use sample project
-        </button>
-        {state.project !== undefined ? (
-          <button
-            type="button"
-            className="tk-btn"
-            onClick={handleReturnToEditor}
-          >
-            Return to editor
-          </button>
-        ) : null}
-      </div>
-    </main>
+    <CreateDemoScreen
+      generationClient={generationClient}
+      onProjectGenerated={handleProjectGenerated}
+      onUseSampleProject={handleUseSampleProject}
+      onReturnToEditor={handleReturnToEditor}
+      hasInProgressProject={state.project !== undefined}
+    />
   );
 }

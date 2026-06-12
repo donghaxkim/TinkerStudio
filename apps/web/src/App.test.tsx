@@ -1,25 +1,49 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 
-// Helper: fill and submit the Create Demo form with valid values
-function fillAndSubmitCreateDemoForm() {
+// Helper: fill and submit the Create Demo composer with valid values.
+// Requires fake timers to be active (for repo verification delay).
+// After calling, you still need to flush async (flushAsync()) then
+// click "Record & open in editor" to reach the Editor.
+async function fillAndSubmitCreateDemoComposer() {
+  // Enter a valid repo URL and advance timers past the 1100ms verification delay
   fireEvent.change(screen.getByLabelText("GitHub repo URL"), {
-    target: { value: "https://github.com/example/product" },
+    target: { value: "github.com/example/product" },
   });
-  fireEvent.change(screen.getByLabelText("Product or local app URL"), {
-    target: { value: "http://localhost:5173" },
+  await act(async () => {
+    vi.advanceTimersByTime(1200);
   });
+
+  // Type a prompt
   fireEvent.change(screen.getByLabelText("Demo prompt"), {
     target: { value: "Show the analytics workflow" },
   });
-  fireEvent.change(screen.getByLabelText("Duration cap"), {
-    target: { value: "60" },
+
+  // Click send
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
   });
-  fireEvent.click(screen.getByRole("button", { name: "Create demo" }));
+}
+
+// Flush pending microtasks after an async operation
+async function flushAsync() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 }
 
 describe("App shell state machine", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("initial render shows Create Demo screen (not just 'Tinker')", () => {
     render(<App />);
 
@@ -33,14 +57,18 @@ describe("App shell state machine", () => {
   it("successful mock generation transitions to Editor with Save/Export panels visible", async () => {
     render(<App />);
 
-    fillAndSubmitCreateDemoForm();
+    await fillAndSubmitCreateDemoComposer();
+    await flushAsync();
 
-    // Wait for generation to succeed and editor to appear
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
+    // Wait for generation to succeed — storyboard card appears
+    expect(screen.getByText("Record & open in editor")).toBeInTheDocument();
+
+    // Click "Record & open in editor" to open the editor
+    await act(async () => {
+      fireEvent.click(screen.getByText("Record & open in editor"));
     });
 
-    // EditorScreen should be visible — check for its characteristic panels
+    expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
     expect(screen.getByLabelText("Export")).toBeInTheDocument();
   });
@@ -48,12 +76,11 @@ describe("App shell state machine", () => {
   it("'use sample project' path opens the Editor", async () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Use sample project" }));
-
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByText("or start from a sample project"));
     });
 
+    expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
     expect(screen.getByLabelText("Export")).toBeInTheDocument();
   });
@@ -62,10 +89,11 @@ describe("App shell state machine", () => {
     render(<App />);
 
     // Get to Editor via sample project
-    fireEvent.click(screen.getByRole("button", { name: "Use sample project" }));
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByText("or start from a sample project"));
     });
+
+    expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
 
     // Open Settings
@@ -83,17 +111,22 @@ describe("App shell state machine", () => {
     render(<App />);
 
     // On the initial Create route with no project yet, the button must not exist
-    expect(screen.queryByRole("button", { name: "Return to editor" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Return to editor")).not.toBeInTheDocument();
   });
 
   it("returning from Editor to Create Demo preserves the in-progress project (identity check via title)", async () => {
     render(<App />);
 
     // Step 1: Drive a successful mock generation to open the Editor with a real project
-    fillAndSubmitCreateDemoForm();
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
+    await fillAndSubmitCreateDemoComposer();
+    await flushAsync();
+    expect(screen.getByText("Record & open in editor")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Record & open in editor"));
     });
+
+    expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
 
     // Step 2: Capture the project title as shown in the Editor's <h1>
@@ -105,15 +138,16 @@ describe("App shell state machine", () => {
     expect(screen.getByLabelText("Create demo")).toBeInTheDocument();
     expect(screen.queryByLabelText("Project persistence")).not.toBeInTheDocument();
 
-    // Step 4: "Return to editor" button must now be visible (project is still in state)
-    const returnBtn = screen.getByRole("button", { name: "Return to editor" });
-    expect(returnBtn).toBeInTheDocument();
+    // Step 4: "Return to editor" link must now be visible (project is still in state)
+    const returnLink = screen.getByText("Return to editor");
+    expect(returnLink).toBeInTheDocument();
 
     // Step 5: Click "Return to editor" — must NOT load the sample or replace the project
-    fireEvent.click(returnBtn);
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(returnLink);
     });
+
+    expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
 
     // Step 6: Assert the Editor shows the same project (same title — project was NOT replaced)

@@ -1,107 +1,368 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import type { GenerationClient } from "../../lib/generationClient.js";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockGenerationClient } from "../../lib/mockGenerationClient.js";
 import { CreateDemoScreen } from "./CreateDemoScreen.js";
 
-function fillValidForm() {
-  fireEvent.change(screen.getByLabelText("GitHub repo URL"), {
-    target: { value: "https://github.com/example/product" },
-  });
-  fireEvent.change(screen.getByLabelText("Product or local app URL"), {
-    target: { value: "http://localhost:5173" },
-  });
-  fireEvent.change(screen.getByLabelText("Demo prompt"), {
-    target: { value: "Show the analytics workflow" },
-  });
-  fireEvent.change(screen.getByLabelText("Duration cap"), {
-    target: { value: "60" },
+// Helper: enter a repo URL and advance timers past the 1100ms verification delay
+async function enterAndVerifyRepo(repoValue = "github.com/example/product") {
+  const input = screen.getByLabelText("GitHub repo URL");
+  fireEvent.change(input, { target: { value: repoValue } });
+  await act(async () => {
+    vi.advanceTimersByTime(1200);
   });
 }
 
-describe("CreateDemoScreen", () => {
-  it("renders all V1 create-demo fields and all progress phases", () => {
-    render(<CreateDemoScreen generationClient={createMockGenerationClient()} onProjectGenerated={() => undefined} />);
+// Helper: flush all pending microtasks/promises so async mock client resolves
+async function flushAsync() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+describe("CreateDemoScreen — Porcelain chat composer", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // ─── empty state ──────────────────────────────────────────────────────────
+
+  it("renders the hero heading and subtitle when no messages", () => {
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Tinker Studio");
+    expect(screen.getByText("Paste your repo, get the demo video.")).toBeInTheDocument();
+  });
+
+  it("renders the repo input and prompt textarea", () => {
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+      />,
+    );
 
     expect(screen.getByLabelText("GitHub repo URL")).toBeInTheDocument();
-    expect(screen.getByLabelText("Product or local app URL")).toBeInTheDocument();
     expect(screen.getByLabelText("Demo prompt")).toBeInTheDocument();
-    expect(screen.getByLabelText("Duration cap")).toBeInTheDocument();
-    expect(screen.getByLabelText("Aspect ratio")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Enable narration")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Narration style")).not.toBeInTheDocument();
-
-    for (const label of [
-      "Queued",
-      "Analyzing product",
-      "Creating storyboard",
-      "Planning capture",
-      "Capturing",
-      "Compiling project",
-      "Validating project",
-      "Complete",
-    ]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
-    }
   });
 
-  it("validates before submit", async () => {
-    render(<CreateDemoScreen generationClient={createMockGenerationClient()} onProjectGenerated={() => undefined} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Create demo" }));
-
-    expect(await screen.findByText(/Fix the highlighted fields/)).toBeInTheDocument();
-    expect(screen.getByText(/prompt is required/i)).toBeInTheDocument();
-  });
-
-  it("submits through the generation client and opens a validated project on success", async () => {
-    const generatedProjects: string[] = [];
-    const client = createMockGenerationClient();
+  it("send button is initially disabled (no repo, no prompt)", () => {
     render(
       <CreateDemoScreen
-        generationClient={client}
-        onProjectGenerated={(project) => generatedProjects.push(project.id)}
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
       />,
     );
 
-    fillValidForm();
-    fireEvent.click(screen.getByRole("button", { name: "Create demo" }));
-
-    expect(await screen.findByText("Generation succeeded. Opening editor…")).toBeInTheDocument();
-    await waitFor(() => expect(generatedProjects).toEqual(["demo_project_sample"]));
+    const sendBtn = screen.getByTitle("Enter your repo first");
+    expect(sendBtn).toBeDisabled();
   });
 
-  it("renders failed jobs and does not open the editor", async () => {
-    const generatedProjects: string[] = [];
-    const client = createMockGenerationClient({ mode: "failed" });
+  it("send button stays disabled when prompt is filled but repo not verified", () => {
     render(
       <CreateDemoScreen
-        generationClient={client}
-        onProjectGenerated={(project) => generatedProjects.push(project.id)}
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
       />,
     );
 
-    fillValidForm();
-    fireEvent.click(screen.getByRole("button", { name: "Create demo" }));
-
-    expect(await screen.findByText("Capture failed in mock generator")).toBeInTheDocument();
-    expect(generatedProjects).toEqual([]);
+    // Enter prompt but no repo
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "Show the analytics workflow" },
+    });
+    expect(screen.getByTitle("Enter your repo first")).toBeDisabled();
   });
 
-  it("rejects invalid generation results and does not open the editor", async () => {
-    const generatedProjects: string[] = [];
-    const client = createMockGenerationClient({ mode: "invalid-result" }) as GenerationClient;
+  // ─── repo verification ────────────────────────────────────────────────────
+
+  it("shows spinner while verifying and check mark after", async () => {
     render(
       <CreateDemoScreen
-        generationClient={client}
-        onProjectGenerated={(project) => generatedProjects.push(project.id)}
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
       />,
     );
 
-    fillValidForm();
-    fireEvent.click(screen.getByRole("button", { name: "Create demo" }));
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), {
+      target: { value: "github.com/example/product" },
+    });
 
-    expect(await screen.findByText(/Generated project failed validation/)).toBeInTheDocument();
-    expect(generatedProjects).toEqual([]);
+    // Spinner should appear immediately (verifying starts synchronously)
+    expect(screen.getByTitle("Verifying repository")).toBeInTheDocument();
+
+    // Advance past 1100ms to complete verification
+    await act(async () => {
+      vi.advanceTimersByTime(1200);
+    });
+
+    expect(screen.queryByTitle("Verifying repository")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Repository verified")).toBeInTheDocument();
+  });
+
+  it("clearing the repo input removes verification", async () => {
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+      />,
+    );
+
+    await enterAndVerifyRepo();
+    expect(screen.getByTitle("Repository verified")).toBeInTheDocument();
+
+    // Clear input
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), {
+      target: { value: "" },
+    });
+    expect(screen.queryByTitle("Repository verified")).not.toBeInTheDocument();
+  });
+
+  // ─── send gating ─────────────────────────────────────────────────────────
+
+  it("pressing Enter without a verified repo does not add any message", async () => {
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "Show the analytics workflow" },
+    });
+
+    fireEvent.keyDown(screen.getByLabelText("Demo prompt"), {
+      key: "Enter",
+      shiftKey: false,
+    });
+
+    // Hero heading still visible — no message was sent
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+  });
+
+  it("send button is disabled when prompt is empty even after repo verification", async () => {
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+      />,
+    );
+
+    await enterAndVerifyRepo();
+
+    // Prompt is still empty — button should be disabled
+    const btn = screen.getByRole("button", { name: "Send" });
+    expect(btn).toBeDisabled();
+  });
+
+  // ─── successful generation ────────────────────────────────────────────────
+
+  it("valid submit runs generation and shows storyboard card", async () => {
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+      />,
+    );
+
+    await enterAndVerifyRepo();
+
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "Show the analytics workflow" },
+    });
+
+    const sendBtn = screen.getByRole("button", { name: "Send" });
+    expect(sendBtn).not.toBeDisabled();
+    fireEvent.click(sendBtn);
+
+    // Flush async (mock client resolves immediately)
+    await flushAsync();
+
+    // Storyboard card and user message should be in thread
+    expect(screen.getByText("Show the analytics workflow")).toBeInTheDocument();
+    expect(screen.getByText(/here's the cut I'd make/i)).toBeInTheDocument();
+    expect(screen.getByText("Record & open in editor")).toBeInTheDocument();
+  });
+
+  it("clicking 'Record & open in editor' calls onProjectGenerated", async () => {
+    const generated: string[] = [];
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={(project) => generated.push(project.id)}
+      />,
+    );
+
+    await enterAndVerifyRepo();
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "Show the analytics workflow" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await flushAsync();
+
+    expect(screen.getByText("Record & open in editor")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Record & open in editor"));
+    expect(generated).toEqual(["demo_project_sample"]);
+  });
+
+  // ─── failure state ────────────────────────────────────────────────────────
+
+  it("failed generation shows graceful error in thread and does not open editor", async () => {
+    const generated: string[] = [];
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient({ mode: "failed" })}
+        onProjectGenerated={(project) => generated.push(project.id)}
+      />,
+    );
+
+    await enterAndVerifyRepo();
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "Show the analytics workflow" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await flushAsync();
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Capture failed in mock generator");
+    expect(generated).toEqual([]);
+
+    // Repo input is still populated
+    expect(screen.getByLabelText("GitHub repo URL")).toHaveValue("github.com/example/product");
+  });
+
+  // ─── retry after failure ──────────────────────────────────────────────────
+
+  it("after failure, composer is still active and send button re-enables", async () => {
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient({ mode: "failed" })}
+        onProjectGenerated={() => undefined}
+      />,
+    );
+
+    await enterAndVerifyRepo();
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "First attempt" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await flushAsync();
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    // After failure: type a new prompt and the send button re-enables
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "Retry attempt" },
+    });
+
+    const sendBtn = screen.getByRole("button", { name: "Send" });
+    expect(sendBtn).not.toBeDisabled();
+  });
+
+  // ─── progress / typing state ──────────────────────────────────────────────
+
+  it("shows 3 typing dots while generation is in progress", async () => {
+    // Use a never-resolving promise to keep busy=true permanently for the assertion
+    const slowClient = {
+      ...createMockGenerationClient(),
+      createDemo: (_req: Parameters<ReturnType<typeof createMockGenerationClient>["createDemo"]>[0]) =>
+        new Promise<Awaited<ReturnType<ReturnType<typeof createMockGenerationClient>["createDemo"]>>>(
+          () => undefined, // never resolves
+        ),
+    };
+
+    render(
+      <CreateDemoScreen
+        generationClient={slowClient as ReturnType<typeof createMockGenerationClient>}
+        onProjectGenerated={() => undefined}
+      />,
+    );
+
+    await enterAndVerifyRepo();
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "Show the analytics workflow" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    });
+
+    // While pending, 3 typing dots should be visible
+    const dots = document.querySelectorAll(".tk-dot");
+    expect(dots.length).toBe(3);
+  });
+
+  // ─── optional affordances ─────────────────────────────────────────────────
+
+  it("renders 'or start from a sample project' link when onUseSampleProject is provided", () => {
+    const handler = vi.fn();
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+        onUseSampleProject={handler}
+      />,
+    );
+
+    const link = screen.getByText("or start from a sample project");
+    expect(link).toBeInTheDocument();
+    fireEvent.click(link);
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("does NOT render sample-project link when onUseSampleProject is omitted", () => {
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText("or start from a sample project")).not.toBeInTheDocument();
+  });
+
+  it("renders 'Return to editor' link when hasInProgressProject=true and onReturnToEditor is provided", () => {
+    const handler = vi.fn();
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+        onReturnToEditor={handler}
+        hasInProgressProject={true}
+        onUseSampleProject={() => undefined}
+      />,
+    );
+
+    const link = screen.getByText("Return to editor");
+    expect(link).toBeInTheDocument();
+    fireEvent.click(link);
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("does NOT render 'Return to editor' link when hasInProgressProject=false", () => {
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+        onReturnToEditor={() => undefined}
+        hasInProgressProject={false}
+        onUseSampleProject={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText("Return to editor")).not.toBeInTheDocument();
   });
 });
