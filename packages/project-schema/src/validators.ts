@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ResolvedCursorSettings } from "./types.js";
 
 export const PROJECT_SCHEMA_VERSION = "0.1.0" as const;
 
@@ -186,16 +187,10 @@ export const CursorSettingsSchema = z
   })
   .strict();
 
-export const CURSOR_SETTINGS_DEFAULTS = {
-  hidden: false as boolean,
-  clickEffect: "ring" as z.infer<typeof ClickEffectSchema>,
+export const CURSOR_SETTINGS_DEFAULTS: ResolvedCursorSettings = {
+  hidden: false,
+  clickEffect: "ring",
   clickEffectDurationMs: 500,
-} as const;
-
-export type ResolvedCursorSettings = {
-  hidden: boolean;
-  clickEffect: z.infer<typeof ClickEffectSchema>;
-  clickEffectDurationMs: number;
 };
 
 /**

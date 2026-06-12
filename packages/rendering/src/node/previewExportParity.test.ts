@@ -312,4 +312,20 @@ describe("preview/export cursor-settings parity (PB-006)", () => {
     // No `cursor` field is identical to explicit defaults — no regression for existing projects.
     expect(filterComplexFor(withoutSettings)).toEqual(filterComplexFor(withSettings));
   });
+
+  it("clickEffect ripple: export emphasis box is 34×34 (larger than the ring 30×30)", () => {
+    const project = cursorProject({ clickEffect: "ripple" });
+
+    // Preview intent: resolver returns ripple.
+    expect(resolveCursorSettings(project.cursor).clickEffect).toBe("ripple");
+
+    // Export emits the amber emphasis box at the ripple size (34×34).
+    const boxes = cursorDrawboxesFor(project);
+    const emphasisBoxes = boxes.filter((box) => box.color === CLICK_EMPHASIS_COLOR);
+    expect(emphasisBoxes.length).toBeGreaterThan(0);
+    emphasisBoxes.forEach((box) => {
+      expect(box.width).toBe(34);
+      expect(box.height).toBe(34);
+    });
+  });
 });

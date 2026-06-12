@@ -33,3 +33,10 @@ export type RemoveEntityOperation = z.infer<typeof RemoveEntityOperationSchema>;
 export type AIEditOperation = z.infer<typeof AIEditOperationSchema>;
 export type AIEdit = z.infer<typeof AIEditSchema>;
 export type DemoProject = z.infer<typeof DemoProjectSchema>;
+
+/** The fully-resolved cursor/click display settings after defaults are applied (PB-006). */
+export type ResolvedCursorSettings = {
+  hidden: boolean;
+  clickEffect: ClickEffect;
+  clickEffectDurationMs: number;
+};
