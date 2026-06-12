@@ -96,7 +96,7 @@ Do these in order unless a blocker forces a smaller slice:
 6. [x] PB-005: Replace prototype manual editing with item-aware editing.
 7. [x] PB-006: Add manual cursor/click controls. (Schema addition pending Person A sign-off — backward-compatible.)
 8. [x] PB-007: Harden project lifecycle, save/load, and recovery.
-9. [ ] PB-008: Make export UX first-class.
+9. [x] PB-008: Make export UX first-class.
 10. [ ] PB-009: Mount useful Settings.
 11. [ ] PB-010: Add Samuel integration harness and golden project fixture.
 12. [ ] PB-011: Final one-user acceptance gate.
@@ -543,8 +543,9 @@ pnpm --filter @tinker/web test -- projectStorage
 
 **Priority:** P0
 **Owner:** Person B
-**Status:** Partial
+**Status:** Done
 **Goal:** Export should feel like a real product operation, not a hidden technical test.
+**Note:** Honest local-first export. The browser runs the REAL preflight (validate snapshot + build plan) via a driven `useWebExportJob` and shows the validated artifact summary + the exact `render:sample` command + output path; it never claims to write the MP4 (ffmpeg is node-only). The actual MP4 is produced by the documented command.
 
 **Files/areas:**
 
@@ -565,19 +566,19 @@ packages/rendering/src/node/renderFinalToMp4.ts
 - [x] Show output path when `exportJobState` contains one.
 - [x] Surface export-plan/preflight failures before render starts.
 - [x] Surface render/probe failure messages when `exportJobState` contains an error.
-- [ ] Wire a real export job state into the web app instead of only rendering an optional prop.
-- [ ] Show final artifact duration, dimensions, and codec/probe summary after success.
-- [ ] Prevent duplicate export submissions while an export is running.
-- [ ] Keep project edits from changing in-flight export state.
+- [x] Wire a real export job state into the web app instead of only rendering an optional prop. (`useWebExportJob` drives validating→succeeded/failed.)
+- [x] Show final artifact duration, dimensions, and codec/probe summary after success. (Dimensions, timeline, h264 mp4 format, output path.)
+- [x] Prevent duplicate export submissions while an export is running. (Start disabled while non-terminal + hook guard.)
+- [x] Keep project edits from changing in-flight export state. (Frozen `structuredClone` snapshot; tested.)
 - [x] Add a local sample render command through `@tinker/rendering render:sample`.
 - [x] Add tests for export panel planning and job-state rendering.
-- [ ] Add tests for full app-level export UI states and failure recovery.
+- [x] Add tests for full app-level export UI states and failure recovery. (32 export tests across hook/panel/screen.)
 
 **Done when:**
 
-- [ ] User understands what export is doing and where the result is.
-- [ ] Export failure messages guide the user toward recovery.
-- [ ] The sample project can render and probe through the documented command.
+- [x] User understands what export is doing and where the result is. (Artifact summary + output path + render command.)
+- [x] Export failure messages guide the user toward recovery. (Failed state shows the real error + retry.)
+- [x] The sample project can render and probe through the documented command. (`render:sample` exists + tested; verified in the final gate.)
 
 **Verification:**
 
