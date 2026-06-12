@@ -146,30 +146,25 @@ describe("EditorManualControls", () => {
     expect(onSelectEntity).toHaveBeenCalledWith(undefined);
   });
 
-  it("adds a zoom over the selected range", () => {
-    const onApply = vi.fn();
-
+  it("has no Add zoom button (design parity — zooms come from the timeline)", () => {
     render(
       <EditorManualControls
         project={sampleProject}
         selectedRange={{ start: 6, end: 9 }}
         onSelectEntity={vi.fn()}
-        onApply={onApply}
+        onApply={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add zoom" }));
-
-    expect(onApply).toHaveBeenCalledTimes(1);
-    const [updatedProject, command] = onApply.mock.calls[0] ?? [];
-    expect(command.label).toBe("Add zoom");
-    expect(updatedProject.zooms.at(-1)).toEqual(expect.objectContaining({ start: 6, end: 9 }));
+    expect(screen.queryByRole("button", { name: "Add zoom" })).not.toBeInTheDocument();
   });
 
-  it("shows a calm hint when nothing is selected", () => {
+  it("shows no item editor when nothing is selected", () => {
     render(<EditorManualControls project={sampleProject} onSelectEntity={vi.fn()} onApply={vi.fn()} />);
 
-    expect(screen.getByText(/Select a clip or zoom/i)).toBeInTheDocument();
+    // The move-list helper is always present.
+    expect(screen.getByText(/Select a move to jump there/i)).toBeInTheDocument();
+    // No item editor (m25 removed the secondary fallback paragraph).
     expect(screen.queryByRole("button", { name: "Update zoom" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Trim clip" })).not.toBeInTheDocument();
   });

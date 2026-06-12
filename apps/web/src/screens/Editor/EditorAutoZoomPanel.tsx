@@ -54,7 +54,11 @@ export function EditorAutoZoomPanel({
   onPreviewProjectChange,
   onAccept,
 }: EditorAutoZoomPanelProps) {
-  const [enabled, setEnabled] = useState(false);
+  // M7: the toggle defaults ON to reflect that the loaded project already carries
+  // its zooms. This is purely a visual default — mounting does NOT auto-apply any
+  // auto-zooms. Only a USER toggle change (handleToggle) applies/removes them, so
+  // `appliedZoomIds` starts empty (we own nothing until the user acts).
+  const [enabled, setEnabled] = useState(true);
   const [intensity, setIntensity] = useState(DEFAULT_INTENSITY);
   const [appliedZoomIds, setAppliedZoomIds] = useState<string[]>([]);
   const [emptyNote, setEmptyNote] = useState(false);
@@ -62,24 +66,28 @@ export function EditorAutoZoomPanel({
   // Track the current project identity so we can reset on project change.
   const projectIdRef = useRef(project.id);
 
-  // Reset state when a different project is loaded.
+  // Reset state when a different project is loaded — back to the default-on visual
+  // state, owning no applied zooms (the new project carries its own).
   useEffect(() => {
     if (project.id !== projectIdRef.current) {
       projectIdRef.current = project.id;
-      setEnabled(false);
+      setEnabled(true);
       setAppliedZoomIds([]);
       setEmptyNote(false);
     }
   }, [project]);
 
-  // Drop preview ownership when another source takes over.
+  // Drop preview ownership when another source takes over — but ONLY when this
+  // panel actually owns applied auto-zooms. The toggle defaults visually ON (M7)
+  // without owning anything, so we must not clear another source's preview (e.g. an
+  // AI edit) just because the toggle is on. Gate on appliedZoomIds, not `enabled`.
   useEffect(() => {
-    if (enabled && previewSource !== undefined && previewSource !== "auto-zoom") {
+    if (appliedZoomIds.length > 0 && previewSource !== undefined && previewSource !== "auto-zoom") {
       // Another preview took over — just clear the preview slot; keep toggle on
       // so the user can see the state. The zooms were already applied.
       onPreviewProjectChange(undefined);
     }
-  }, [previewSource, enabled, onPreviewProjectChange]);
+  }, [previewSource, appliedZoomIds, onPreviewProjectChange]);
 
   /**
    * Apply auto-zoom suggestions at the given intensity and return the applied
@@ -235,22 +243,18 @@ export function EditorAutoZoomPanel({
       aria-label="Auto zoom suggestions"
       style={{
         display: "grid",
-        gap: 10,
-        padding: 14,
-        border: "1px solid var(--tk-border)",
-        borderRadius: "var(--tk-radius-lg)",
-        background: "var(--tk-card)",
+        gap: 12,
         color: "var(--tk-text)",
       }}
     >
-      {/* Eyebrow */}
+      {/* Eyebrow (m24) */}
       <p
         style={{
           margin: 0,
           color: "var(--tk-text-ter)",
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.06em",
+          fontSize: 10.5,
+          fontWeight: 650,
+          letterSpacing: "0.735px",
           textTransform: "uppercase",
         }}
       >
@@ -260,15 +264,15 @@ export function EditorAutoZoomPanel({
       {/* Header row: heading + subtitle + toggle */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--tk-text)" }}>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 400, color: "var(--tk-text)" }}>
             Zoom on clicks
           </p>
-          <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--tk-text-sec)" }}>
+          <p style={{ margin: "3px 0 0", fontSize: 10, color: "var(--tk-text-ter)" }}>
             Push in when the cursor clicks
           </p>
         </div>
 
-        {/* Toggle switch */}
+        {/* Toggle switch (M7): 34×21, blue on-track, white 13×13 knob */}
         <button
           type="button"
           role="switch"
@@ -280,24 +284,24 @@ export function EditorAutoZoomPanel({
             position: "relative",
             display: "inline-flex",
             alignItems: "center",
-            width: 36,
-            height: 20,
-            borderRadius: "var(--tk-radius-pill)",
+            width: 34,
+            height: 21,
+            borderRadius: 99,
             border: "none",
-            background: enabled ? "var(--tk-accent)" : "var(--tk-subtle)",
+            background: enabled ? "#3B5BD9" : "var(--tk-subtle)",
             cursor: "pointer",
             padding: 0,
             transition: "background 0.15s ease",
             outline: "none",
-            marginTop: 2,
+            marginTop: 1,
           }}
         >
           <span
             style={{
               position: "absolute",
-              left: enabled ? 18 : 2,
-              width: 16,
-              height: 16,
+              left: enabled ? 17 : 4,
+              width: 13,
+              height: 13,
               borderRadius: "50%",
               background: "white",
               boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
@@ -314,11 +318,11 @@ export function EditorAutoZoomPanel({
         </p>
       ) : null}
 
-      {/* Intensity row */}
+      {/* Intensity row (m23) */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <label
           htmlFor="auto-zoom-intensity"
-          style={{ fontSize: 12.5, color: "var(--tk-text-sec)", flexShrink: 0 }}
+          style={{ fontSize: 12, color: "var(--tk-text)", flexShrink: 0 }}
         >
           Intensity
         </label>
@@ -341,9 +345,9 @@ export function EditorAutoZoomPanel({
         <span
           style={{
             fontFamily: "var(--tk-mono)",
-            fontSize: 12,
-            color: "var(--tk-text)",
-            fontWeight: 500,
+            fontSize: 10.5,
+            color: "#6E6C66",
+            fontWeight: 400,
             minWidth: 32,
             textAlign: "right",
           }}

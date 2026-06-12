@@ -38,6 +38,17 @@ function openFilesPanel() {
   fireEvent.click(screen.getByRole("button", { name: "Export" }));
 }
 
+/**
+ * Apply the auto-zoom via a USER toggle. The "Zoom on clicks" switch defaults ON
+ * (M7) but mounting does not auto-apply; only a user toggle change applies/removes.
+ * So we click OFF then ON to land an apply command in history.
+ */
+function applyAutoZoom() {
+  const toggle = screen.getByRole("switch", { name: "Zoom on clicks" });
+  fireEvent.click(toggle); // OFF (no-op — nothing applied yet)
+  fireEvent.click(toggle); // ON → applies
+}
+
 describe("EditorScreen", () => {
   describe("auto zoom + AI preview wiring", () => {
     it("accepts auto zoom suggestions as one undoable command", () => {
@@ -46,7 +57,7 @@ describe("EditorScreen", () => {
       expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
 
       // Toggle ON — immediately applies the auto-zoom (no separate accept step).
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
       expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
       expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
 
@@ -66,7 +77,7 @@ describe("EditorScreen", () => {
       expect(screen.queryByText(/previewing proposed/i)).not.toBeInTheDocument();
 
       // Toggle ON — applies immediately; no preview banner for auto-zoom (it's committed directly).
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
       expect(screen.queryByText(/previewing proposed auto-zoom edit/i)).not.toBeInTheDocument();
 
       // Undo is available (the command landed in history).
@@ -83,7 +94,7 @@ describe("EditorScreen", () => {
 
       // Toggling auto-zoom ON applies zooms and clears the AI preview.
       openTab("Zoom");
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
 
       // Auto-zoom applies immediately — no auto-zoom preview banner.
       expect(screen.queryByText(/previewing proposed auto-zoom edit/i)).not.toBeInTheDocument();
@@ -217,7 +228,7 @@ describe("EditorScreen", () => {
       expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
 
       // Toggle auto-zoom ON to populate the undo stack.
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
 
       expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
       expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
@@ -469,9 +480,9 @@ describe("EditorScreen", () => {
       expect(getPersistenceStatus()).toHaveTextContent("Generated");
     });
 
-    it("shows 'Sample project' when projectOrigin='sample' and project is clean", () => {
+    it("shows 'Saved' when projectOrigin='sample' and project is clean", () => {
       render(<EditorScreen initialProject={sampleProject} projectOrigin="sample" />);
-      expect(getPersistenceStatus()).toHaveTextContent("Sample project");
+      expect(getPersistenceStatus()).toHaveTextContent("Saved");
     });
 
     it("defaults to 'Generated' when projectOrigin prop is absent and initialProject is provided", () => {
@@ -489,7 +500,7 @@ describe("EditorScreen", () => {
       render(<EditorScreen initialProject={dwellProject()} />);
       expect(getPersistenceStatus()).toHaveTextContent("Generated");
 
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
 
       expect(getPersistenceStatus()).toHaveTextContent("Unsaved changes");
     });
@@ -508,7 +519,7 @@ describe("EditorScreen", () => {
       render(<EditorScreen initialProject={dwellProject()} />);
 
       // Create something to undo.
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
 
       // Save clears dirty (open overlay first)
       openFilesPanel();
@@ -523,7 +534,7 @@ describe("EditorScreen", () => {
     it("becomes dirty after a redo", () => {
       render(<EditorScreen initialProject={dwellProject()} />);
 
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
       fireEvent.click(screen.getByRole("button", { name: "Undo" }));
 
       // Save clears dirty (open overlay first)
@@ -539,7 +550,7 @@ describe("EditorScreen", () => {
       render(<EditorScreen initialProject={dwellProject()} />);
 
       // Make it dirty
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
       expect(getPersistenceStatus()).toHaveTextContent("Unsaved changes");
 
       // Save (open overlay first)
@@ -560,7 +571,7 @@ describe("EditorScreen", () => {
       render(<EditorScreen initialProject={dwellProject()} />);
 
       // Create undo history
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
       expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
 
       // Save the current project (clears dirty) so "Load saved project" doesn't trigger confirm
@@ -582,7 +593,7 @@ describe("EditorScreen", () => {
       const status = screen.getByLabelText("Persistence status");
 
       // Make dirty
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
       expect(status).toHaveTextContent("Unsaved changes");
 
       // Store a project and then try to load — dirty triggers confirm
@@ -608,7 +619,7 @@ describe("EditorScreen", () => {
       render(<EditorScreen initialProject={dwellProject()} />);
 
       // Make dirty
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
 
       // Attempt to load without saving (open overlay first)
       saveProjectToStorage(sampleProject);
@@ -623,7 +634,7 @@ describe("EditorScreen", () => {
     it("Cancel preserves the dirty project", () => {
       render(<EditorScreen initialProject={dwellProject()} />);
 
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
       expect(screen.getByLabelText("Persistence status")).toHaveTextContent("Unsaved changes");
 
       saveProjectToStorage(sampleProject);
@@ -640,7 +651,7 @@ describe("EditorScreen", () => {
     it("Replace confirmed replaces project, resets history, clears dirty", () => {
       render(<EditorScreen initialProject={dwellProject()} />);
 
-      fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+      applyAutoZoom();
 
       saveProjectToStorage(sampleProject);
       openFilesPanel();
@@ -766,9 +777,15 @@ describe("EditorScreen", () => {
       expect(screen.getByRole("button", { name: "zoom: Invite modal" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "zoom: Share button" })).toBeInTheDocument();
 
-      // The Zoom panel rowcards carry the reference time ranges and factors.
-      expect(screen.getByText(/0:08\.0 → 0:12\.4\s+×1\.6/)).toBeInTheDocument();
-      expect(screen.getByText(/0:19\.6 → 0:22\.6\s+×1\.5/)).toBeInTheDocument();
+      // The Zoom panel rowcards carry the reference time ranges (M10: range and
+      // factor render as separate spans — range mono grey, factor blue far-right).
+      expect(screen.getByText("0:08.0 → 0:12.4")).toBeInTheDocument();
+      expect(screen.getByText("0:19.6 → 0:22.6")).toBeInTheDocument();
+
+      // Each rowcard button surfaces its blue factor (×1.6 / ×1.5). The factor also
+      // appears on the timeline zoom card, so scope the lookup to the rowcard button.
+      expect(screen.getByRole("button", { name: "Invite modal" })).toHaveTextContent("×1.6");
+      expect(screen.getByRole("button", { name: "Share button" })).toHaveTextContent("×1.5");
     });
 
     it("export preflight succeeds on the golden fixture", () => {

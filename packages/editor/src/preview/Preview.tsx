@@ -8,17 +8,44 @@ export type PreviewProps = {
   currentTime: number;
 };
 
+// Outer stage — warm-charcoal frame (M2).
 const stageStyle: CSSProperties = {
   position: "relative",
   aspectRatio: "16 / 9",
   width: "100%",
   minHeight: 320,
   overflow: "hidden",
-  borderRadius: "var(--tk-radius-lg, 11px)",
-  border: "1px solid var(--tk-border, rgba(20,20,15,0.12))",
-  background: "var(--tk-preview-bg, #10192C)",
+  borderRadius: 18,
+  background: "var(--tk-preview-bg, #26251F)",
   color: "white",
-  boxShadow: "var(--tk-shadow-md, 0 10px 28px rgba(20,20,15,0.09))",
+  display: "grid",
+  placeItems: "center",
+};
+
+// Gradient wallpaper that sits behind the dashboard window (M1).
+// Inset from the stage so a warm-charcoal frame remains; the gradient itself
+// shows a ~34px margin around the dashboard (asymmetric — more at bottom-right).
+const wallpaperStyle: CSSProperties = {
+  position: "absolute",
+  inset: 12,
+  borderRadius: 18,
+  background: "var(--tk-preview-wallpaper, linear-gradient(135deg,#3D3A52 0%,#6B5876 52%,#C98B6E 100%))",
+  display: "grid",
+  placeItems: "center",
+  padding: "34px 44px 44px 34px",
+};
+
+// Dashboard window — fixed 749×443 with soft drop shadow (M3).
+const dashboardWindowStyle: CSSProperties = {
+  position: "relative",
+  width: 749,
+  height: 443,
+  maxWidth: "100%",
+  aspectRatio: "749 / 443",
+  overflow: "hidden",
+  borderRadius: 10,
+  background: "#000",
+  boxShadow: "0 10px 30px rgba(10,10,14,0.4)",
 };
 
 type PreviewPlacement = {
@@ -121,7 +148,12 @@ export function Preview({ project, currentTime }: PreviewProps) {
 
   return (
     <section aria-label="Preview">
-      <div data-testid="preview-stage" style={{ ...stageStyle, aspectRatio: aspectRatioToCss(project.aspectRatio) }}>
+      <div data-testid="preview-stage" style={stageStyle}>
+        <div style={wallpaperStyle}>
+          <div
+            data-testid="preview-window"
+            style={{ ...dashboardWindowStyle, aspectRatio: aspectRatioToCss(project.aspectRatio) }}
+          >
         <div
           data-testid="preview-motion-layer"
           style={{
@@ -253,16 +285,8 @@ export function Preview({ project, currentTime }: PreviewProps) {
             );
           })}
         </div>
-      </div>
-      <div
-        style={{
-          marginTop: 8,
-          color: "var(--tk-text-ter, #9D9B94)",
-          fontSize: 11,
-          fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
-        }}
-      >
-        Primary media: {asset?.name ?? asset?.id ?? "none"} {asset?.type ? `(${asset.type})` : ""}
+          </div>
+        </div>
       </div>
     </section>
   );

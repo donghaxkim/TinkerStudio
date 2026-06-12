@@ -215,6 +215,54 @@ function MaskIcon() {
   );
 }
 
+// ─── panel-tab icons (15×15, currentColor) ─────────────────────────────────────
+
+const TAB_ICON = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+
+function ChatIcon() {
+  return (
+    <svg {...TAB_ICON} aria-hidden="true">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" />
+    </svg>
+  );
+}
+
+function MagnifierIcon() {
+  return (
+    <svg {...TAB_ICON} aria-hidden="true">
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.5" y2="16.5" />
+    </svg>
+  );
+}
+
+function SpeedIcon() {
+  return (
+    <svg {...TAB_ICON} aria-hidden="true">
+      <path d="M12 20a8 8 0 1 1 8-8" />
+      <path d="M12 12l4-3" />
+    </svg>
+  );
+}
+
+function CursorIcon() {
+  return (
+    <svg {...TAB_ICON} aria-hidden="true">
+      <path d="M5 3l6.5 16 2.2-6.3L20 10.5z" />
+    </svg>
+  );
+}
+
+function FrameTabIcon() {
+  return (
+    <svg {...TAB_ICON} aria-hidden="true">
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <line x1="4" y1="9" x2="20" y2="9" />
+      <line x1="9" y1="4" x2="9" y2="20" />
+    </svg>
+  );
+}
+
 // ─── persistence state ────────────────────────────────────────────────────────
 
 /**
@@ -239,7 +287,7 @@ function persistenceLabel({ origin, dirty }: PersistenceState): string {
     case "imported":
       return "Loaded from file";
     case "sample":
-      return "Sample project";
+      return "Saved";
     case "generated":
     default:
       return "Generated";
@@ -265,12 +313,12 @@ type PreviewState = {
 
 type PanelTab = "chat" | "zoom" | "speed" | "cursor" | "frame";
 
-const PANEL_TABS: Array<{ id: PanelTab; label: string }> = [
-  { id: "chat", label: "Chat" },
-  { id: "zoom", label: "Zoom" },
-  { id: "speed", label: "Speed" },
-  { id: "cursor", label: "Cursor" },
-  { id: "frame", label: "Frame" },
+const PANEL_TABS: Array<{ id: PanelTab; label: string; icon: ReactNode }> = [
+  { id: "chat", label: "Chat", icon: <ChatIcon /> },
+  { id: "zoom", label: "Zoom", icon: <MagnifierIcon /> },
+  { id: "speed", label: "Speed", icon: <SpeedIcon /> },
+  { id: "cursor", label: "Cursor", icon: <CursorIcon /> },
+  { id: "frame", label: "Frame", icon: <FrameTabIcon /> },
 ];
 
 // ─── error / empty states (calm Porcelain) ────────────────────────────────────
@@ -323,7 +371,6 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
   const [isPlaying, setIsPlaying] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
-  const [toolRailOpen, setToolRailOpen] = useState(true);
   const exportJob = useWebExportJob();
 
   // ── Persistence state ────────────────────────────────────────────────────
@@ -585,14 +632,14 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
               cursor: onExitToCreate ? "pointer" : "default",
             }}
           >
-            <span style={{ fontSize: 13.5, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--tk-text)" }}>Tinker</span>
-            <span style={{ fontSize: 13.5, fontWeight: 400, color: "var(--tk-text-sec)" }}>Studio</span>
+            <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.14px", color: "var(--tk-text)" }}>Tinker</span>
+            <span style={{ fontSize: 14, fontWeight: 400, color: "var(--tk-text-sec)" }}>Studio</span>
           </button>
           <span className="tk-vr" />
           <span
             style={{
               fontFamily: "var(--tk-mono)",
-              fontSize: 12,
+              fontSize: 11.5,
               color: "var(--tk-text-sec)",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -604,7 +651,7 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
           <span
             aria-label="Persistence status"
             style={{
-              fontSize: 11.5,
+              fontSize: 10.5,
               color: persistenceState.dirty ? "var(--tk-accent)" : "var(--tk-text-ter)",
               fontWeight: persistenceState.dirty ? 600 : 400,
             }}
@@ -632,6 +679,15 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
               if (project && currentTime >= project.duration) setCurrentTime(0);
               setIsPlaying(true);
             }}
+            style={{
+              height: 33,
+              borderRadius: 7,
+              background: "var(--tk-card)",
+              border: "1px solid rgba(20,20,15,0.14)",
+              fontSize: 13.3,
+              fontWeight: 400,
+              padding: "0 14px",
+            }}
           >
             Preview
           </button>
@@ -641,14 +697,23 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
             aria-label="Export"
             title="Open save, load &amp; export panel"
             onClick={() => setFilesOpen(true)}
+            style={{
+              height: 33,
+              minWidth: 68,
+              borderRadius: 7,
+              fontSize: 13.3,
+              fontWeight: 400,
+              padding: "0 14px",
+              justifyContent: "center",
+            }}
           >
             Export
           </button>
         </div>
       </header>
 
-      {/* ── Body: 70 / 30 split ─────────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) clamp(320px, 30%, 440px)", minHeight: 0 }}>
+      {/* ── Body: 78 / 22 split ─────────────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 284px", minHeight: 0 }}>
         {/* ── Left column ──────────────────────────────────────────────────── */}
         <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto auto", minHeight: 0, padding: 14, gap: 12 }}>
           {/* Preview stage */}
@@ -658,84 +723,74 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
                 position: "relative",
                 height: "100%",
                 minHeight: 0,
-                borderRadius: "var(--tk-radius-xl)",
+                borderRadius: 18,
                 background: "var(--tk-preview-bg)",
                 overflow: "hidden",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                padding: 24,
               }}
             >
-              {/* Floating tool rail */}
-              {toolRailOpen ? (
-                <nav
-                  aria-label="Editor tools"
-                  style={{
-                    position: "absolute",
-                    left: 14,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    display: "grid",
-                    gap: 4,
-                    padding: 5,
-                    borderRadius: "var(--tk-radius-md)",
-                    background: "var(--tk-card)",
-                    border: "1px solid var(--tk-border)",
-                    boxShadow: "var(--tk-shadow-md)",
-                    zIndex: 5,
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="tk-iconbtn"
-                    aria-label="Close tools"
-                    title="Close tools"
-                    onClick={() => setToolRailOpen(false)}
-                  >
-                    <CloseIcon />
-                  </button>
-                  <button type="button" className="tk-railbtn" aria-label="Split clip — not available in the MVP" title="Not available in the MVP" disabled>
-                    <SplitIcon />
-                  </button>
-                  <button
-                    type="button"
-                    className={`tk-railbtn${activeTab === "zoom" ? " tk-railbtn-on" : ""}`}
-                    aria-label="Zoom move"
-                    title="Add a zoom move (opens the Zoom panel)"
-                    aria-pressed={activeTab === "zoom"}
-                    onClick={() => setActiveTab("zoom")}
-                  >
-                    <ZoomMoveIcon />
-                  </button>
-                  <button type="button" className="tk-railbtn" aria-label="Auto frame — not available in the MVP" title="Not available in the MVP" disabled>
-                    <FrameIcon />
-                  </button>
-                  <button type="button" className="tk-railbtn" aria-label="Crop — not available in the MVP" title="Not available in the MVP" disabled>
-                    <CropIcon />
-                  </button>
-                  <button type="button" className="tk-railbtn" aria-label="Mask — not available in the MVP" title="Not available in the MVP" disabled>
-                    <MaskIcon />
-                  </button>
-                </nav>
-              ) : (
+              {/* Floating tool rail — 50×272, 6 icons (M16) */}
+              <nav
+                aria-label="Editor tools"
+                style={{
+                  position: "absolute",
+                  left: 14,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: 50,
+                  height: 272,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "space-evenly",
+                  padding: "8px 0",
+                  borderRadius: 19,
+                  background: "rgba(255,255,255,0.94)",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.26)",
+                  zIndex: 5,
+                }}
+              >
                 <button
                   type="button"
-                  className="tk-iconbtn"
-                  aria-label="Open tools"
-                  title="Open tools"
-                  style={{
-                    position: "absolute",
-                    left: 14,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    zIndex: 5,
-                  }}
-                  onClick={() => setToolRailOpen(true)}
+                  className="tk-railbtn tk-railbtn-active"
+                  aria-label="Cursor tool"
+                  title="Cursor"
+                  aria-pressed={true}
+                >
+                  <CursorIcon />
+                </button>
+                <button type="button" className="tk-railbtn" aria-label="Split clip — not available in the MVP" title="Not available in the MVP" disabled>
+                  <SplitIcon />
+                </button>
+                <button
+                  type="button"
+                  className={`tk-railbtn${activeTab === "zoom" ? " tk-railbtn-active" : ""}`}
+                  aria-label="Zoom move"
+                  title="Add a zoom move (opens the Zoom panel)"
+                  aria-pressed={activeTab === "zoom"}
+                  onClick={() => setActiveTab("zoom")}
                 >
                   <ZoomMoveIcon />
                 </button>
-              )}
+                <button type="button" className="tk-railbtn" aria-label="Auto frame — not available in the MVP" title="Not available in the MVP" disabled>
+                  <FrameIcon />
+                </button>
+                <button
+                  type="button"
+                  className="tk-railbtn tk-railbtn-active"
+                  aria-label="Crop tool"
+                  title="Crop"
+                  aria-pressed={true}
+                >
+                  <CropIcon />
+                </button>
+                <button type="button" className="tk-railbtn" aria-label="Mask — not available in the MVP" title="Not available in the MVP" disabled>
+                  <MaskIcon />
+                </button>
+              </nav>
 
               <div style={{ width: "100%", maxWidth: 760 }}>
                 <Preview project={displayProject} currentTime={currentTime} />
@@ -845,8 +900,8 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
               style={{
                 marginLeft: "auto",
                 fontFamily: "var(--tk-mono)",
-                fontSize: 11.5,
-                color: "var(--tk-text-sec)",
+                fontSize: 11,
+                color: "var(--tk-text-ter)",
               }}
             >
               {resolutionLabel(project.aspectRatio)} · {project.fps}fps
@@ -873,23 +928,23 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
             display: "grid",
             gridTemplateRows: "auto minmax(0, 1fr)",
             minHeight: 0,
-            borderLeft: "1px solid var(--tk-border)",
-            background: "var(--tk-card)",
+            background: "var(--tk-panel-bg)",
           }}
         >
-          <div role="tablist" aria-label="Editor panel tabs" style={{ display: "flex", gap: 4, padding: 8, borderBottom: "1px solid var(--tk-border)" }}>
+          <div role="tablist" aria-label="Editor panel tabs" style={{ display: "flex", gap: 6, padding: 10 }}>
             {PANEL_TABS.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 role="tab"
                 id={`tab-${tab.id}`}
+                aria-label={tab.label}
                 aria-controls={`panel-${tab.id}`}
                 aria-selected={activeTab === tab.id}
-                className={`tk-tab${activeTab === tab.id ? " tk-tab-on" : ""}`}
+                className={`tk-tab-icon${activeTab === tab.id ? " tk-tab-icon-on" : ""}`}
                 onClick={() => setActiveTab(tab.id)}
               >
-                {tab.label}
+                {tab.icon}
               </button>
             ))}
           </div>

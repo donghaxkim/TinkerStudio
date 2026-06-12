@@ -22,7 +22,23 @@ function dwellProject(overrides: Partial<DemoProject> = {}): DemoProject {
 }
 
 describe("EditorAutoZoomPanel", () => {
-  it("toggle ON applies auto-zoom moves (onAccept called, zooms reflect intensity scale)", () => {
+  it("defaults ON without auto-applying on mount", () => {
+    const onAccept = vi.fn();
+    render(
+      <EditorAutoZoomPanel
+        project={dwellProject()}
+        onPreviewProjectChange={vi.fn()}
+        onAccept={onAccept}
+      />,
+    );
+
+    // M7: the toggle is visually ON by default…
+    expect(screen.getByRole("switch", { name: "Zoom on clicks" })).toHaveAttribute("aria-checked", "true");
+    // …but mounting must NOT apply any auto-zooms (the project carries its own).
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it("toggle OFF→ON applies auto-zoom moves (onAccept called, zooms reflect intensity scale)", () => {
     const onPreviewProjectChange = vi.fn();
     const onAccept = vi.fn();
     const project = dwellProject();
@@ -36,10 +52,14 @@ describe("EditorAutoZoomPanel", () => {
     );
 
     const toggle = screen.getByRole("switch", { name: "Zoom on clicks" });
-    expect(toggle).toHaveAttribute("aria-checked", "false");
-
+    // Defaults ON. Click OFF (removes nothing — we own no applied zooms yet).
+    expect(toggle).toHaveAttribute("aria-checked", "true");
     fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(onAccept).not.toHaveBeenCalled();
 
+    // Click ON — a user toggle that applies the auto-zoom.
+    fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-checked", "true");
     // onAccept is called once with the project + command.
     expect(onAccept).toHaveBeenCalledTimes(1);
@@ -82,8 +102,10 @@ describe("EditorAutoZoomPanel", () => {
 
     const toggle = screen.getByRole("switch", { name: "Zoom on clicks" });
 
-    // Toggle ON — onAccept called to add the zoom; the wrapper updates the project prop.
-    fireEvent.click(toggle);
+    // Defaults ON. Click OFF (no-op — nothing applied yet), then ON to add the zoom.
+    fireEvent.click(toggle); // OFF
+    expect(onAccept).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" })); // ON
     expect(onAccept).toHaveBeenCalledTimes(1);
     expect(capturedProject.zooms).toHaveLength(1);
 
@@ -130,6 +152,8 @@ describe("EditorAutoZoomPanel", () => {
     );
 
     const toggle = screen.getByRole("switch", { name: "Zoom on clicks" });
+    // Defaults ON → click OFF then ON to apply (first onAccept call).
+    fireEvent.click(toggle); // OFF
     fireEvent.click(toggle); // ON → first onAccept call
     expect(onAccept).toHaveBeenCalledTimes(1);
 
@@ -154,7 +178,9 @@ describe("EditorAutoZoomPanel", () => {
     );
 
     const toggle = screen.getByRole("switch", { name: "Zoom on clicks" });
-    fireEvent.click(toggle);
+    // Defaults ON → click OFF then ON to trigger the apply (which finds nothing).
+    fireEvent.click(toggle); // OFF
+    fireEvent.click(toggle); // ON → applies, finds no suggestions
 
     // Toggle stays on but shows the calm note.
     expect(toggle).toHaveAttribute("aria-checked", "true");
@@ -177,8 +203,9 @@ describe("EditorAutoZoomPanel", () => {
       />,
     );
 
-    // Toggle ON — applies zooms immediately.
-    fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" }));
+    // Defaults ON → click OFF then ON to apply zooms.
+    fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" })); // OFF
+    fireEvent.click(screen.getByRole("switch", { name: "Zoom on clicks" })); // ON
 
     // AI takes the preview slot.
     rerender(

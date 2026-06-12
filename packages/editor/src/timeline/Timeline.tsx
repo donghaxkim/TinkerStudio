@@ -14,16 +14,9 @@ export type TimelineProps = {
   onSelectItem?: (item: { id: string; kind: string; start: number; end: number }) => void;
 };
 
-const rowStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "9rem 1fr",
-  minHeight: "3rem",
-  borderBottom: "1px solid var(--tk-border, rgba(20,20,15,0.12))",
-};
-
 const laneStyle: CSSProperties = {
   position: "relative",
-  minHeight: "3rem",
+  minHeight: "3.25rem",
 };
 
 function formatTickTime(seconds: number): string {
@@ -67,10 +60,6 @@ export function Timeline({
   };
 
   const playheadLeft = timeToPercent(currentTime);
-  const selectionStart = selectedRange ? timeToPercent(Math.min(selectedRange.start, selectedRange.end)) : "0%";
-  const selectionWidth = selectedRange
-    ? rangeToPercent(Math.min(selectedRange.start, selectedRange.end), Math.max(selectedRange.start, selectedRange.end))
-    : "0%";
 
   // Compute tick marks for the ruler.
   // Guard: if duration is zero or negative, emit a single tick at 0 and skip the loop.
@@ -88,269 +77,283 @@ export function Timeline({
     <section
       aria-label="Timeline"
       style={{
+        position: "relative",
         background: "var(--tk-card, #FFFFFF)",
         border: "1px solid var(--tk-border, rgba(20,20,15,0.12))",
         borderRadius: "var(--tk-radius-lg, 11px)",
         overflow: "hidden",
       }}
     >
-      {/* Ruler row */}
+      {/* Ruler row — flush full-width (M11) */}
       <div
+        data-testid="timeline-ruler"
+        onClick={handleSeek}
         style={{
-          ...rowStyle,
-          minHeight: "2.5rem",
+          ...laneStyle,
+          cursor: "pointer",
+          minHeight: "2.25rem",
           background: "var(--tk-raised, #F3F1EA)",
           borderBottom: "1px solid var(--tk-border, rgba(20,20,15,0.12))",
         }}
       >
-        <div
-          style={{
-            padding: "0 0.75rem",
-            display: "flex",
-            alignItems: "center",
-            color: "var(--tk-text-ter, #9D9B94)",
-            fontSize: 10.5,
-            fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
-            letterSpacing: "0.02em",
-          }}
-        >
-          {/* Empty label cell — clean ruler header */}
-        </div>
-        <div
-          data-testid="timeline-ruler"
-          onClick={handleSeek}
-          style={{ ...laneStyle, cursor: "pointer", minHeight: "2.5rem" }}
-        >
-          {/* Tick labels */}
-          {ticks.map((t, index) => {
-            const isLastTick = index === ticks.length - 1 && ticks.length > 1;
-            return (
-              <div
-                key={t}
-                style={{
-                  position: "absolute",
-                  left: timeToPercent(t),
-                  top: 0,
-                  bottom: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  // Right-align the last tick label so it doesn't clip at the ruler edge.
-                  alignItems: isLastTick ? "flex-end" : "flex-start",
-                  pointerEvents: "none",
-                }}
-              >
-                {/* Tick mark line */}
-                <div
-                  style={{
-                    width: 1,
-                    height: 6,
-                    background: "var(--tk-border, rgba(20,20,15,0.12))",
-                    marginTop: 0,
-                  }}
-                />
-                {/* Tick label */}
+        {/* Tick labels — 9px mono, quiet grey, dot separators (m28) */}
+        {ticks.map((t, index) => {
+          const isLastTick = index === ticks.length - 1 && ticks.length > 1;
+          const isFirstTick = index === 0;
+          return (
+            <div
+              key={t}
+              style={{
+                position: "absolute",
+                left: timeToPercent(t),
+                top: 0,
+                bottom: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                alignContent: "center",
+                pointerEvents: "none",
+              }}
+            >
+              {/* Leading dot separator (skip on the first tick) */}
+              {!isFirstTick ? (
                 <span
                   style={{
                     fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
-                    fontSize: 10.5,
-                    color: "var(--tk-text-ter, #9D9B94)",
+                    fontSize: 9,
+                    color: "#A8A6A0",
                     lineHeight: 1,
-                    // Last tick: shift label left so it stays inside the ruler.
-                    ...(isLastTick
-                      ? { marginRight: 0, transform: "translateX(-100%)" }
-                      : { marginLeft: 3 }),
+                    transform: "translateX(-8px)",
                     userSelect: "none",
-                    whiteSpace: "nowrap",
                   }}
                 >
-                  {formatTickTime(t)}
+                  ·
                 </span>
-              </div>
-            );
-          })}
-
-          {/* Selection band */}
-          {selectedRange ? (
-            <div
-              data-testid="selected-range"
-              aria-label={`Selected range ${selectedRange.start.toFixed(1)}s to ${selectedRange.end.toFixed(1)}s`}
-              style={{
-                position: "absolute",
-                left: selectionStart,
-                width: selectionWidth,
-                insetBlock: 4,
-                background: "var(--tk-accent-soft, rgba(59,91,217,0.10))",
-                border: "1px solid var(--tk-accent-line, rgba(59,91,217,0.32))",
-                borderRadius: "var(--tk-radius-sm, 6px)",
-              }}
-            />
-          ) : null}
-
-          {/* Playhead */}
-          <div
-            data-testid="timeline-playhead"
-            style={{
-              position: "absolute",
-              left: playheadLeft,
-              top: 0,
-              bottom: 0,
-              width: 2,
-              background: "var(--tk-accent, #3B5BD9)",
-            }}
-          />
-        </div>
+              ) : null}
+              <span
+                style={{
+                  fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
+                  fontSize: 9,
+                  color: "#A8A6A0",
+                  lineHeight: 1,
+                  ...(isLastTick ? { transform: "translateX(-100%)" } : { marginLeft: 4 }),
+                  userSelect: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {formatTickTime(t)}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Track / event rows */}
+      {/* Track / event rows — flush full-width, no label column (M11) */}
       {rows.map((row) => (
-        <div key={row.id} style={rowStyle}>
-          <div
-            style={{
-              padding: "0.5rem 0.75rem",
-              color: "var(--tk-text-sec, #6E6C66)",
-              background: "var(--tk-raised, #F3F1EA)",
-              fontSize: 12,
-              display: "flex",
-              alignItems: "center",
-              borderRight: "1px solid var(--tk-border, rgba(20,20,15,0.12))",
-            }}
-          >
-            {row.label}
-          </div>
-          <div
-            data-testid={`timeline-lane-${row.id}`}
-            onClick={handleSeek}
-            style={{ ...laneStyle, cursor: "pointer" }}
-          >
-              {/* Click markers — only on clip (track) rows */}
-            {row.kind === "track"
-              ? project.cursorEvents
-                  .filter((e) => e.type === "click")
-                  .map((e, i) => (
-                    <div
-                      key={`click-marker-${i}`}
-                      aria-hidden="true"
-                      style={{
-                        position: "absolute",
-                        left: timeToPercent(e.time),
-                        top: "50%",
-                        transform: "translate(-50%, -50%)",
-                        width: 7,
-                        height: 7,
-                        borderRadius: "50%",
-                        background: "var(--tk-accent, #3B5BD9)",
-                        boxShadow: "0 0 0 2px var(--tk-accent-soft, rgba(59,91,217,0.20))",
-                        pointerEvents: "none",
-                        zIndex: 1,
-                      }}
-                    />
-                  ))
-              : null}
-            {row.items.map((item) => {
-              const left = timeToPercent(item.start);
-              const itemWidth = rangeToPercent(item.start, item.end);
-              const isClip = item.kind === "clip";
-              const durationSec = item.end - item.start;
-              // An item is selected when its id matches and the selected entity's
-              // type aligns with the item kind (clip → "clip", any zoom kind → "zoom").
-              const itemEntityType = isClip ? "clip" : "zoom";
-              const isSelected =
-                selectedEntity?.id === item.id && selectedEntity?.type === itemEntityType;
+        <div
+          key={row.id}
+          data-testid={`timeline-lane-${row.id}`}
+          onClick={handleSeek}
+          style={{
+            ...laneStyle,
+            cursor: "pointer",
+            padding: "6px 8px",
+            borderBottom: "1px solid var(--tk-border, rgba(20,20,15,0.12))",
+          }}
+        >
+          {/* Click markers on clip (track) rows — kept aria-hidden for parity */}
+          {row.kind === "track"
+            ? project.cursorEvents
+                .filter((e) => e.type === "click")
+                .map((e, i) => (
+                  <div
+                    key={`click-marker-${i}`}
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      left: timeToPercent(e.time),
+                      bottom: 3,
+                      transform: "translateX(-50%) rotate(45deg)",
+                      width: 5,
+                      height: 5,
+                      background: "var(--tk-text-ter, #9D9B94)",
+                      pointerEvents: "none",
+                      zIndex: 1,
+                    }}
+                  />
+                ))
+            : null}
 
-              return (
-                <button
-                  type="button"
-                  key={item.id}
-                  aria-label={`${item.kind}: ${item.label}`}
-                  aria-pressed={isSelected}
+          {/* Diamond markers along the bottom of the zoom lane (m29) */}
+          {row.kind === "zooms"
+            ? row.items.map((item) => (
+                <div
+                  key={`zoom-marker-${item.id}`}
+                  aria-hidden="true"
                   style={{
                     position: "absolute",
-                    left,
-                    width: itemWidth,
-                    minWidth: 4,
-                    top: isClip ? 6 : 8,
-                    height: isClip ? 36 : 24,
+                    left: timeToPercent(item.start),
+                    bottom: 2,
+                    transform: "translateX(-50%) rotate(45deg)",
+                    width: 5,
+                    height: 5,
+                    background: "var(--tk-text-ter, #9D9B94)",
+                    pointerEvents: "none",
+                    zIndex: 1,
+                  }}
+                />
+              ))
+            : null}
+
+          {row.items.map((item) => {
+            const left = timeToPercent(item.start);
+            const itemWidth = rangeToPercent(item.start, item.end);
+            const isClip = item.kind === "clip";
+            const durationSec = item.end - item.start;
+            const zoom = isClip ? undefined : project.zooms.find((z) => z.id === item.id);
+            const itemEntityType = isClip ? "clip" : "zoom";
+            const isSelected =
+              selectedEntity?.id === item.id && selectedEntity?.type === itemEntityType;
+
+            return (
+              <button
+                type="button"
+                key={item.id}
+                aria-label={`${item.kind}: ${item.label}`}
+                aria-pressed={isSelected}
+                style={{
+                  position: "absolute",
+                  left,
+                  width: itemWidth,
+                  minWidth: 4,
+                  top: 4,
+                  height: 46,
+                  overflow: "hidden",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  paddingLeft: 9,
+                  paddingRight: 9,
+                  borderRadius: 7,
+                  textAlign: "left",
+                  ...(isClip
+                    ? {
+                        // Clip card — white (M14)
+                        background: "#FFFFFF",
+                        border: `1px solid ${isSelected ? "var(--tk-accent, #3B5BD9)" : "rgba(20,20,15,0.16)"}`,
+                        boxShadow: isSelected ? "0 0 0 1px var(--tk-accent, #3B5BD9)" : "var(--tk-shadow-sm, 0 1px 2px rgba(20,20,15,0.06))",
+                        color: "#44423D",
+                      }
+                    : {
+                        // Zoom card — blue-tinted (M13)
+                        background: "rgba(59,91,217,0.1)",
+                        border: `1px solid ${isSelected ? "var(--tk-accent, #3B5BD9)" : "rgba(59,91,217,0.5)"}`,
+                        boxShadow: isSelected ? "0 0 0 1px var(--tk-accent, #3B5BD9)" : "none",
+                        color: "var(--tk-accent, #3B5BD9)",
+                      }),
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectItem?.({ id: item.id, kind: item.kind, start: item.start, end: item.end });
+                  onSeek(item.start);
+                }}
+              >
+                {!isClip ? (
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    style={{ flexShrink: 0 }}
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="21" y1="21" x2="16.5" y2="16.5" />
+                  </svg>
+                ) : null}
+                <span
+                  style={{
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
-                    cursor: "pointer",
-                    // Selected: accent border + accent-soft fill (overrides kind defaults below).
-                    ...(isSelected
-                      ? {
-                          background: "var(--tk-accent-soft, rgba(59,91,217,0.10))",
-                          border: "1px solid var(--tk-accent, #3B5BD9)",
-                          borderRadius: "var(--tk-radius-sm, 6px)",
-                          color: "var(--tk-accent, #3B5BD9)",
-                          boxShadow: "0 0 0 1px var(--tk-accent, #3B5BD9)",
-                          paddingLeft: isClip ? 8 : 6,
-                          paddingRight: isClip ? 8 : 6,
-                          fontSize: isClip ? 12 : 11,
-                          fontWeight: 600,
-                          textAlign: "left",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }
-                      : // Clip: warm raised bar
-                      isClip
-                      ? {
-                          background: "var(--tk-raised, #F3F1EA)",
-                          border: "1px solid var(--tk-border, rgba(20,20,15,0.12))",
-                          borderRadius: "var(--tk-radius-sm, 6px)",
-                          color: "var(--tk-text, #1B1A17)",
-                          boxShadow: "var(--tk-shadow-sm, 0 1px 2px rgba(20,20,15,0.06))",
-                          paddingLeft: 8,
-                          paddingRight: 8,
-                          fontSize: 12,
-                          fontWeight: 500,
-                          textAlign: "left",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }
-                      : // Zoom/event: thin accent-translucent bar
-                        {
-                          background: "var(--tk-accent-soft, rgba(59,91,217,0.10))",
-                          border: "1px solid var(--tk-accent-line, rgba(59,91,217,0.32))",
-                          borderRadius: "var(--tk-radius-sm, 6px)",
-                          color: "var(--tk-accent, #3B5BD9)",
-                          paddingLeft: 6,
-                          paddingRight: 6,
-                          fontSize: 11,
-                          fontWeight: 500,
-                          textAlign: "left",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }),
-                  }}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onSelectItem?.({ id: item.id, kind: item.kind, start: item.start, end: item.end });
-                    onSeek(item.start);
+                    fontSize: isClip ? 10.5 : 10.5,
+                    fontWeight: 600,
                   }}
                 >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {item.label}
+                  {item.label}
+                </span>
+                {isClip ? (
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      color: "var(--tk-text-ter, #9D9B94)",
+                      fontSize: 8.5,
+                      fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {durationSec.toFixed(1)}s
                   </span>
-                  {isClip ? (
-                    <span
-                      style={{
-                        color: "var(--tk-text-sec, #6E6C66)",
-                        fontSize: 10.5,
-                        fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {durationSec.toFixed(1)}s
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
+                ) : zoom?.scale !== undefined ? (
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 9,
+                      fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    ×{zoom.scale}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       ))}
+
+      {/* Keep a hidden, accessible selected-range node so range-driven tests/UX
+          still find it, without drawing a highlight box on the ruler (m28). */}
+      {selectedRange ? (
+        <span
+          data-testid="selected-range"
+          aria-label={`Selected range ${selectedRange.start.toFixed(1)}s to ${selectedRange.end.toFixed(1)}s`}
+          style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", margin: -1, padding: 0, border: 0 }}
+        />
+      ) : null}
+
+      {/* Playhead — 2px near-black line + black diamond handle, spans the whole
+          timeline (ruler + tracks) (M12). */}
+      <div
+        data-testid="timeline-playhead"
+        style={{
+          position: "absolute",
+          left: playheadLeft,
+          top: 0,
+          bottom: 0,
+          width: 2,
+          background: "#1B1A17",
+          pointerEvents: "none",
+          zIndex: 3,
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            top: 0,
+            left: "50%",
+            transform: "translate(-50%, -2px) rotate(45deg)",
+            width: 9,
+            height: 9,
+            background: "#1B1A17",
+          }}
+        />
+      </div>
     </section>
   );
 }

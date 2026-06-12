@@ -30,11 +30,13 @@ button {
   --tk-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
   /* surfaces */
-  --tk-app-bg: #FBFAF6;        /* warm page / editor shell background */
+  --tk-app-bg: #F1F0ED;        /* warm page / editor shell background */
   --tk-card: #FFFFFF;          /* panels, cards, clean content */
+  --tk-panel-bg: #FBFAF8;      /* right editor panel — soft off-white */
   --tk-raised: #F3F1EA;        /* toolbar controls, timeline rails, panel headers, chip bg */
   --tk-subtle: #E8E4DA;        /* disabled/secondary control surfaces */
-  --tk-preview-bg: #10192C;    /* deep blue preview stage behind captured product UI */
+  --tk-preview-bg: #26251F;    /* warm-charcoal preview stage behind the gradient wallpaper */
+  --tk-preview-wallpaper: linear-gradient(135deg, #3D3A52 0%, #6B5876 52%, #C98B6E 100%); /* gradient behind the dashboard window */
 
   /* text */
   --tk-text: #1B1A17;          /* primary ink */
@@ -191,17 +193,24 @@ input::placeholder {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--tk-radius-sm);
-  color: var(--tk-text-sec);
+  color: #50525A;
   background: transparent;
   border: 1px solid transparent;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .tk-railbtn:hover:not(:disabled) { background: var(--tk-hover); color: var(--tk-text); }
-.tk-railbtn:disabled { opacity: 0.32; cursor: default; }
+.tk-railbtn:disabled { opacity: 0.5; cursor: default; }
+
+/* Active tool — blue ink, no fill (matches porcelainnew.html rail) */
+.tk-railbtn-active,
+.tk-railbtn-active:hover {
+  color: var(--tk-accent);
+  background: transparent;
+}
 
 .tk-railbtn-on,
 .tk-railbtn-on:hover {
@@ -279,6 +288,32 @@ input::placeholder {
   background: var(--tk-card);
   border-color: var(--tk-border);
   box-shadow: var(--tk-shadow-sm);
+}
+
+/* --- Icon-only tabs (porcelainnew.html) --- */
+
+.tk-tab-icon {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  color: #9D9B94;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tk-tab-icon:hover { color: var(--tk-text-sec); }
+
+.tk-tab-icon-on,
+.tk-tab-icon-on:hover {
+  color: #1B1A17;
+  background: #FFFFFF;
+  border-color: rgba(20,20,15,0.12);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 
 /* --- Row card --- */

@@ -35,6 +35,27 @@ const inputStyle = {
   font: "inherit",
 } as const;
 
+/** Leading magnifier glyph for each zoom-move row (M9). 13×13, inherits color. */
+function RowMagnifierIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.5" y2="16.5" />
+    </svg>
+  );
+}
+
 /** Format seconds as `m:ss.s` (e.g. 8 → "0:08.0", 12.4 → "0:12.4"). */
 function formatTimecode(seconds: number): string {
   const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
@@ -51,13 +72,6 @@ function parseNumber(value: string): number | undefined {
   if (trimmed === "") return undefined;
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function defaultZoomRange(project: DemoProject, selectedRange: SelectedRange | undefined) {
-  if (selectedRange && selectedRange.end > selectedRange.start) {
-    return { start: selectedRange.start, end: Math.min(selectedRange.end, project.duration) };
-  }
-  return { start: 0, end: Math.min(project.duration, 3) };
 }
 
 function ErrorList({ error }: { error: ManualEditOperationsError }) {
@@ -318,7 +332,6 @@ function ClipEditor({ clip, onApply }: { clip: Clip; onApply: (operation: Manual
 export function EditorManualControls({
   project,
   selectedEntity,
-  selectedRange,
   onSelectEntity,
   onApply,
 }: EditorManualControlsProps) {
@@ -363,48 +376,33 @@ export function EditorManualControls({
     onApply(result.project, result.command);
   }
 
-  function handleAddZoom() {
-    const range = defaultZoomRange(project, selectedRange);
-    const target = project.zooms[0]?.target ?? { x: 620, y: 260, width: 620, height: 380 };
-    apply({ type: "upsert_zoom", start: range.start, end: range.end, target, easing: "easeInOut" });
-  }
-
   return (
     <section
       aria-label="Manual edit controls"
       style={{
         display: "grid",
         gap: 12,
-        padding: 14,
-        border: "1px solid var(--tk-border)",
-        borderRadius: "var(--tk-radius-lg)",
-        background: "var(--tk-card)",
         color: "var(--tk-text)",
       }}
     >
       {/* ── Zoom moves rowcard list ─────────────────────────────────────────── */}
       <div style={{ display: "grid", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-          <p
-            style={{
-              margin: 0,
-              color: "var(--tk-text-ter)",
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            Zoom moves · {project.zooms.length}
-          </p>
-          <button type="button" className="tk-btn" onClick={handleAddZoom}>
-            Add zoom
-          </button>
-        </div>
+        <p
+          style={{
+            margin: 0,
+            color: "var(--tk-text-ter)",
+            fontSize: 10.5,
+            fontWeight: 650,
+            letterSpacing: "0.735px",
+            textTransform: "uppercase",
+          }}
+        >
+          Zoom moves · {project.zooms.length}
+        </p>
 
         {project.zooms.length === 0 ? (
           <p style={{ margin: 0, fontSize: 12.5, color: "var(--tk-text-sec)" }}>
-            No zoom moves yet. Add one to push in on a moment.
+            No zoom moves yet.
           </p>
         ) : (
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
@@ -412,32 +410,54 @@ export function EditorManualControls({
               const isSelected = selectedEntity?.type === "zoom" && selectedEntity.id === zoom.id;
               return (
                 <li key={zoom.id}>
+                  {/* Per-move white rowcard (M8): magnifier + title + range + blue factor */}
                   <button
                     type="button"
-                    className="tk-rowcard"
                     aria-label={zoom.name ?? `Zoom ${index + 1}`}
                     aria-pressed={isSelected}
                     onClick={() => onSelectEntity({ type: "zoom", id: zoom.id })}
                     style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 9,
                       width: "100%",
+                      height: 45,
+                      padding: "0 11px",
                       textAlign: "left",
-                      background: isSelected ? "var(--tk-accent-soft)" : "var(--tk-card)",
-                      borderColor: isSelected ? "var(--tk-accent)" : "var(--tk-border)",
+                      background: isSelected ? "var(--tk-accent-soft)" : "#FFFFFF",
+                      border: `1px solid ${isSelected ? "var(--tk-accent)" : "rgba(20,20,15,0.12)"}`,
+                      borderRadius: 7,
                       color: "var(--tk-text)",
+                      cursor: "pointer",
+                      transition: "background 0.15s, border-color 0.15s",
                     }}
                   >
-                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>{zoom.name ?? `Zoom ${index + 1}`}</span>
+                    <span style={{ color: "var(--tk-text)", display: "inline-flex" }}>
+                      <RowMagnifierIcon />
+                    </span>
+                    <span style={{ fontSize: 11.5, fontWeight: 600 }}>{zoom.name ?? `Zoom ${index + 1}`}</span>
                     <span
                       style={{
                         marginLeft: "auto",
                         fontFamily: "var(--tk-mono)",
-                        fontSize: 11.5,
-                        color: "var(--tk-text-sec)",
+                        fontSize: 11,
+                        color: "#9D9B94",
                       }}
                     >
                       {formatTimecode(zoom.start)} → {formatTimecode(zoom.end)}
-                      {zoom.scale !== undefined ? `  ×${zoom.scale}` : ""}
                     </span>
+                    {zoom.scale !== undefined ? (
+                      <span
+                        style={{
+                          fontFamily: "var(--tk-mono)",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "#3B5BD9",
+                        }}
+                      >
+                        ×{zoom.scale}
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               );
@@ -445,30 +465,28 @@ export function EditorManualControls({
           </ul>
         )}
 
-        <p style={{ margin: 0, fontSize: 11, color: "var(--tk-text-ter)" }}>
+        <p style={{ margin: 0, fontSize: 10.5, color: "var(--tk-text-ter)" }}>
           Select a move to jump there. Delete removes it from the timeline.
         </p>
       </div>
 
-      {/* ── Selected-item editor ────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: "grid",
-          gap: 10,
-          paddingTop: 12,
-          borderTop: "1px solid var(--tk-border)",
-        }}
-      >
-        {selectedZoom ? (
-          <ZoomEditor zoom={selectedZoom} project={project} onApply={apply} onSelectEntity={onSelectEntity} />
-        ) : selectedClip ? (
-          <ClipEditor clip={selectedClip} onApply={apply} />
-        ) : (
-          <p style={{ margin: 0, fontSize: 12.5, color: "var(--tk-text-sec)", lineHeight: 1.5 }}>
-            Select a clip or zoom from the timeline — or a move above — to edit just that item.
-          </p>
-        )}
-      </div>
+      {/* ── Selected-item editor — only shown when an item is selected (m25) ──── */}
+      {selectedZoom || selectedClip ? (
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+            paddingTop: 12,
+            borderTop: "1px solid var(--tk-border)",
+          }}
+        >
+          {selectedZoom ? (
+            <ZoomEditor zoom={selectedZoom} project={project} onApply={apply} onSelectEntity={onSelectEntity} />
+          ) : selectedClip ? (
+            <ClipEditor clip={selectedClip} onApply={apply} />
+          ) : null}
+        </div>
+      ) : null}
 
       {status.kind === "success" ? (
         <p role="status" style={{ margin: 0, color: "var(--tk-ok)", fontSize: 12.5 }}>

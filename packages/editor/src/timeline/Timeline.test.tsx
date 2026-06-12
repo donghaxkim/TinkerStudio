@@ -5,10 +5,12 @@ import { sampleProject } from "../test/sampleProject.js";
 import { Timeline } from "./Timeline.js";
 
 describe("Timeline", () => {
-  it("renders track and overlay labels", () => {
+  it("renders clip and zoom item labels (flush tracks, no row-label column)", () => {
     render(<Timeline project={sampleProject} currentTime={0} width={900} onSeek={() => undefined} />);
 
-    expect(screen.getByText("Main capture")).toBeInTheDocument();
+    // M11: the left row-label column ("Main capture"/"Zooms") was removed.
+    expect(screen.queryByText("Main capture")).not.toBeInTheDocument();
+    // Clip + zoom item cards still render their labels.
     expect(screen.getByText("Browser flow")).toBeInTheDocument();
     expect(screen.getByText("Zoom 1")).toBeInTheDocument();
     expect(screen.queryByText("Narration")).not.toBeInTheDocument();
