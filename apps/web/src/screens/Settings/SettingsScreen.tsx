@@ -7,7 +7,6 @@ import {
 } from "../../lib/projectStorage.js";
 import {
   DEFAULT_EXPORT_DIRECTORY,
-  EXPORT_DIRECTORY_STORAGE_KEY,
   getExportDirectory,
   sanitizeExportDirectory,
   setExportDirectory,
@@ -204,7 +203,7 @@ export function SettingsScreen({ onClose }: SettingsScreenProps = {}) {
                 htmlFor="export-dir-input"
                 style={{ fontSize: 13, color: "var(--tk-text)", fontWeight: 600 }}
               >
-                Output directory
+                Export directory
               </label>
               <p style={{ margin: 0, fontSize: 12, color: "var(--tk-text-ter)", lineHeight: 1.5 }}>
                 Relative subdirectory for rendered MP4 files. No absolute paths or <code style={{ fontFamily: "var(--tk-mono)" }}>..</code> allowed.
@@ -216,7 +215,6 @@ export function SettingsScreen({ onClose }: SettingsScreenProps = {}) {
                   type="text"
                   value={exportDirInput}
                   onChange={handleExportDirChange}
-                  aria-label="Export directory"
                   placeholder={DEFAULT_EXPORT_DIRECTORY}
                   style={{
                     flex: 1,
@@ -300,9 +298,9 @@ export function SettingsScreen({ onClose }: SettingsScreenProps = {}) {
                 margin: 0,
                 padding: "10px 14px",
                 borderRadius: "var(--tk-radius-sm)",
-                background: "rgba(220,38,38,0.07)",
-                border: "1px solid rgba(220,38,38,0.20)",
-                color: "#dc2626",
+                background: "var(--tk-accent-soft)",
+                border: "1px solid var(--tk-accent-line)",
+                color: "var(--tk-text)",
                 fontSize: 13,
                 fontWeight: 500,
               }}

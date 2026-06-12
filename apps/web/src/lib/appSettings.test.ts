@@ -38,6 +38,12 @@ describe("sanitizeExportDirectory", () => {
     expect(sanitizeExportDirectory("//output//")).toBe("output");
   });
 
+  it("preserves empty segments from a double-slash in the middle (a//b behaviour)", () => {
+    // sanitize trims outer slashes but does not collapse inner '//' —
+    // the empty segment produced by "a//b" is kept as-is.
+    expect(sanitizeExportDirectory("a//b")).toBe("a//b");
+  });
+
   it("trims whitespace", () => {
     expect(sanitizeExportDirectory("  output  ")).toBe("output");
   });
@@ -48,7 +54,7 @@ describe("sanitizeExportDirectory", () => {
     expect(sanitizeExportDirectory("..")).toBe(DEFAULT_EXPORT_DIRECTORY);
   });
 
-  it("rejects leading '/' absolute paths — falls back to default", () => {
+  it("strips a leading slash and normalizes to a relative path", () => {
     // After trimming leading slashes the absolute check is implicit through the `/` trim,
     // but verify the path-traversal guard catches "." segments too.
     expect(sanitizeExportDirectory("/absolute/path")).toBe("absolute/path");

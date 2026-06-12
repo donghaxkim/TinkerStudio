@@ -6,7 +6,8 @@ import {
   EXPORT_DIRECTORY_STORAGE_KEY,
   getExportDirectory,
 } from "../../lib/appSettings.js";
-import { LOCAL_PROJECT_STORAGE_KEY } from "../../lib/projectStorage.js";
+import { loadSampleProject } from "../../fixtures/loadSampleProject.js";
+import { LOCAL_PROJECT_STORAGE_KEY, saveProjectToStorage } from "../../lib/projectStorage.js";
 import { APP_VERSION, SettingsScreen } from "./SettingsScreen.js";
 
 afterEach(() => {
@@ -45,41 +46,20 @@ describe("SettingsScreen diagnostics", () => {
   });
 
   it("shows a summary when a saved project exists", () => {
-    // Put a minimal valid JSON blob in storage so loadProjectFromStorage can read back
-    // at least the outer shape and return ok. We use the real sample fixture via a
-    // hand-rolled minimal project that satisfies the schema just enough for the
-    // title/id/duration fields that the summary extracts.
-    //
-    // Rather than fighting the full schema, we spy on the summary by checking
-    // that the text "none" is NOT shown when storage has something parseable.
-    // loadProjectFromStorage → deserializeDemoProjectJson reads and validates
-    // with the real schema — so we use the actual sample fixture JSON.
-    const sampleJson = JSON.stringify({
-      id: "test-id-123",
-      title: "My Test Project",
-      duration: 30,
-      tracks: [],
-      output: { width: 1920, height: 1080, fps: 30, mimeType: "video/mp4" },
-      cursor: {
-        size: 20,
-        color: "#000000",
-        speed: 1,
-        smoothing: "low",
-        highlightClicks: false,
-        highlightColor: "#ffffff",
-        highlightRadius: 10,
-        highlightOpacity: 0.8,
-      },
-    });
-    window.localStorage.setItem(LOCAL_PROJECT_STORAGE_KEY, sampleJson);
+    // Load the real sample fixture (validated against the full schema) and persist it
+    // so that getSavedProjectSummary() can round-trip it through loadProjectFromStorage.
+    const loaded = loadSampleProject();
+    if (!loaded.ok) throw new Error("Sample project fixture failed to load: " + loaded.error.message);
+    const saved = saveProjectToStorage(loaded.project);
+    if (!saved.ok) throw new Error("Failed to seed project storage: " + saved.error.message);
 
     render(<SettingsScreen />);
-    // The saved project summary block is present (may or may not parse fully,
-    // but "none" must not appear when there IS something in storage that deserializes).
-    // If the schema is strict and rejects this, the summary falls back to "none" — that
-    // is also acceptable for this unit-test (schema validation is tested elsewhere).
-    // The key thing is the field renders.
-    expect(screen.getByTestId("saved-project-summary")).toBeInTheDocument();
+
+    const summary = screen.getByTestId("saved-project-summary");
+    // The summary must show the project's real title and id, not the fallback "none".
+    expect(summary).toHaveTextContent(loaded.project.title);
+    expect(summary).toHaveTextContent(loaded.project.id);
+    expect(summary).not.toHaveTextContent("none");
   });
 });
 
