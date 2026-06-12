@@ -241,6 +241,9 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
 
     // Repo input is still populated
     expect(screen.getByLabelText("GitHub repo URL")).toHaveValue("github.com/example/product");
+
+    // Prompt is restored in the composer so the user can edit and retry
+    expect(screen.getByLabelText("Demo prompt")).toHaveValue("Show the analytics workflow");
   });
 
   // ─── retry after failure ──────────────────────────────────────────────────

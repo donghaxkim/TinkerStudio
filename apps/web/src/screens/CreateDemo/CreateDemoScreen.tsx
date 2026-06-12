@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DemoProject } from "@tinker/project-schema";
 import { ManualFixtureCreateDemoRequestSchema } from "@tinker/generation-contract";
-import type { GenerationProgressEvent } from "@tinker/generation-contract";
 import type { GenerationClient } from "../../lib/generationClient.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -204,6 +203,7 @@ export function CreateDemoScreen({
       }
       if (!t) return;
 
+      const submittedPrompt = t;
       setDraft("");
       setMessages((m) => [...m, { role: "user", text: t }]);
       setBusy(true);
@@ -221,6 +221,7 @@ export function CreateDemoScreen({
       if (!parsed.success) {
         const msg = parsed.error.issues.map((i) => i.message).join("; ");
         setBusy(false);
+        setDraft(submittedPrompt);
         setMessages((m) => [
           ...m,
           { role: "ai", text: "", error: `Request validation failed: ${msg}` },
@@ -235,7 +236,6 @@ export function CreateDemoScreen({
         if (job.status === "succeeded" && job.result && "project" in job.result) {
           const project = job.result.project as DemoProject;
           const scenes = deriveSceneRows(project);
-          const repoName = verified.split("/")[1] ?? verified;
           setMessages((m) => [
             ...m,
             {
@@ -244,15 +244,15 @@ export function CreateDemoScreen({
               storyboard: { scenes, project },
             },
           ]);
-          // Surface project to parent immediately (the "Record & open in editor" button also calls it)
-          void repoName; // used in message only
           // Don't auto-navigate; let user click "Record & open in editor"
         } else {
           const errorMsg = job.status === "failed" && job.error ? job.error.message : "Generation failed.";
+          setDraft(submittedPrompt);
           setMessages((m) => [...m, { role: "ai", text: "", error: errorMsg }]);
         }
       } catch (err) {
         setBusy(false);
+        setDraft(submittedPrompt);
         setMessages((m) => [
           ...m,
           {
