@@ -16,3 +16,6 @@ agents.md
 
 # Design reference screenshots (scratch, not committed)
 .design-ref/
+
+# Stray Playwright/audit screenshots at repo root (scratch)
+/*.png

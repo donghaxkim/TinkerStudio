@@ -1,0 +1,12 @@
+# Reference design mocks and generated artifacts are not source code.
+# Mark them so GitHub Linguist excludes them from language stats and diffs.
+
+design/**                                   linguist-documentation linguist-generated
+apps/web/public/reference-designs/**        linguist-documentation linguist-generated
+docs/design/**                              linguist-documentation linguist-generated
+generated/**                                linguist-generated
+packages/browser-capture/fixtures/*.html    linguist-generated
+
+# Treat the large rendered DOM dumps as binary-ish (don't diff line-by-line).
+design/porcelainnew.html                    -diff
+apps/web/public/reference-designs/*.html     -diff

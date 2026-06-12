@@ -90,7 +90,7 @@ Do these in order unless a blocker forces a smaller slice:
 
 1. [x] PB-000: Clean local working state and branch strategy.
 2. [x] PB-001: Mount the end-to-end web product shell. (Incl. subtask PB-001a: Porcelain design-system foundation — tokens, `.tk-*` classes, fonts in `apps/web`.)
-3. [ ] PB-002: Lock the Person A -> Person B generation handoff.
+3. [x] PB-002: Lock the Person A -> Person B generation handoff.
 4. [x] PB-003: Make Create Demo product-grade for one user.
 5. [x] PB-004: Make the Editor product-grade for one user. (Subtasks PB-004a shell/layout/tabs + PB-004b Timeline/Preview restyle.)
 6. [x] PB-005: Replace prototype manual editing with item-aware editing.
@@ -98,9 +98,9 @@ Do these in order unless a blocker forces a smaller slice:
 8. [x] PB-007: Harden project lifecycle, save/load, and recovery.
 9. [x] PB-008: Make export UX first-class.
 10. [x] PB-009: Mount useful Settings.
-11. [ ] PB-010: Add Samuel integration harness and golden project fixture.
-12. [ ] PB-011: Final one-user acceptance gate.
-13. [ ] PB-012: Repo/product hygiene pass.
+11. [x] PB-010: Add Samuel integration harness and golden project fixture.
+12. [x] PB-011: Final one-user acceptance gate.
+13. [x] PB-012: Repo/product hygiene pass.
 
 ---
 
@@ -264,7 +264,8 @@ pnpm --filter @tinker/web build
 
 **Priority:** P0
 **Owner:** Person B with Person A review
-**Status:** Partial
+**Status:** Done
+**Note:** Generation contract types defined; handoff documented in `docs/person-a-handoff-contract.md`; golden fixture validates + opens in editor + tests prove the seam.
 **Goal:** Give Samuel a precise contract: if Person A returns this shape, Person B's UI can open, edit, save, and export it.
 
 **Files/areas:**
@@ -629,7 +630,8 @@ pnpm --filter @tinker/web test -- Settings
 
 **Priority:** P0
 **Owner:** Person B with Person A review
-**Status:** Not started
+**Status:** Done
+**Note:** Golden fixture `person-a-generated-project.sample.json` added; mock client returns it; opens through Create Demo -> Editor; export preflight passes; report at `docs/reports/person-b-samuel-integration.md`.
 **Goal:** Prove the seam between Person A generation and Person B editing/export before real generation is complete.
 
 **Files/areas:**
@@ -672,7 +674,8 @@ pnpm --filter @tinker/rendering test
 
 **Priority:** P0
 **Owner:** Person B
-**Status:** Not started
+**Status:** Done
+**Note:** Full gate green (schema/typecheck/all tests/build/render+probe) and a one-to-one design audit passed. Report: `docs/reports/person-b-product-gate.md`.
 **Goal:** Prove Person B has exceeded requirements with a reproducible, end-to-end local product gate.
 
 **Files/areas:**
@@ -727,7 +730,8 @@ pnpm --filter @tinker/rendering render:sample -- /tmp/tinker-person-b-product-ga
 
 **Priority:** P1
 **Owner:** Person B
-**Status:** Not started
+**Status:** Done
+**Note:** `.gitattributes` marks reference/generated HTML as linguist-generated; root `README.md` documents run/test/gate; docs match MVP scope; scratch screenshots ignored.
 **Goal:** Remove avoidable confusion before external review or further agent work.
 
 **Files/areas:**
@@ -771,23 +775,23 @@ rg "caption|callout|voiceover|narration" docs apps/web/src packages || true
 
 The product is not done just because tests pass. It is done when this script works without developer intuition:
 
-1. [ ] User opens the web app.
-2. [ ] User sees Create Demo, not a placeholder.
-3. [ ] User can submit a mock/local generation request.
-4. [ ] User sees progress.
-5. [ ] User lands in Editor with a valid `DemoProject`.
-6. [ ] User can preview real captured media.
-7. [ ] User can select a timeline item or range.
-8. [ ] User can manually edit a clip or zoom and undo/redo it.
-9. [ ] User can preview, accept, reject, and undo an AI edit proposal.
-10. [ ] User can save/download the project.
-11. [ ] User can reload/import the project.
-12. [ ] User can export an MP4.
-13. [ ] User can see where the MP4 went and what it contains.
-14. [ ] User can recover from invalid project JSON.
-15. [ ] User can recover from missing/unsafe assets.
-16. [ ] User can reset local prototype state.
-17. [ ] Person A can replace the mock generation client with real generation output through the shared contract.
+1. [x] User opens the web app.
+2. [x] User sees Create Demo, not a placeholder.
+3. [x] User can submit a mock/local generation request.
+4. [x] User sees progress.
+5. [x] User lands in Editor with a valid `DemoProject`.
+6. [x] User can preview real captured media.
+7. [x] User can select a timeline item or range.
+8. [x] User can manually edit a clip or zoom and undo/redo it.
+9. [x] User can preview, accept, reject, and undo an AI edit proposal.
+10. [x] User can save/download the project.
+11. [x] User can reload/import the project.
+12. [x] User can export an MP4.
+13. [x] User can see where the MP4 went and what it contains.
+14. [x] User can recover from invalid project JSON.
+15. [x] User can recover from missing/unsafe assets.
+16. [x] User can reset local prototype state.
+17. [x] Person A can replace the mock generation client with real generation output through the shared contract.
 
 ## Commands To Run Before Claiming Person B Is Complete
 
