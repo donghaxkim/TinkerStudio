@@ -304,7 +304,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
     });
 
     // While pending, 3 typing dots should be visible
-    const dots = document.querySelectorAll(".tk-dot");
+    const dots = screen.getAllByTestId("typing-dot");
     expect(dots.length).toBe(3);
   });
 

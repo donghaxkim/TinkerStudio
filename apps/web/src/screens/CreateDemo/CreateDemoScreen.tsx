@@ -155,6 +155,18 @@ export function CreateDemoScreen({
   const repoInputRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const repoShakeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelledRef = useRef(false);
+  const verifiedRef = useRef<string | null>(null);
+
+  // Unmount cleanup: cancel async send and any pending shake timer
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+      clearTimeout(repoShakeTimerRef.current);
+    };
+  }, []);
 
   // Focus repo input on mount
   useEffect(() => {
@@ -169,6 +181,11 @@ export function CreateDemoScreen({
     }
   }, [messages, busy]);
 
+  // Keep verifiedRef in sync with verified state
+  useEffect(() => {
+    verifiedRef.current = verified;
+  }, [verified]);
+
   // Verify repo after typing delay
   useEffect(() => {
     const parsed = cd2ParseRepo(repoDraft);
@@ -177,7 +194,7 @@ export function CreateDemoScreen({
       setVerified(null);
       return;
     }
-    if (parsed === verified) return;
+    if (parsed === verifiedRef.current) return;
     setVerified(null);
     setVerifying(true);
     const id = setTimeout(() => {
@@ -185,11 +202,12 @@ export function CreateDemoScreen({
       setVerifying(false);
     }, 1100);
     return () => clearTimeout(id);
-  }, [repoDraft]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [repoDraft]);
 
   const requireRepo = useCallback(() => {
+    clearTimeout(repoShakeTimerRef.current);
     setRepoShake(true);
-    setTimeout(() => setRepoShake(false), 450);
+    repoShakeTimerRef.current = setTimeout(() => setRepoShake(false), 450);
     if (repoInputRef.current) repoInputRef.current.focus();
   }, []);
 
@@ -220,6 +238,7 @@ export function CreateDemoScreen({
       const parsed = ManualFixtureCreateDemoRequestSchema.safeParse(requestInput);
       if (!parsed.success) {
         const msg = parsed.error.issues.map((i) => i.message).join("; ");
+        if (cancelledRef.current) return;
         setBusy(false);
         setDraft(submittedPrompt);
         setMessages((m) => [
@@ -231,10 +250,11 @@ export function CreateDemoScreen({
 
       try {
         const job = await generationClient.createDemo(parsed.data);
+        if (cancelledRef.current) return;
         setBusy(false);
 
         if (job.status === "succeeded" && job.result && "project" in job.result) {
-          const project = job.result.project as DemoProject;
+          const project = job.result.project;
           const scenes = deriveSceneRows(project);
           setMessages((m) => [
             ...m,
@@ -251,6 +271,7 @@ export function CreateDemoScreen({
           setMessages((m) => [...m, { role: "ai", text: "", error: errorMsg }]);
         }
       } catch (err) {
+        if (cancelledRef.current) return;
         setBusy(false);
         setDraft(submittedPrompt);
         setMessages((m) => [
@@ -493,6 +514,7 @@ export function CreateDemoScreen({
                   <span
                     key={i}
                     className="tk-dot"
+                    data-testid="typing-dot"
                     style={{
                       background: "var(--tk-text-ter)",
                       animationDelay: `${i * 0.18}s`,
@@ -689,6 +711,7 @@ export function CreateDemoScreen({
                   onClick={() => void send()}
                   disabled={busy || !draft.trim() || !verified}
                   title={!verified ? "Enter your repo first" : "Send"}
+                  aria-label={!verified ? "Enter your repo first" : "Send"}
                   className="tk-send"
                   style={{
                     opacity: busy || !draft.trim() || !verified ? 0.35 : 1,
