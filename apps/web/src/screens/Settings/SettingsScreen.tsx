@@ -6,7 +6,11 @@ type SettingsStatus =
   | { kind: "success"; message: string }
   | { kind: "error"; message: string };
 
-export function SettingsScreen() {
+type SettingsScreenProps = {
+  onClose?: () => void;
+};
+
+export function SettingsScreen({ onClose }: SettingsScreenProps = {}) {
   const [status, setStatus] = useState<SettingsStatus>({ kind: "idle" });
 
   function resetStorage() {
@@ -22,9 +26,16 @@ export function SettingsScreen() {
 
   return (
     <section aria-label="Settings" style={{ display: "grid", gap: 14, padding: 16, border: "1px solid #334155", borderRadius: 12, background: "#0f172a" }}>
-      <div>
-        <p style={{ margin: 0, color: "#60a5fa", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>Settings</p>
-        <h2 style={{ margin: "4px 0 0" }}>Local prototype</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <p style={{ margin: 0, color: "#60a5fa", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>Settings</p>
+          <h2 style={{ margin: "4px 0 0" }}>Local prototype</h2>
+        </div>
+        {onClose ? (
+          <button type="button" className="tk-btn" onClick={onClose}>
+            Close settings
+          </button>
+        ) : null}
       </div>
 
       <dl style={{ display: "grid", gridTemplateColumns: "12rem minmax(0, 1fr)", gap: "8px 16px", margin: 0 }}>

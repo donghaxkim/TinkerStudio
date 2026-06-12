@@ -25,6 +25,8 @@ function formatRange(range: SelectedRange | undefined) {
 
 type EditorScreenProps = {
   initialProject?: DemoProject;
+  onOpenSettings?: () => void;
+  onExitToCreate?: () => void;
 };
 
 type PreviewState = {
@@ -32,7 +34,7 @@ type PreviewState = {
   project: DemoProject;
 };
 
-export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
+export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }: EditorScreenProps = {}) {
   const loadResult = useMemo(() => (initialProject ? { ok: true as const, project: initialProject } : loadSampleProject()), [initialProject]);
   const [project, setProject] = useState<DemoProject | undefined>(loadResult.ok ? loadResult.project : undefined);
   const [previewState, setPreviewState] = useState<PreviewState | undefined>();
@@ -69,6 +71,16 @@ export function EditorScreen({ initialProject }: EditorScreenProps = {}) {
           {isPreviewingAIEdit ? <p style={{ margin: "6px 0 0", color: "#fbbf24" }}>Previewing proposed AI operations. Accept or reject in the AI panel.</p> : null}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {onExitToCreate ? (
+            <button type="button" className="tk-btn" onClick={onExitToCreate}>
+              New demo
+            </button>
+          ) : null}
+          {onOpenSettings ? (
+            <button type="button" className="tk-btn" onClick={onOpenSettings}>
+              Settings
+            </button>
+          ) : null}
           <button type="button" onClick={() => setCurrentTime(3)} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #334155", background: "#111827", color: "white" }}>
             Jump to intro (3s)
           </button>
