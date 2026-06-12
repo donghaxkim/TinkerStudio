@@ -35,6 +35,14 @@ describe("Timeline", () => {
     expect(onSeek).toHaveBeenCalledWith(15);
   });
 
+  it("renders mono time-tick labels in the ruler", () => {
+    render(<Timeline project={sampleProject} currentTime={0} width={900} onSeek={() => undefined} />);
+
+    // With a 45s duration, tick interval is 5s → ticks at 0:00, 0:05, …, 0:45
+    expect(screen.getByText("0:00")).toBeInTheDocument();
+    expect(screen.getByText("0:05")).toBeInTheDocument();
+  });
+
   it("shows the selected range", () => {
     render(
       <Timeline

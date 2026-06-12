@@ -19,6 +19,19 @@ describe("Preview", () => {
     expect(screen.queryByTestId("missing-asset-placeholder")).not.toBeInTheDocument();
   });
 
+  it("video does not render browser controls (clean preview stage)", () => {
+    render(<Preview project={sampleProject} currentTime={0} />);
+
+    expect(screen.getByTestId("preview-video")).not.toHaveAttribute("controls");
+  });
+
+  it("does not render a header or timecode output above the stage", () => {
+    render(<Preview project={sampleProject} currentTime={0} />);
+
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("renders a placeholder for non-previewable local media", () => {
     render(
       <Preview
