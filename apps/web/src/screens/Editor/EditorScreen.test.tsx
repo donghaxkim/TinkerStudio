@@ -562,7 +562,7 @@ describe("EditorScreen", () => {
       // Store a project and then try to load — dirty triggers confirm
       saveProjectToStorage(sampleProject);
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
-      expect(screen.getByRole("alert", { name: "Replace project confirmation" })).toBeInTheDocument();
+      expect(screen.getByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).toBeInTheDocument();
 
       // Confirm the replace
       fireEvent.click(screen.getByRole("button", { name: "Replace" }));
@@ -587,7 +587,7 @@ describe("EditorScreen", () => {
       saveProjectToStorage(sampleProject);
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
 
-      expect(screen.getByRole("alert", { name: "Replace project confirmation" })).toBeInTheDocument();
+      expect(screen.getByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).toBeInTheDocument();
       // Project is not yet replaced — undo still enabled
       expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
     });
@@ -603,7 +603,7 @@ describe("EditorScreen", () => {
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).not.toBeInTheDocument();
       expect(screen.getByLabelText("Persistence status")).toHaveTextContent("Unsaved changes");
       // Undo still works — project was not replaced
       expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
@@ -619,7 +619,7 @@ describe("EditorScreen", () => {
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
       fireEvent.click(screen.getByRole("button", { name: "Replace" }));
 
-      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).not.toBeInTheDocument();
       expect(screen.getByLabelText("Persistence status")).toHaveTextContent("Saved locally");
       expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
     });

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import type { DemoProject } from "@tinker/project-schema";
 import { deserializeDemoProjectJson, MAX_DEMO_PROJECT_JSON_BYTES, type ProjectPersistenceError } from "@tinker/editor";
 import {
@@ -76,6 +76,14 @@ export function ProjectSaveLoadControls({ project, dirty = false, onProjectLoade
   const [status, setStatus] = useState<ProjectPersistenceStatus>({ kind: "idle" });
   const [pendingReplace, setPendingReplace] = useState<PendingReplace | undefined>();
   const download = useMemo(() => createProjectJsonDownload(project), [project]);
+  const replaceButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Fix 2: move focus to the Replace button when the confirm dialog appears
+  useEffect(() => {
+    if (pendingReplace) {
+      replaceButtonRef.current?.focus?.();
+    }
+  }, [pendingReplace]);
 
   function saveProject() {
     const result = saveProjectToStorage(project);
@@ -99,6 +107,7 @@ export function ProjectSaveLoadControls({ project, dirty = false, onProjectLoade
     }
 
     if (dirty) {
+      setStatus({ kind: "idle" });
       setPendingReplace({ kind: "storage", project: result.project, origin: "saved" });
       return;
     }
@@ -134,6 +143,7 @@ export function ProjectSaveLoadControls({ project, dirty = false, onProjectLoade
     }
 
     if (dirty) {
+      setStatus({ kind: "idle" });
       setPendingReplace({ kind: "file", project: result.project, origin: "imported" });
       return;
     }
@@ -206,8 +216,9 @@ export function ProjectSaveLoadControls({ project, dirty = false, onProjectLoade
       {/* Inline warn-before-replace confirm — no window.confirm so it is testable */}
       {pendingReplace ? (
         <div
-          role="alert"
-          aria-label="Replace project confirmation"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="replace-confirm-heading"
           style={{
             padding: 12,
             borderRadius: "var(--tk-radius-md)",
@@ -218,12 +229,12 @@ export function ProjectSaveLoadControls({ project, dirty = false, onProjectLoade
             gap: 10,
           }}
         >
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>You have unsaved changes — replace anyway?</p>
+          <p id="replace-confirm-heading" style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>You have unsaved changes — replace anyway?</p>
           <p style={{ margin: 0, fontSize: 12.5, color: "var(--tk-text-sec)" }}>
             The current project will be replaced and all unsaved edits will be lost.
           </p>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="tk-btn tk-btn-accent" onClick={handleConfirmReplace}>
+            <button ref={replaceButtonRef} type="button" className="tk-btn tk-btn-accent" onClick={handleConfirmReplace}>
               Replace
             </button>
             <button type="button" className="tk-btn" onClick={handleCancelReplace}>

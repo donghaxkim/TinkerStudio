@@ -123,6 +123,15 @@ describe("ProjectSaveLoadControls", () => {
       // No "Save project" click — onSaved must not fire.
       expect(onSaved).not.toHaveBeenCalled();
     });
+
+    it("calls onDownloaded when the Download JSON link is clicked", () => {
+      const onDownloaded = vi.fn();
+      renderControls(undefined, { onDownloaded });
+
+      fireEvent.click(screen.getByRole("link", { name: "Download JSON" }));
+
+      expect(onDownloaded).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("origin passed to onProjectLoaded", () => {
@@ -198,10 +207,19 @@ describe("ProjectSaveLoadControls", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
 
-      expect(screen.getByRole("alert", { name: "Replace project confirmation" })).toBeInTheDocument();
+      expect(screen.getByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).toBeInTheDocument();
       expect(screen.getByText(/You have unsaved changes — replace anyway\?/i)).toBeInTheDocument();
       // onProjectLoaded has NOT been called yet
       expect(onProjectLoaded).not.toHaveBeenCalled();
+    });
+
+    it("moves focus to the Replace button when the confirm dialog appears", () => {
+      saveProjectToStorage(sampleProject);
+      renderControls(undefined, { dirty: true });
+
+      fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
+
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Replace" }));
     });
 
     it("Cancel preserves the current project and hides the confirm", () => {
@@ -210,11 +228,11 @@ describe("ProjectSaveLoadControls", () => {
       renderControls(onProjectLoaded, { dirty: true });
 
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
-      expect(screen.getByRole("alert", { name: "Replace project confirmation" })).toBeInTheDocument();
+      expect(screen.getByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).not.toBeInTheDocument();
       expect(onProjectLoaded).not.toHaveBeenCalled();
     });
 
@@ -229,7 +247,7 @@ describe("ProjectSaveLoadControls", () => {
 
       expect(onProjectLoaded).toHaveBeenCalledTimes(1);
       expect(loadedOrigins).toEqual(["saved"]);
-      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).not.toBeInTheDocument();
       expect(screen.getByText("Project loaded from browser storage.")).toBeInTheDocument();
     });
 
@@ -243,7 +261,7 @@ describe("ProjectSaveLoadControls", () => {
         target: { files: [new File([serialized.json], "project.json", { type: "application/json" })] },
       });
 
-      expect(await screen.findByRole("alert", { name: "Replace project confirmation" })).toBeInTheDocument();
+      expect(await screen.findByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).toBeInTheDocument();
       expect(onProjectLoaded).not.toHaveBeenCalled();
     });
 
@@ -257,10 +275,10 @@ describe("ProjectSaveLoadControls", () => {
         target: { files: [new File([serialized.json], "project.json", { type: "application/json" })] },
       });
 
-      await screen.findByRole("alert", { name: "Replace project confirmation" });
+      await screen.findByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" });
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).not.toBeInTheDocument();
       expect(onProjectLoaded).not.toHaveBeenCalled();
     });
 
@@ -275,7 +293,7 @@ describe("ProjectSaveLoadControls", () => {
         target: { files: [new File([serialized.json], "project.json", { type: "application/json" })] },
       });
 
-      await screen.findByRole("alert", { name: "Replace project confirmation" });
+      await screen.findByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" });
       fireEvent.click(screen.getByRole("button", { name: "Replace" }));
 
       expect(onProjectLoaded).toHaveBeenCalledTimes(1);
@@ -290,8 +308,21 @@ describe("ProjectSaveLoadControls", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
 
-      expect(screen.queryByRole("alert", { name: "Replace project confirmation" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).not.toBeInTheDocument();
       expect(onProjectLoaded).toHaveBeenCalledTimes(1);
+    });
+
+    it("invalid file while dirty shows the validation error, NOT the replace confirm, and does not call onProjectLoaded", async () => {
+      const onProjectLoaded = vi.fn();
+      renderControls(onProjectLoaded, { dirty: true });
+
+      fireEvent.change(screen.getByLabelText("Load project JSON file"), {
+        target: { files: [new File(["{bad json"], "bad.json", { type: "application/json" })] },
+      });
+
+      await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+      expect(screen.queryByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).not.toBeInTheDocument();
+      expect(onProjectLoaded).not.toHaveBeenCalled();
     });
   });
 });
