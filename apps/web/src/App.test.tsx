@@ -69,8 +69,10 @@ describe("App shell state machine", () => {
     });
 
     expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
+    // Open the project file overlay to access save/load and export
+    fireEvent.click(screen.getByRole("button", { name: "Project file" }));
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
-    // The Export section (aria-label="Export") must be reachable.
+    // The Export section (aria-label="Export") must be reachable inside the overlay.
     expect(screen.getAllByLabelText("Export").some((el) => el.tagName === "SECTION")).toBe(true);
   });
 
@@ -82,8 +84,10 @@ describe("App shell state machine", () => {
     });
 
     expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
+    // Open the project file overlay to access save/load and export
+    fireEvent.click(screen.getByRole("button", { name: "Project file" }));
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
-    // The Export section (aria-label="Export") must be reachable.
+    // The Export section (aria-label="Export") must be reachable inside the overlay.
     expect(screen.getAllByLabelText("Export").some((el) => el.tagName === "SECTION")).toBe(true);
   });
 
@@ -96,16 +100,23 @@ describe("App shell state machine", () => {
     });
 
     expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
+    // Verify Project persistence is reachable via the overlay
+    fireEvent.click(screen.getByRole("button", { name: "Project file" }));
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
+    // Close overlay before testing Settings
+    fireEvent.click(screen.getByRole("button", { name: "Close project file panel" }));
 
     // Open Settings
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    expect(screen.getByLabelText("Settings")).toBeInTheDocument();
+    // SettingsScreen renders a Close settings button; Editor is gone
+    expect(screen.getByRole("button", { name: "Close settings" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Project persistence")).not.toBeInTheDocument();
 
     // Close Settings returns to Editor
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
-    expect(screen.queryByLabelText("Settings")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close settings" })).not.toBeInTheDocument();
+    // Open overlay to verify Project persistence is reachable in the returned Editor
+    fireEvent.click(screen.getByRole("button", { name: "Project file" }));
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
   });
 
@@ -129,7 +140,11 @@ describe("App shell state machine", () => {
     });
 
     expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
+    // Open overlay to verify Project persistence is accessible in the Editor
+    fireEvent.click(screen.getByRole("button", { name: "Project file" }));
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
+    // Close overlay so we can click the top bar freely
+    fireEvent.click(screen.getByRole("button", { name: "Close project file panel" }));
 
     // Step 2: Capture the project title as shown in the Editor's <h1>
     const generatedTitle = screen.getByRole("heading", { level: 1 }).textContent;
@@ -150,7 +165,10 @@ describe("App shell state machine", () => {
     });
 
     expect(screen.queryByLabelText("Create demo")).not.toBeInTheDocument();
+    // Open overlay to verify Project persistence is accessible after returning to Editor
+    fireEvent.click(screen.getByRole("button", { name: "Project file" }));
     expect(screen.getByLabelText("Project persistence")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close project file panel" }));
 
     // Step 6: Assert the Editor shows the same project (same title — project was NOT replaced)
     const titleAfterReturn = screen.getByRole("heading", { level: 1 }).textContent;

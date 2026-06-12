@@ -25,6 +25,11 @@ function openTab(name: "Chat" | "Zoom" | "Speed" | "Cursor" | "Frame") {
   fireEvent.click(screen.getByRole("tab", { name }));
 }
 
+/** Open the project file overlay via the "Project file" button. */
+function openFilesPanel() {
+  fireEvent.click(screen.getByRole("button", { name: "Project file" }));
+}
+
 describe("EditorScreen", () => {
   describe("auto zoom + AI preview wiring", () => {
     it("accepts auto zoom suggestions as one undoable command", () => {
@@ -154,25 +159,41 @@ describe("EditorScreen", () => {
   });
 
   describe("Export top-bar button", () => {
-    it("reveals the export panel when clicked", () => {
+    it("reveals the export panel overlay when clicked", () => {
       render(<EditorScreen initialProject={sampleProject} />);
 
-      // There are two elements with aria-label "Export": the button and the section.
-      // Find the <section> (the export panel proper).
-      const exportSection = screen
-        .getAllByLabelText("Export")
-        .find((el) => el.tagName === "SECTION");
-      expect(exportSection).not.toBeUndefined();
-
-      const detailsEl = exportSection!.closest("details");
-      expect(detailsEl).not.toBeNull();
-      expect(detailsEl).not.toHaveAttribute("open");
+      // Before clicking, no dialog should be present.
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
       // Click the top-bar Export button.
       fireEvent.click(screen.getByRole("button", { name: "Export" }));
 
-      // Now the <details> is open.
-      expect(detailsEl).toHaveAttribute("open");
+      // A dialog overlay should now be present.
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      // The preview region must still be present (not collapsed).
+      expect(screen.getByRole("region", { name: "Preview stage" })).toBeInTheDocument();
+    });
+
+    it("closes the overlay via the close button", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Close project file panel" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("preview stage is not collapsed when overlay is open", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+
+      // The preview region must still be in the document with its aria-label.
+      expect(screen.getByRole("region", { name: "Preview stage" })).toBeInTheDocument();
+      // The overlay has role="dialog".
+      expect(screen.getByRole("dialog", { name: /project file/i })).toBeInTheDocument();
     });
   });
 
@@ -420,12 +441,15 @@ describe("EditorScreen", () => {
   });
 
   describe("project file actions", () => {
-    it("keeps save/load and export reachable", () => {
+    it("keeps save/load and export reachable via the overlay", () => {
       render(<EditorScreen initialProject={sampleProject} />);
+
+      // Open the overlay (via Project file button or Export button).
+      fireEvent.click(screen.getByRole("button", { name: "Project file" }));
 
       expect(screen.getByRole("button", { name: "Save project" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Load saved project" })).toBeInTheDocument();
-      // The Export section (aria-label="Export") must be reachable.
+      // The Export section (aria-label="Export") must be reachable inside the dialog.
       expect(screen.getAllByLabelText("Export").some((el) => el.tagName === "SECTION")).toBe(true);
     });
   });
@@ -485,7 +509,8 @@ describe("EditorScreen", () => {
       fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
       fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
 
-      // Save clears dirty
+      // Save clears dirty (open overlay first)
+      openFilesPanel();
       fireEvent.click(screen.getByRole("button", { name: "Save project" }));
       expect(getPersistenceStatus()).toHaveTextContent("Saved locally");
 
@@ -501,6 +526,8 @@ describe("EditorScreen", () => {
       fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
       fireEvent.click(screen.getByRole("button", { name: "Undo" }));
 
+      // Save clears dirty (open overlay first)
+      openFilesPanel();
       fireEvent.click(screen.getByRole("button", { name: "Save project" }));
       expect(getPersistenceStatus()).toHaveTextContent("Saved locally");
 
@@ -516,7 +543,8 @@ describe("EditorScreen", () => {
       fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
       expect(getPersistenceStatus()).toHaveTextContent("Unsaved changes");
 
-      // Save
+      // Save (open overlay first)
+      openFilesPanel();
       fireEvent.click(screen.getByRole("button", { name: "Save project" }));
       expect(getPersistenceStatus()).toHaveTextContent("Saved locally");
     });
@@ -538,6 +566,7 @@ describe("EditorScreen", () => {
       expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
 
       // Save the current project (clears dirty) so "Load saved project" doesn't trigger confirm
+      openFilesPanel();
       fireEvent.click(screen.getByRole("button", { name: "Save project" }));
       expect(screen.getByLabelText("Persistence status")).toHaveTextContent("Saved locally");
 
@@ -561,6 +590,8 @@ describe("EditorScreen", () => {
 
       // Store a project and then try to load — dirty triggers confirm
       saveProjectToStorage(sampleProject);
+      // Open overlay to access the Load button
+      openFilesPanel();
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
       expect(screen.getByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).toBeInTheDocument();
 
@@ -583,8 +614,9 @@ describe("EditorScreen", () => {
       fireEvent.click(screen.getByRole("button", { name: "Suggest zooms" }));
       fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
 
-      // Attempt to load without saving
+      // Attempt to load without saving (open overlay first)
       saveProjectToStorage(sampleProject);
+      openFilesPanel();
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
 
       expect(screen.getByRole("alertdialog", { name: "You have unsaved changes — replace anyway?" })).toBeInTheDocument();
@@ -600,6 +632,7 @@ describe("EditorScreen", () => {
       expect(screen.getByLabelText("Persistence status")).toHaveTextContent("Unsaved changes");
 
       saveProjectToStorage(sampleProject);
+      openFilesPanel();
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
@@ -616,6 +649,7 @@ describe("EditorScreen", () => {
       fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions" }));
 
       saveProjectToStorage(sampleProject);
+      openFilesPanel();
       fireEvent.click(screen.getByRole("button", { name: "Load saved project" }));
       fireEvent.click(screen.getByRole("button", { name: "Replace" }));
 
@@ -629,13 +663,18 @@ describe("EditorScreen", () => {
 
   describe("export UX (PB-008)", () => {
     function openExportPanel() {
-      // Open the <details> footer via the top-bar button so the export panel is visible.
+      // Open the overlay via the top-bar Export button.
       fireEvent.click(screen.getByRole("button", { name: "Export" }));
     }
 
-    it("shows the Start export button in the export panel", () => {
+    function openFilesOverlay() {
+      // Open via Project file button (does NOT start a job).
+      fireEvent.click(screen.getByRole("button", { name: "Project file" }));
+    }
+
+    it("shows the Start export button in the export panel (via Project file overlay)", () => {
       render(<EditorScreen initialProject={sampleProject} />);
-      openExportPanel();
+      openFilesOverlay();
 
       expect(screen.getByRole("button", { name: "Start export" })).toBeInTheDocument();
     });
@@ -669,7 +708,7 @@ describe("EditorScreen", () => {
 
     it("Start export button in the panel also starts the job", () => {
       render(<EditorScreen initialProject={sampleProject} />);
-      openExportPanel();
+      openFilesOverlay();
 
       // Panel Start export button (not the top-bar one) starts the job.
       fireEvent.click(screen.getByRole("button", { name: "Start export" }));
@@ -692,7 +731,7 @@ describe("EditorScreen", () => {
 
     it("re-enables Start export button after a succeeded job", () => {
       render(<EditorScreen initialProject={sampleProject} />);
-      openExportPanel();
+      openFilesOverlay();
 
       fireEvent.click(screen.getByRole("button", { name: "Start export" }));
       // After preflight (sync) the job is terminal — button must be re-enabled.

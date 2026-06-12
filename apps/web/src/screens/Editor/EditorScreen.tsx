@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import { AIEditPanel } from "@tinker/ai-edit-ui";
 import {
   Preview,
@@ -311,6 +311,7 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
   const [activeTab, setActiveTab] = useState<PanelTab>("zoom");
   const [isPlaying, setIsPlaying] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [filesOpen, setFilesOpen] = useState(false);
   const [toolRailOpen, setToolRailOpen] = useState(true);
   const exportJob = useWebExportJob();
 
@@ -330,8 +331,12 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
   // Ref so the rAF callback always reads the latest currentTime without stale closure.
   const currentTimeRef = useRef(currentTime);
   currentTimeRef.current = currentTime;
-  // Ref for the export panel section (used to scroll it into view).
-  const exportPanelRef = useRef<HTMLDivElement>(null);
+  // filesOverlayOpen combines both states: either the overlay is open for save/load or for export.
+  const filesOverlayOpen = filesOpen || exportOpen;
+  const closeFilesOverlay = useCallback(() => {
+    setFilesOpen(false);
+    setExportOpen(false);
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -386,12 +391,15 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
     };
   }, [isPlaying, project?.duration]);
 
-  // Fix 6: scroll export panel into view when exportOpen becomes true, no uncancelled timer.
+  // Close the overlay when Escape is pressed.
   useEffect(() => {
-    if (exportOpen) {
-      exportPanelRef.current?.scrollIntoView?.({ block: "nearest" });
+    if (!filesOverlayOpen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") closeFilesOverlay();
     }
-  }, [exportOpen]);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [filesOverlayOpen, closeFilesOverlay]);
 
   if (!loadResult.ok) {
     return (
@@ -529,9 +537,9 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
       style={{
         height: "100vh",
         maxHeight: "100vh",
-        overflow: "auto",
+        overflow: "hidden",
         display: "grid",
-        gridTemplateRows: "52px minmax(0, 1fr) auto",
+        gridTemplateRows: "52px minmax(0, 1fr)",
         background: "var(--tk-app-bg)",
         color: "var(--tk-text)",
         fontFamily: "var(--tk-font)",
@@ -600,9 +608,8 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
         </h1>
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <button type="button" className="tk-iconbtn" onClick={onOpenSettings} disabled={!onOpenSettings}>
+          <button type="button" className="tk-iconbtn" aria-label="Settings" title="Settings" onClick={onOpenSettings} disabled={!onOpenSettings}>
             <GearIcon />
-            <span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", margin: -1, padding: 0, border: 0 }}>Settings</span>
           </button>
           <span className="tk-vr" />
           <button
@@ -619,9 +626,18 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
           </button>
           <button
             type="button"
+            className="tk-btn"
+            aria-label="Project file"
+            title="Open save, load &amp; export panel"
+            onClick={() => setFilesOpen(true)}
+          >
+            Project file
+          </button>
+          <button
+            type="button"
             className="tk-btn tk-btn-accent"
             aria-label="Export"
-            title="Open the export panel"
+            title="Open the export panel and start export"
             onClick={() => {
               setExportOpen(true);
               exportJob.start(project);
@@ -941,46 +957,81 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
         </aside>
       </div>
 
-      {/*
-        Save/Load and Export stay mounted (Export top-bar button routes here via the Zoom tab).
-        Kept reachable + visually quiet in a collapsible footer; full placement is refined in PB-007/008.
-      */}
-      <details
-        open={exportOpen}
-        onToggle={(e) => setExportOpen((e.currentTarget as HTMLDetailsElement).open)}
-        style={{
-          borderTop: "1px solid var(--tk-border)",
-          background: "var(--tk-app-bg)",
-        }}
-      >
-        <summary
-          style={{
-            listStyle: "none",
-            cursor: "pointer",
-            padding: "10px 14px",
-            fontSize: 11.5,
-            fontWeight: 600,
-            color: "var(--tk-text-sec)",
-          }}
-        >
-          Project file · save, load &amp; export
-        </summary>
-        <div ref={exportPanelRef} style={{ display: "grid", gap: 12, padding: "0 14px 14px" }}>
-          <ProjectSaveLoadControls
-            project={project}
-            dirty={persistenceState.dirty}
-            onProjectLoaded={(loadedProject, origin) => handleProjectLoaded(loadedProject, origin)}
-            onSaved={() => setPersistenceState({ origin: "saved", dirty: false })}
-            onDownloaded={() => setPersistenceState({ origin: "downloaded", dirty: false })}
+      {/* ── Project file overlay (save/load + export) — position:fixed, does NOT reflow the grid ── */}
+      {filesOverlayOpen ? (
+        <>
+          {/* Backdrop */}
+          <div
+            aria-hidden="true"
+            onClick={closeFilesOverlay}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 50,
+              background: "rgba(20,20,15,0.32)",
+            }}
           />
-          <ProjectExportPanel
-            project={displayProject}
-            exportJobState={exportJob.state}
-            onStartExport={() => exportJob.start(project)}
-            isExportRunning={exportJob.isRunning}
-          />
-        </div>
-      </details>
+          {/* Bottom-sheet dialog */}
+          <div
+            role="dialog"
+            aria-label="Project file — save, load &amp; export"
+            style={{
+              position: "fixed",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 51,
+              background: "var(--tk-card)",
+              borderTop: "1px solid var(--tk-border)",
+              borderRadius: "var(--tk-radius-xl) var(--tk-radius-xl) 0 0",
+              boxShadow: "var(--tk-shadow-overlay, 0 -4px 32px rgba(0,0,0,0.18))",
+              maxHeight: "70vh",
+              display: "grid",
+              gridTemplateRows: "auto minmax(0, 1fr)",
+            }}
+          >
+            {/* Sheet header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 16px 12px",
+                borderBottom: "1px solid var(--tk-border)",
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--tk-text-sec)" }}>
+                Project file · save, load &amp; export
+              </span>
+              <button
+                type="button"
+                className="tk-iconbtn"
+                aria-label="Close project file panel"
+                title="Close"
+                onClick={closeFilesOverlay}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            {/* Sheet body — scrollable */}
+            <div style={{ overflow: "auto", display: "grid", gap: 12, padding: "14px 16px 24px" }}>
+              <ProjectSaveLoadControls
+                project={project}
+                dirty={persistenceState.dirty}
+                onProjectLoaded={(loadedProject, origin) => handleProjectLoaded(loadedProject, origin)}
+                onSaved={() => setPersistenceState({ origin: "saved", dirty: false })}
+                onDownloaded={() => setPersistenceState({ origin: "downloaded", dirty: false })}
+              />
+              <ProjectExportPanel
+                project={displayProject}
+                exportJobState={exportJob.state}
+                onStartExport={() => exportJob.start(project)}
+                isExportRunning={exportJob.isRunning}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

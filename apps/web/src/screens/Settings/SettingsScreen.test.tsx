@@ -133,4 +133,29 @@ describe("SettingsScreen export directory", () => {
     expect(getExportDirectory()).toBe(DEFAULT_EXPORT_DIRECTORY);
     expect((screen.getByLabelText("Export directory") as HTMLInputElement).value).toBe(DEFAULT_EXPORT_DIRECTORY);
   });
+
+  it("shows a warning (not plain success) when the input is rejected and sanitized", () => {
+    render(<SettingsScreen />);
+    const input = screen.getByLabelText("Export directory");
+    fireEvent.change(input, { target: { value: "../escape" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save export directory" }));
+
+    // Should show a warning status message, not a plain success
+    const statusMsg = screen.getByRole("status");
+    expect(statusMsg).toHaveTextContent(/isn't allowed/i);
+    expect(statusMsg).toHaveTextContent(/generated/i);
+    // Must NOT say "set to" (the success wording)
+    expect(statusMsg).not.toHaveTextContent(/export directory set to/i);
+  });
+
+  it("shows success when a valid directory is saved unchanged", () => {
+    render(<SettingsScreen />);
+    const input = screen.getByLabelText("Export directory");
+    fireEvent.change(input, { target: { value: "my-renders" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save export directory" }));
+
+    const statusMsg = screen.getByRole("status");
+    expect(statusMsg).toHaveTextContent(/export directory set to/i);
+    expect(statusMsg).toHaveTextContent("my-renders");
+  });
 });

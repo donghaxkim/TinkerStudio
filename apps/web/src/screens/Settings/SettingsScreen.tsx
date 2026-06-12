@@ -21,6 +21,7 @@ export const APP_VERSION = "0.1.0-prototype";
 type SettingsStatus =
   | { kind: "idle" }
   | { kind: "success"; message: string }
+  | { kind: "warning"; message: string }
   | { kind: "error"; message: string };
 
 type SettingsScreenProps = {
@@ -60,8 +61,16 @@ export function SettingsScreen({ onClose }: SettingsScreenProps = {}) {
     const sanitized = sanitizeExportDirectory(exportDirInput);
     setExportDirectory(sanitized);
     setExportDirState(sanitized);
+    const inputWasChanged = exportDirInput.trim() !== sanitized;
     setExportDirInput(sanitized);
-    setStatus({ kind: "success", message: `Export directory set to "${sanitized}".` });
+    if (inputWasChanged) {
+      setStatus({
+        kind: "warning",
+        message: `That path isn't allowed (no absolute paths or \`..\`). Using '${sanitized}' instead.`,
+      });
+    } else {
+      setStatus({ kind: "success", message: `Export directory set to "${sanitized}".` });
+    }
   }
 
   const savedProjectSummary = getSavedProjectSummary();
@@ -284,6 +293,24 @@ export function SettingsScreen({ onClose }: SettingsScreenProps = {}) {
                 background: "rgba(46,139,87,0.09)",
                 border: "1px solid rgba(46,139,87,0.22)",
                 color: "var(--tk-ok)",
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              {status.message}
+            </p>
+          ) : null}
+          {status.kind === "warning" ? (
+            <p
+              role="status"
+              aria-label="Export directory warning"
+              style={{
+                margin: 0,
+                padding: "10px 14px",
+                borderRadius: "var(--tk-radius-sm)",
+                background: "var(--tk-raised)",
+                border: "1px solid var(--tk-border-strong)",
+                color: "var(--tk-text-sec)",
                 fontSize: 13,
                 fontWeight: 500,
               }}
