@@ -111,6 +111,45 @@ describe("Preview", () => {
     expectPercent(click.style.top, expected.pointTop);
   });
 
+  describe("PB-006 cursor display settings", () => {
+    const clickProject = {
+      ...sampleProject,
+      cursorEvents: [
+        { time: 1, type: "move" as const, x: 960, y: 540 },
+        { time: 1, type: "click" as const, x: 960, y: 540 },
+      ],
+    };
+
+    it("renders the cursor and a ring click indicator by default", () => {
+      render(<Preview project={clickProject} currentTime={1} />);
+
+      expect(screen.getByTestId("active-cursor")).toBeInTheDocument();
+      const click = screen.getByTestId("click-event");
+      expect(click).toBeInTheDocument();
+      expect(click).toHaveAttribute("data-click-effect", "ring");
+    });
+
+    it("renders no cursor or click overlay when cursor.hidden is true", () => {
+      render(<Preview project={{ ...clickProject, cursor: { hidden: true } }} currentTime={1} />);
+
+      expect(screen.queryByTestId("active-cursor")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("click-event")).not.toBeInTheDocument();
+    });
+
+    it("keeps the cursor but renders no click indicator when clickEffect is none", () => {
+      render(<Preview project={{ ...clickProject, cursor: { clickEffect: "none" } }} currentTime={1} />);
+
+      expect(screen.getByTestId("active-cursor")).toBeInTheDocument();
+      expect(screen.queryByTestId("click-event")).not.toBeInTheDocument();
+    });
+
+    it("marks the click indicator as a ripple when clickEffect is ripple", () => {
+      render(<Preview project={{ ...clickProject, cursor: { clickEffect: "ripple" } }} currentTime={1} />);
+
+      expect(screen.getByTestId("click-event")).toHaveAttribute("data-click-effect", "ripple");
+    });
+  });
+
   it("positions off-center zooms with the same crop-window geometry as export", () => {
     const project = {
       ...sampleProject,

@@ -13,8 +13,9 @@ import {
   type SelectedEntity,
   type SelectedRange,
 } from "@tinker/editor";
-import type { DemoProject } from "@tinker/project-schema";
+import { safeParseDemoProject, type CursorSettings, type DemoProject } from "@tinker/project-schema";
 import { loadSampleProject } from "../../fixtures/loadSampleProject.js";
+import { CursorControls } from "./CursorControls.js";
 import { EditorAutoZoomPanel, type PreviewSource } from "./EditorAutoZoomPanel.js";
 import { EditorManualControls } from "./EditorManualControls.js";
 import { ProjectLoadPanel } from "./ProjectLoadPanel.js";
@@ -398,6 +399,34 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
 
   function handleManualApply(updatedProject: DemoProject, command: EditorCommand) {
     setProject(updatedProject);
+    setPreviewState(undefined);
+    setHistory((current) => pushEditorCommand(current, command));
+  }
+
+  // PB-006: apply a new `cursor` display-settings object as a single undoable command.
+  // Mirrors the manual-edit flow (set project + push EditorCommand) so undo/redo works
+  // and the preview reflects the change immediately. The result is validated through the
+  // shared schema so the project stays a valid contract for export.
+  function handleCursorSettingsApply(cursor: CursorSettings) {
+    const beforeProject = project!;
+    const candidate: DemoProject = {
+      ...beforeProject,
+      cursor,
+      updatedAt: new Date().toISOString(),
+    };
+    const parsed = safeParseDemoProject(candidate);
+    if (!parsed.success) return;
+
+    const afterProject = parsed.data;
+    const command: EditorCommand = {
+      type: "manual-edit",
+      id: `cursor_settings_${Date.now()}`,
+      label: "Update cursor settings",
+      beforeProject,
+      afterProject,
+    };
+
+    setProject(afterProject);
     setPreviewState(undefined);
     setHistory((current) => pushEditorCommand(current, command));
   }
@@ -830,13 +859,9 @@ export function EditorScreen({ initialProject, onOpenSettings, onExitToCreate }:
               />
             </div>
 
-            {/* Cursor tab */}
+            {/* Cursor tab — PB-006 cursor/click display controls */}
             <div role="tabpanel" id="panel-cursor" aria-labelledby="tab-cursor" hidden={activeTab !== "cursor"} style={{ display: activeTab === "cursor" ? "block" : "none", padding: 14 }}>
-              <PlaceholderPanel
-                kind="Cursor & clicks"
-                lead="Cursor smoothing and click styling arrive in a later step."
-                detail="Recorded cursor moves and clicks already drive the auto-zoom suggestions in the Zoom tab."
-              />
+              <CursorControls project={project} onApply={handleCursorSettingsApply} />
             </div>
 
             {/* Frame tab */}

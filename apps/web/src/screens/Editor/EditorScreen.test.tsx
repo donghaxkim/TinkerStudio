@@ -300,7 +300,7 @@ describe("EditorScreen", () => {
       expect(screen.getByText(/per-clip speed ramps/i)).toBeInTheDocument();
 
       openTab("Cursor");
-      expect(screen.getByText(/cursor smoothing and click styling/i)).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: "Show cursor" })).toBeInTheDocument();
     });
 
     it("shows only the active tab's panel — inactive panels are hidden, not stacked", () => {
@@ -311,14 +311,96 @@ describe("EditorScreen", () => {
       // (getByText finds elements regardless of visibility; toBeVisible respects hidden/display:none.)
       expect(screen.getByText("Suggest zooms")).toBeVisible();
       expect(screen.getByText(/per-clip speed ramps/i)).not.toBeVisible();
-      expect(screen.getByText(/cursor smoothing and click styling/i)).not.toBeVisible();
+      // The Cursor panel stays mounted but hidden (so getByRole needs hidden:true).
+      expect(screen.getByRole("checkbox", { name: "Show cursor", hidden: true })).not.toBeVisible();
       expect(screen.getByText(/background and framing controls/i)).not.toBeVisible();
 
       // Switching to Speed reveals Speed and hides Zoom + the others.
       openTab("Speed");
       expect(screen.getByText(/per-clip speed ramps/i)).toBeVisible();
       expect(screen.getByText("Suggest zooms")).not.toBeVisible();
-      expect(screen.getByText(/cursor smoothing and click styling/i)).not.toBeVisible();
+      expect(screen.getByRole("checkbox", { name: "Show cursor", hidden: true })).not.toBeVisible();
+    });
+  });
+
+  describe("Cursor tab controls (PB-006)", () => {
+    /** A project whose cursor sits on-screen from t=0 so the preview overlay is observable. */
+    function cursorAtStartProject(): DemoProject {
+      return {
+        ...sampleProject,
+        zooms: [],
+        cursorEvents: [
+          { time: 0, type: "move", x: 960, y: 540 },
+          { time: 1, type: "move", x: 960, y: 540 },
+        ],
+      };
+    }
+
+    it("toggling Show cursor off updates the setting and is undoable", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      openTab("Cursor");
+      const showCursor = screen.getByRole("checkbox", { name: "Show cursor" });
+      expect(showCursor).toBeChecked();
+      expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+
+      // Hide the cursor.
+      fireEvent.click(showCursor);
+      expect(screen.getByRole("checkbox", { name: "Show cursor" })).not.toBeChecked();
+      expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
+
+      // Undo restores the cursor visibility.
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+      expect(screen.getByRole("checkbox", { name: "Show cursor" })).toBeChecked();
+      expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+
+      // Redo hides it again.
+      fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+      expect(screen.getByRole("checkbox", { name: "Show cursor" })).not.toBeChecked();
+    });
+
+    it("hiding the cursor immediately removes the cursor overlay from the preview", () => {
+      render(<EditorScreen initialProject={cursorAtStartProject()} />);
+
+      // At t=0 the recorded cursor renders in the preview.
+      expect(screen.getByTestId("active-cursor")).toBeInTheDocument();
+
+      // Hide the cursor — the preview reflects the change immediately.
+      openTab("Cursor");
+      fireEvent.click(screen.getByRole("checkbox", { name: "Show cursor" }));
+
+      expect(screen.queryByTestId("active-cursor")).not.toBeInTheDocument();
+    });
+
+    it("changing the click emphasis style updates the setting and is undoable", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      openTab("Cursor");
+      const ringRadio = screen.getByRole("radio", { name: "Click emphasis Ring" });
+      const rippleRadio = screen.getByRole("radio", { name: "Click emphasis Ripple" });
+      expect(ringRadio).toBeChecked();
+
+      fireEvent.click(rippleRadio);
+      expect(screen.getByRole("radio", { name: "Click emphasis Ripple" })).toBeChecked();
+      expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+      expect(screen.getByRole("radio", { name: "Click emphasis Ring" })).toBeChecked();
+    });
+
+    it("editing the click emphasis duration updates the setting and is undoable", () => {
+      render(<EditorScreen initialProject={sampleProject} />);
+
+      openTab("Cursor");
+      const duration = screen.getByLabelText("Click emphasis duration in milliseconds");
+      expect(duration).toHaveValue(500);
+
+      fireEvent.change(duration, { target: { value: "900" } });
+      expect(screen.getByLabelText("Click emphasis duration in milliseconds")).toHaveValue(900);
+      expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+      expect(screen.getByLabelText("Click emphasis duration in milliseconds")).toHaveValue(500);
     });
   });
 

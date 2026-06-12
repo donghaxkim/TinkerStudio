@@ -119,6 +119,54 @@ describe("preview motion state", () => {
     expect(buildPreviewMotionState(project, 1.51).clickEvents).toHaveLength(0);
   });
 
+  describe("PB-006 cursor display settings", () => {
+    const clickProject = projectWith({
+      cursorEvents: [
+        { time: 1, type: "move", x: 960, y: 540 },
+        { time: 1, type: "click", x: 960, y: 540 },
+      ],
+    });
+
+    it("resolves defaults (cursor shown, ring) when cursor settings are absent", () => {
+      const state = buildPreviewMotionState(clickProject, 1);
+
+      expect(state.cursorSettings).toEqual({ hidden: false, clickEffect: "ring", clickEffectDurationMs: 500 });
+      expect(state.cursor).toBeDefined();
+      expect(state.clickEvents).toHaveLength(1);
+    });
+
+    it("hides the cursor and all click emphasis when cursor.hidden is true", () => {
+      const state = buildPreviewMotionState(projectWith({ ...clickProject, cursor: { hidden: true } }), 1);
+
+      expect(state.cursorSettings.hidden).toBe(true);
+      expect(state.cursor).toBeUndefined();
+      expect(state.clickEvents).toHaveLength(0);
+    });
+
+    it("keeps the cursor but suppresses click emphasis when clickEffect is none", () => {
+      const state = buildPreviewMotionState(projectWith({ ...clickProject, cursor: { clickEffect: "none" } }), 1);
+
+      expect(state.cursor).toBeDefined();
+      expect(state.clickEvents).toHaveLength(0);
+    });
+
+    it("keeps a click emphasis event for ripple just like ring", () => {
+      const ripple = buildPreviewMotionState(projectWith({ ...clickProject, cursor: { clickEffect: "ripple" } }), 1);
+
+      expect(ripple.cursorSettings.clickEffect).toBe("ripple");
+      expect(ripple.clickEvents).toHaveLength(1);
+    });
+
+    it("uses clickEffectDurationMs as the click display window", () => {
+      const longClick = projectWith({ ...clickProject, cursor: { clickEffectDurationMs: 1000 } });
+
+      // At 1.6s a 500ms window has expired, but the configured 1000ms window is still open.
+      expect(buildPreviewMotionState(clickProject, 1.6).clickEvents).toHaveLength(0);
+      expect(buildPreviewMotionState(longClick, 1.6).clickEvents).toHaveLength(1);
+      expect(buildPreviewMotionState(longClick, 2.01).clickEvents).toHaveLength(0);
+    });
+  });
+
   it("returns camera transforms from active normalized zoom regions", () => {
     const state = buildPreviewMotionState(sampleProject, 14);
 

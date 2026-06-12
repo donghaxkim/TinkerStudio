@@ -4,7 +4,7 @@ import {
   resolveDeterministicCameraTransform,
   smoothCursorTelemetry,
 } from "@tinker/motion";
-import type { DemoProject } from "@tinker/project-schema";
+import { resolveCursorSettings, type CursorSettings, type DemoProject } from "@tinker/project-schema";
 import { describe, expect, it } from "vitest";
 import { buildFinalRenderPlan } from "../renderFinal.js";
 import { buildCameraIntervalsForExport, buildRealMediaFilterGraph } from "./ffmpegFilterGraph.js";
@@ -131,6 +131,39 @@ function cropFiltersFor(project: DemoProject) {
   }));
 }
 
+function filterComplexFor(project: DemoProject) {
+  const plan = buildFinalRenderPlan(project);
+  const graph = buildRealMediaFilterGraph(project, plan, [
+    {
+      ok: true,
+      assetId: "asset_capture_001",
+      assetUri: "assets/capture-001.mp4",
+      consumer: "export",
+      path: "/tmp/capture-001.mp4",
+    },
+  ]);
+
+  return graph.filterComplex;
+}
+
+/** Every cursor drawbox emitted by the export filter graph. */
+function cursorDrawboxesFor(project: DemoProject) {
+  return [
+    ...filterComplexFor(project).matchAll(
+      /drawbox=x=(-?\d+):y=(-?\d+):w=(\d+):h=(\d+):color=([^:]+):/g,
+    ),
+  ].map((match) => ({
+    x: Number(match[1]),
+    y: Number(match[2]),
+    width: Number(match[3]),
+    height: Number(match[4]),
+    color: match[5],
+  }));
+}
+
+/** The amber emphasis box is the export equivalent of the preview's click-event overlay. */
+const CLICK_EMPHASIS_COLOR = "#fbbf24@0.90";
+
 function cameraFrameTrimsFor(project: DemoProject) {
   const plan = buildFinalRenderPlan(project);
   const graph = buildRealMediaFilterGraph(project, plan, [
@@ -209,5 +242,74 @@ describe("preview/export camera parity", () => {
 
     expect(trims.at(-1)).toEqual({ start: 30, end: 31 });
     expect(trims.every((trim) => trim.end > trim.start)).toBe(true);
+  });
+});
+
+describe("preview/export cursor-settings parity (PB-006)", () => {
+  // A project with a recorded move + click so cursor/click emphasis has something to render.
+  function cursorProject(cursor?: CursorSettings): DemoProject {
+    return projectWith({
+      cursor,
+      zooms: [],
+      cursorEvents: [
+        { id: "move_1", time: 1, type: "move", x: 960, y: 540 },
+        { id: "click_1", time: 1, type: "click", x: 960, y: 540 },
+      ],
+    });
+  }
+
+  it("default settings: export draws both a cursor marker and a click emphasis box", () => {
+    const project = cursorProject();
+
+    // Preview intent (shared resolver, also consumed by the browser preview).
+    expect(resolveCursorSettings(project.cursor)).toEqual({
+      hidden: false,
+      clickEffect: "ring",
+      clickEffectDurationMs: 500,
+    });
+
+    // Export reflects that intent: a plain marker plus the amber click-emphasis box.
+    const boxes = cursorDrawboxesFor(project);
+    expect(boxes.some((box) => box.color === CLICK_EMPHASIS_COLOR)).toBe(true);
+    expect(boxes.some((box) => box.color !== CLICK_EMPHASIS_COLOR)).toBe(true);
+  });
+
+  it("hidden: both preview-intent and export suppress the cursor entirely", () => {
+    const project = cursorProject({ hidden: true });
+
+    // Preview hides the cursor (resolved setting both sides read).
+    expect(resolveCursorSettings(project.cursor).hidden).toBe(true);
+
+    // Export emits no cursor drawboxes at all — no cursor in the MP4.
+    expect(cursorDrawboxesFor(project)).toHaveLength(0);
+    expect(filterComplexFor(project)).not.toContain("drawbox");
+  });
+
+  it("clickEffect none: both preview-intent and export suppress the click emphasis", () => {
+    const project = cursorProject({ clickEffect: "none" });
+
+    expect(resolveCursorSettings(project.cursor).clickEffect).toBe("none");
+
+    // No amber emphasis box, but the plain cursor marker still renders (parity with preview,
+    // where the cursor stays but the click-event overlay is gone).
+    const boxes = cursorDrawboxesFor(project);
+    expect(boxes.some((box) => box.color === CLICK_EMPHASIS_COLOR)).toBe(false);
+    expect(boxes.length).toBeGreaterThan(0);
+  });
+
+  it("clickEffectDurationMs feeds the export click-emphasis enable window", () => {
+    const project = cursorProject({ clickEffectDurationMs: 1000 });
+    const complex = filterComplexFor(project);
+
+    // The amber emphasis box stays enabled from the click time (1) through 1 + 1.0s = 2.
+    expect(complex).toContain("color=#fbbf24@0.90:t=fill:enable='between(t\\,1\\,2)'");
+  });
+
+  it("absent cursor field keeps the current default export behavior", () => {
+    const withSettings = cursorProject();
+    const withoutSettings = cursorProject(undefined);
+
+    // No `cursor` field is identical to explicit defaults — no regression for existing projects.
+    expect(filterComplexFor(withoutSettings)).toEqual(filterComplexFor(withSettings));
   });
 });

@@ -183,6 +183,10 @@ export function Preview({ project, currentTime }: PreviewProps) {
           {motion.cursor ? (
             (() => {
               const point = mapSourcePointToPreview(motion.cursor.cx, motion.cursor.cy, placement);
+              // PB-006: the thick accent ring on the cursor dot is click emphasis, so it
+              // only applies when click emphasis is enabled (clickEffect !== "none").
+              const emphasizeClick =
+                motion.cursor.type === "click" && motion.cursorSettings.clickEffect !== "none";
 
               return (
                 <div
@@ -195,10 +199,9 @@ export function Preview({ project, currentTime }: PreviewProps) {
                     width: 18,
                     height: 18,
                     borderRadius: 999,
-                    border:
-                      motion.cursor.type === "click"
-                        ? `5px solid var(--tk-accent, #3B5BD9)`
-                        : "3px solid rgba(255,255,255,0.90)",
+                    border: emphasizeClick
+                      ? `5px solid var(--tk-accent, #3B5BD9)`
+                      : "3px solid rgba(255,255,255,0.90)",
                     background: "rgba(16,25,44,0.45)",
                     transform: "translate(-50%, -50%)",
                   }}
@@ -209,22 +212,30 @@ export function Preview({ project, currentTime }: PreviewProps) {
 
           {motion.clickEvents.map((event, index) => {
             const point = mapSourcePointToPreview(event.cx, event.cy, placement);
+            // PB-006: "ripple" reads as an expanding hollow ring; "ring" (default) is the
+            // filled accent dot. "none" never reaches here (clickEvents is empty upstream).
+            const isRipple = motion.cursorSettings.clickEffect === "ripple";
 
             return (
               <div
                 key={`${event.time}-${index}`}
                 data-testid="click-event"
+                data-click-effect={motion.cursorSettings.clickEffect}
                 aria-label="Click indicator"
                 style={{
                   position: "absolute",
                   left: percent(point.left),
                   top: percent(point.top),
-                  width: 24,
-                  height: 24,
+                  width: isRipple ? 34 : 24,
+                  height: isRipple ? 34 : 24,
                   borderRadius: 999,
-                  background: "var(--tk-accent, #3B5BD9)",
-                  border: "3px solid rgba(16,25,44,0.70)",
-                  boxShadow: "0 0 0 8px var(--tk-accent-soft, rgba(59,91,217,0.25))",
+                  background: isRipple ? "transparent" : "var(--tk-accent, #3B5BD9)",
+                  border: isRipple
+                    ? "3px solid var(--tk-accent, #3B5BD9)"
+                    : "3px solid rgba(16,25,44,0.70)",
+                  boxShadow: isRipple
+                    ? "0 0 0 5px var(--tk-accent-soft, rgba(59,91,217,0.18))"
+                    : "0 0 0 8px var(--tk-accent-soft, rgba(59,91,217,0.25))",
                   transform: "translate(-50%, -50%)",
                 }}
               />
