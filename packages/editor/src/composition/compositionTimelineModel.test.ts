@@ -59,4 +59,12 @@ describe("readCompositionTimeline", () => {
     expect(readCompositionTimeline(fakeTimeline({ totalDuration: -1 })).durationSeconds).toBe(0);
     expect(readCompositionTimeline(fakeTimeline({ totalDuration: Number.NaN })).durationSeconds).toBe(0);
   });
+
+  it("treats a whitespace-only id as unnamed", () => {
+    const model = readCompositionTimeline(
+      fakeTimeline({ totalDuration: 5, children: [{ id: "   ", start: 0, duration: 5 }] }),
+    );
+    expect(model.clips[0]!.id).toBe("clip-0");
+    expect(model.clips[0]!.label).toBeUndefined();
+  });
 });
