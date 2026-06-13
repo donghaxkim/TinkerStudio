@@ -135,7 +135,7 @@ describe("job routes", () => {
     aspectRatio: "16:9",
   } as const;
 
-  it("accepts AI URL jobs, injects the server id, runs Hyperframes, and exposes completed snapshots", async () => {
+  it("accepts explicit Hyperframes jobs, injects the server id, runs Hyperframes, and exposes completed snapshots", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-${randomUUID()}-`));
     const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
     const completed = deferred<void>();
@@ -181,7 +181,7 @@ describe("job routes", () => {
       const postResponse = await server.inject({
         method: "POST",
         url: "/api/jobs",
-        payload: { ...validBody, id: "client-id" },
+        payload: { ...validBody, id: "client-id", renderer: "hyperframes" },
       });
 
       expect(postResponse.statusCode).toBe(202);
@@ -220,21 +220,20 @@ describe("job routes", () => {
       config: testConfig(repoRoot),
       idGenerator: () => "job-test",
       runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
-        expect(rawRequest).toMatchObject({ id: "job-test", mode: "ai-url-planning", renderer: "hyperframes" });
+        expect(rawRequest).toMatchObject({ id: "job-test", mode: "ai-url-planning", renderer: "playwright" });
         completed.resolve();
         return {
           jobId: "job-test",
           status: "completed",
-          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
-          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          projectPath: join(outputRoot, "playwright", "demo-project.json"),
+          captureResultPath: join(outputRoot, "playwright", "capture-result.json"),
           outputDirectory: outputRoot,
           artifactPaths: [],
-          renderer: "hyperframes",
+          renderer: "playwright",
           rendererResults: {
-            hyperframes: {
-              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
-              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
-              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            playwright: {
+              projectPath: join(outputRoot, "playwright", "demo-project.json"),
+              captureResultPath: join(outputRoot, "playwright", "capture-result.json"),
             },
           },
         };
@@ -279,7 +278,7 @@ describe("job routes", () => {
     }
   });
 
-  it("accepts omitted renderer and stores Hyperframes in the response snapshot", async () => {
+  it("defaults omitted renderer to Playwright and stores Playwright in the response snapshot", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-default-renderer-${randomUUID()}-`));
     const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
     const completed = deferred<void>();
@@ -287,21 +286,20 @@ describe("job routes", () => {
       config: testConfig(repoRoot),
       idGenerator: () => "job-test",
       runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
-        expect(rawRequest).toMatchObject({ id: "job-test", mode: "ai-url-planning", renderer: "hyperframes" });
+        expect(rawRequest).toMatchObject({ id: "job-test", mode: "ai-url-planning", renderer: "playwright" });
         completed.resolve();
         return {
           jobId: "job-test",
           status: "completed",
-          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
-          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          projectPath: join(outputRoot, "playwright", "demo-project.json"),
+          captureResultPath: join(outputRoot, "playwright", "capture-result.json"),
           outputDirectory: outputRoot,
           artifactPaths: [],
-          renderer: "hyperframes",
+          renderer: "playwright",
           rendererResults: {
-            hyperframes: {
-              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
-              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
-              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            playwright: {
+              projectPath: join(outputRoot, "playwright", "demo-project.json"),
+              captureResultPath: join(outputRoot, "playwright", "capture-result.json"),
             },
           },
         };
@@ -316,11 +314,81 @@ describe("job routes", () => {
       expect(JSON.parse(response.body)).toMatchObject({
         id: "job-test",
         status: "queued",
-        request: { id: "job-test", renderer: "hyperframes" },
+        request: { id: "job-test", renderer: "playwright" },
       });
       await completed.promise;
     } finally {
       await server.close();
+    }
+  });
+
+  it("accepts explicit Playwright and both renderers", async () => {
+    for (const renderer of ["playwright", "both"] as const) {
+      const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-${renderer}-${randomUUID()}-`));
+      const outputRoot = join(repoRoot, "generated", "local-job", `job-${renderer}`);
+      const completed = deferred<void>();
+      const server = await buildServer({
+        config: testConfig(repoRoot),
+        idGenerator: () => `job-${renderer}`,
+        runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
+          expect(rawRequest).toMatchObject({ id: `job-${renderer}`, mode: "ai-url-planning", renderer });
+          completed.resolve();
+
+          if (renderer === "playwright") {
+            return {
+              jobId: `job-${renderer}`,
+              status: "completed",
+              projectPath: join(outputRoot, "playwright", "demo-project.json"),
+              captureResultPath: join(outputRoot, "playwright", "capture-result.json"),
+              outputDirectory: outputRoot,
+              artifactPaths: [],
+              renderer,
+              rendererResults: {
+                playwright: {
+                  projectPath: join(outputRoot, "playwright", "demo-project.json"),
+                  captureResultPath: join(outputRoot, "playwright", "capture-result.json"),
+                },
+              },
+            };
+          }
+
+          return {
+            jobId: `job-${renderer}`,
+            status: "completed",
+            projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+            captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+            outputDirectory: outputRoot,
+            artifactPaths: [],
+            renderer,
+            rendererResults: {
+              hyperframes: {
+                outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+                generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+                assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+              },
+              playwright: {
+                projectPath: join(outputRoot, "playwright", "demo-project.json"),
+                captureResultPath: join(outputRoot, "playwright", "capture-result.json"),
+              },
+            },
+          };
+        },
+        now: () => "2026-06-11T00:00:00.000Z",
+      });
+
+      try {
+        const response = await server.inject({ method: "POST", url: "/api/jobs", payload: { ...validBody, renderer } });
+
+        expect(response.statusCode).toBe(202);
+        expect(JSON.parse(response.body)).toMatchObject({
+          id: `job-${renderer}`,
+          status: "queued",
+          request: { id: `job-${renderer}`, renderer },
+        });
+        await completed.promise;
+      } finally {
+        await server.close();
+      }
     }
   });
 
@@ -330,8 +398,7 @@ describe("job routes", () => {
 
     try {
       for (const invalidBody of [
-        { ...validBody, renderer: "playwright" },
-        { ...validBody, renderer: "both" },
+        { ...validBody, renderer: "canvas" },
         { ...validBody, outputDirectory: "generated/local-job/x" },
         { ...validBody, mode: "manual-fixture" },
         {
@@ -362,16 +429,15 @@ describe("job routes", () => {
         return {
           jobId: "job-blocked",
           status: "completed",
-          projectPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "output.mp4"),
-          captureResultPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "generation-manifest.json"),
+          projectPath: join(repoRoot, "generated", "local-job", "job-blocked", "playwright", "demo-project.json"),
+          captureResultPath: join(repoRoot, "generated", "local-job", "job-blocked", "playwright", "capture-result.json"),
           outputDirectory: join(repoRoot, "generated", "local-job", "job-blocked"),
           artifactPaths: [],
-          renderer: "hyperframes",
+          renderer: "playwright",
           rendererResults: {
-            hyperframes: {
-              outputVideoPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "output.mp4"),
-              generationManifestPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "generation-manifest.json"),
-              assetManifestPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "asset-manifest.json"),
+            playwright: {
+              projectPath: join(repoRoot, "generated", "local-job", "job-blocked", "playwright", "demo-project.json"),
+              captureResultPath: join(repoRoot, "generated", "local-job", "job-blocked", "playwright", "capture-result.json"),
             },
           },
         };
@@ -403,9 +469,11 @@ describe("job routes", () => {
       idGenerator: () => "job-test",
       runner: async (): Promise<ManualFixtureGenerationResult> => {
         await mkdir(join(outputRoot, "hyperframes", "assets"), { recursive: true });
+        await mkdir(join(outputRoot, "playwright", "capture", "videos"), { recursive: true });
         await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>composition</html>");
         await writeFile(join(outputRoot, "hyperframes", "assets", "logo.png"), "png");
         await writeFile(join(outputRoot, "hyperframes", "artifact.unknownext"), "unknown");
+        await writeFile(join(outputRoot, "playwright", "capture", "videos", "clip.webm"), "webm");
         completed.resolve();
         return {
           jobId: "job-test",
@@ -417,6 +485,7 @@ describe("job routes", () => {
             join(outputRoot, "hyperframes", "index.html"),
             join(outputRoot, "hyperframes", "assets", "logo.png"),
             join(outputRoot, "hyperframes", "artifact.unknownext"),
+            join(outputRoot, "playwright", "capture", "videos", "clip.webm"),
           ],
           renderer: "hyperframes",
           rendererResults: {
@@ -454,6 +523,15 @@ describe("job routes", () => {
       expect(unknownArtifactResponse.statusCode).toBe(200);
       expect(unknownArtifactResponse.headers["x-content-type-options"]).toBe("nosniff");
       expect(unknownArtifactResponse.headers["content-type"]).toContain("application/octet-stream");
+
+      const playwrightVideoResponse = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/playwright/capture/videos/clip.webm",
+      });
+
+      expect(playwrightVideoResponse.statusCode).toBe(200);
+      expect(playwrightVideoResponse.headers["x-content-type-options"]).toBe("nosniff");
+      expect(playwrightVideoResponse.headers["content-type"]).toContain("video/webm");
 
       for (const unsafeUrl of [
         "/api/jobs/job-test/artifacts/../package.json",
@@ -712,6 +790,44 @@ describe("artifact indexing", () => {
     expect(unknownArtifact?.url.endsWith("/hyperframes/notes.txt")).toBe(true);
   });
 
+  it("classifies Playwright artifacts and keeps unknown Playwright paths", async () => {
+    const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-playwright-artifacts-"));
+    const artifacts = indexArtifacts({
+      jobId: "job-test",
+      outputRoot,
+      artifactPaths: [
+        join(outputRoot, "playwright", "demo-project.json"),
+        join(outputRoot, "playwright", "storyboard.json"),
+        join(outputRoot, "playwright", "capture-plan.json"),
+        join(outputRoot, "playwright", "capture-result.json"),
+        join(outputRoot, "playwright", "capture", "videos", "clip.webm"),
+        join(outputRoot, "playwright", "capture", "screenshots", "frame.png"),
+        join(outputRoot, "playwright", "capture", "trace.zip"),
+        join(outputRoot, "playwright", "notes.txt"),
+      ],
+    });
+
+    expect(artifacts.map((artifact) => artifact.kind)).toEqual([
+      "playwright-demo-project",
+      "playwright-storyboard",
+      "playwright-capture-plan",
+      "playwright-capture-result",
+      "playwright-video",
+      "playwright-screenshot",
+      "playwright-trace",
+      "other",
+    ]);
+    expect(artifacts[4]).toMatchObject({
+      relativePath: "playwright/capture/videos/clip.webm",
+      url: "/api/jobs/job-test/artifacts/playwright/capture/videos/clip.webm",
+      mediaType: "video/webm",
+    });
+    expect(artifacts[5]).toMatchObject({
+      relativePath: "playwright/capture/screenshots/frame.png",
+      mediaType: "image/png",
+    });
+  });
+
   it("excludes artifact paths outside the output root", async () => {
     const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-artifacts-"));
     const artifacts = indexArtifacts({
@@ -797,15 +913,19 @@ describe("job store", () => {
     expect(snapshot.request.id).toBe("server-job-id");
   });
 
-  it("does not sanitize invalid API request fields into valid snapshots", () => {
+  it("stores all supported API renderers without sanitizing request snapshots", () => {
     const store = createJobStore();
 
-    expect(() => store.create({
-      id: "job-playwright",
-      request: { ...request, renderer: "playwright" },
-      outputRoot: "/tmp/job-playwright",
-      now: "2026-06-11T00:00:00.000Z",
-    })).toThrow();
+    for (const renderer of ["hyperframes", "playwright", "both"] as const) {
+      const snapshot = store.create({
+        id: `job-${renderer}`,
+        request: { ...request, id: `job-${renderer}`, renderer },
+        outputRoot: `/tmp/job-${renderer}`,
+        now: "2026-06-11T00:00:00.000Z",
+      });
+
+      expect(snapshot.request.renderer).toBe(renderer);
+    }
 
     expect(() => store.create({
       id: "job-output-directory",
@@ -819,14 +939,14 @@ describe("job store", () => {
     const store = createJobStore();
 
     expect(() => store.create({
-      id: "job-invalid",
-      request: { ...request, renderer: "playwright" },
-      outputRoot: "/tmp/job-invalid",
+      id: "job-invalid-output-directory",
+      request: { ...request, outputDirectory: "/tmp/output" },
+      outputRoot: "/tmp/job-invalid-output-directory",
       now: "2026-06-11T00:00:00.000Z",
     })).toThrow();
 
-    expect(store.getRecord("job-invalid")).toBeUndefined();
-    expect(store.getSnapshot("job-invalid")).toBeUndefined();
+    expect(store.getRecord("job-invalid-output-directory")).toBeUndefined();
+    expect(store.getSnapshot("job-invalid-output-directory")).toBeUndefined();
   });
 
   it("ignores terminal progress statuses until complete or fail records terminal payloads", () => {
