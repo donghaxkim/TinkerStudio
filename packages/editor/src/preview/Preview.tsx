@@ -46,7 +46,7 @@ const dashboardWindowStyle: CSSProperties = {
   aspectRatio: "749 / 443",
   overflow: "hidden",
   borderRadius: 10,
-  background: "#000",
+  background: "#fff",
   boxShadow: "0 10px 30px rgba(10,10,14,0.4)",
 };
 
@@ -154,7 +154,7 @@ export function Preview({ project, currentTime }: PreviewProps) {
         <div style={wallpaperStyle}>
           <div
             data-testid="preview-window"
-            style={{ ...dashboardWindowStyle, aspectRatio: aspectRatioToCss(project.aspectRatio) }}
+            style={{ ...dashboardWindowStyle, aspectRatio: `${motion.frame.width} / ${motion.frame.height}` }}
           >
         <div
           data-testid="preview-motion-layer"
