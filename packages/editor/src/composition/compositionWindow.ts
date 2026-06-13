@@ -44,6 +44,7 @@ export type WaitForCompositionTimelineOptions = {
   sleep?: (ms: number) => Promise<void>;
   /** Injectable elapsed-time source (tests). Default performance.now(). */
   now?: () => number;
+  /** Abort to cancel the wait; the rejection is the signal's reason (or an AbortError). */
   signal?: AbortSignal;
 };
 
@@ -59,7 +60,7 @@ export async function waitForCompositionTimeline(
   const timeoutMs = options.timeoutMs ?? 4000;
   const intervalMs = options.intervalMs ?? 50;
   const now = options.now ?? (() => performance.now());
-  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const sleep = options.sleep ?? ((ms: number) => abortableDelay(ms, options.signal));
   const start = now();
 
   for (;;) {
@@ -73,4 +74,23 @@ export async function waitForCompositionTimeline(
     }
     await sleep(intervalMs);
   }
+}
+
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException("The operation was aborted", "AbortError"));
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout>;
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new DOMException("The operation was aborted", "AbortError"));
+    };
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

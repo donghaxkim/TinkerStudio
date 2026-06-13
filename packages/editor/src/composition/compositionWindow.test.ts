@@ -50,13 +50,35 @@ describe("waitForCompositionTimeline", () => {
     });
 
     expect(result).toBe(handle);
-    expect(calls).toBeGreaterThanOrEqual(3);
+    expect(calls).toBe(3);
+  });
+
+  it("rejects immediately when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      waitForCompositionTimeline(() => ({ __timelines: {} }), "sample", {
+        sleep: async () => undefined,
+        now: () => 0,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects when aborted during the wait", async () => {
+    const controller = new AbortController();
+    const promise = waitForCompositionTimeline(() => ({ __timelines: {} }), "sample", {
+      intervalMs: 1000,
+      now: () => 0, // never times out
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(promise).rejects.toThrow();
   });
 
   it("rejects with a timeout error when the handle never registers", async () => {
-    const times = [0, 10, 20, 5000];
-    let i = 0;
-    const now = () => times[Math.min(i++, times.length - 1)]!;
+    let calls = 0;
+    const now = () => (calls++ < 3 ? 0 : 5000); // pretend elapsed jumps past timeout after 3 calls
 
     await expect(
       waitForCompositionTimeline(() => ({ __timelines: {} }), "sample", {
