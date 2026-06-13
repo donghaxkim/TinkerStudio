@@ -15,6 +15,10 @@ export default defineConfig({
     },
   },
   server: {
+    proxy: {
+      // Forward API calls to Person A's local generation server (TINKER_API_PORT, default 4500).
+      "/api": `http://127.0.0.1:${process.env.TINKER_API_PORT ?? 4500}`,
+    },
     fs: {
       allow: [fileURLToPath(new URL("../..", import.meta.url))],
     },
