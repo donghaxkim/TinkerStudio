@@ -231,10 +231,11 @@ export function Timeline({
                   overflow: "hidden",
                   cursor: "pointer",
                   display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  paddingLeft: 9,
-                  paddingRight: 9,
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  justifyContent: "center",
+                  gap: 2,
+                  padding: "0 8px",
                   borderRadius: 7,
                   textAlign: "left",
                   ...(isClip
@@ -259,58 +260,85 @@ export function Timeline({
                   onSeek(item.start);
                 }}
               >
-                {!isClip ? (
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                    style={{ flexShrink: 0 }}
-                  >
-                    <circle cx="11" cy="11" r="7" />
-                    <line x1="21" y1="21" x2="16.5" y2="16.5" />
-                  </svg>
-                ) : null}
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    fontSize: isClip ? 10.5 : 10.5,
-                    fontWeight: 600,
-                  }}
-                >
-                  {item.label}
-                </span>
                 {isClip ? (
-                  <span
-                    style={{
-                      marginLeft: "auto",
-                      color: "var(--tk-text-ter, #9D9B94)",
-                      fontSize: 8.5,
-                      fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {durationSec.toFixed(1)}s
-                  </span>
-                ) : zoom?.scale !== undefined ? (
-                  <span
-                    style={{
-                      marginLeft: "auto",
-                      fontSize: 9,
-                      fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    ×{zoom.scale}
-                  </span>
-                ) : null}
+                  <>
+                    {/* Clip card — stacked: title (bold) over duration (mono), left-aligned (M14) */}
+                    <span
+                      style={{
+                        maxWidth: "100%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        color: "#44423D",
+                      }}
+                    >
+                      {item.label}
+                    </span>
+                    <span
+                      style={{
+                        color: "var(--tk-text-ter, #9D9B94)",
+                        fontSize: 8.5,
+                        fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {durationSec.toFixed(1)}s
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {/* Zoom card — stacked: [magnifier + title] over ×factor, blue (M13) */}
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        maxWidth: "100%",
+                        minWidth: 0,
+                      }}
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                        style={{ flexShrink: 0 }}
+                      >
+                        <circle cx="11" cy="11" r="7" />
+                        <line x1="21" y1="21" x2="16.5" y2="16.5" />
+                      </svg>
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {item.label}
+                      </span>
+                    </span>
+                    {zoom?.scale !== undefined ? (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontFamily: "var(--tk-mono, 'IBM Plex Mono', ui-monospace, monospace)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        ×{zoom.scale}
+                      </span>
+                    ) : null}
+                  </>
+                )}
               </button>
             );
           })}

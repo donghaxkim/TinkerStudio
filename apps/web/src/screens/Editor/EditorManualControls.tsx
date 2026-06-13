@@ -410,7 +410,8 @@ export function EditorManualControls({
               const isSelected = selectedEntity?.type === "zoom" && selectedEntity.id === zoom.id;
               return (
                 <li key={zoom.id}>
-                  {/* Per-move white rowcard (M8): magnifier + title + range + blue factor */}
+                  {/* Per-move white rowcard (M8): magnifier + stacked [title / timecode] + blue factor.
+                      Two-line stacked layout matching the design (DESIGN-zoomrow.png). */}
                   <button
                     type="button"
                     aria-label={zoom.name ?? `Zoom ${index + 1}`}
@@ -435,23 +436,29 @@ export function EditorManualControls({
                     <span style={{ color: "var(--tk-text)", display: "inline-flex", flexShrink: 0 }}>
                       <RowMagnifierIcon />
                     </span>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{zoom.name ?? `Zoom ${index + 1}`}</span>
-                    <span
-                      style={{
-                        marginLeft: "auto",
-                        flexShrink: 0,
-                        fontFamily: "var(--tk-mono)",
-                        fontSize: 9.5,
-                        color: "#9D9B94",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {formatTimecode(zoom.start)} → {formatTimecode(zoom.end)}
+                    {/* Stacked column: title on top, timecode below */}
+                    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: "#1B1A17", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {zoom.name ?? `Zoom ${index + 1}`}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: "var(--tk-mono)",
+                          fontSize: 9.5,
+                          color: "#9D9B94",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {formatTimecode(zoom.start)} → {formatTimecode(zoom.end)}
+                      </span>
                     </span>
                     {zoom.scale !== undefined ? (
                       <span
                         style={{
                           flexShrink: 0,
+                          alignSelf: "center",
                           fontFamily: "var(--tk-mono)",
                           fontSize: 10,
                           fontWeight: 400,

@@ -9,11 +9,15 @@ export type PreviewProps = {
 };
 
 // Outer stage — warm-charcoal frame (M2).
+// Fills its container (the EditorScreen height-bound 16:9 wrapper) so the gradient
+// frame inside grows to ~84% of the dark stage height. `aspectRatio` keeps the box
+// 16:9 when the container is only width-constrained (e.g. in isolated tests).
 const stageStyle: CSSProperties = {
   position: "relative",
   aspectRatio: "16 / 9",
   width: "100%",
-  minHeight: 320,
+  height: "100%",
+  minHeight: 0,
   overflow: "hidden",
   borderRadius: 18,
   background: "var(--tk-preview-bg, #26251F)",
@@ -149,7 +153,7 @@ export function Preview({ project, currentTime }: PreviewProps) {
   };
 
   return (
-    <section aria-label="Preview">
+    <section aria-label="Preview" style={{ width: "100%", height: "100%", display: "flex" }}>
       <div data-testid="preview-stage" style={stageStyle}>
         <div style={wallpaperStyle}>
           <div

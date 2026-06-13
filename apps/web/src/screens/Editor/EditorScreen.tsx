@@ -166,51 +166,67 @@ function CloseIcon() {
   );
 }
 
-function SplitIcon() {
+// ─── tool-rail glyphs (design set, viewBox 0 0 16 16, currentColor) ─────────────
+// Exact path geometry lifted from the design's tool-rail icons so the rail glyphs
+// are pixel-parity with porcelainnew.html. Order top→bottom:
+//   1 X/close · 2 scissors · 3 magnifier · 4 duplicate · 5 crop · 6 corner.
+
+const RAIL_ICON = { width: 15, height: 15, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+
+function RailCloseIcon() {
   return (
-    <svg {...ICON} aria-hidden="true">
-      <line x1="12" y1="3" x2="12" y2="21" />
-      <path d="M8 7 4 11l4 4" />
-      <path d="m16 7 4 4-4 4" />
+    <svg {...RAIL_ICON} aria-hidden="true">
+      <path d="M4.2 4.2 11.8 11.8" />
+      <path d="M11.8 4.2 4.2 11.8" />
     </svg>
   );
 }
 
-function ZoomMoveIcon() {
+function RailScissorsIcon() {
   return (
-    <svg {...ICON} aria-hidden="true">
-      <circle cx="11" cy="11" r="7" />
-      <line x1="11" y1="8" x2="11" y2="14" />
-      <line x1="8" y1="11" x2="14" y2="11" />
+    <svg {...RAIL_ICON} aria-hidden="true">
+      <path d="M5.8 5 A1.8 1.8 0 1 1 2.2 5 A1.8 1.8 0 1 1 5.8 5 Z" />
+      <path d="M5.8 11 A1.8 1.8 0 1 1 2.2 11 A1.8 1.8 0 1 1 5.8 11 Z" />
+      <path d="M5.4 5.9 13 10.6" />
+      <path d="M5.4 10.1 13 5.4" />
     </svg>
   );
 }
 
-function FrameIcon() {
+function RailMagnifierIcon() {
   return (
-    <svg {...ICON} aria-hidden="true">
-      <path d="M4 8V6a2 2 0 0 1 2-2h2" />
-      <path d="M16 4h2a2 2 0 0 1 2 2v2" />
-      <path d="M20 16v2a2 2 0 0 1-2 2h-2" />
-      <path d="M8 20H6a2 2 0 0 1-2-2v-2" />
+    <svg {...RAIL_ICON} aria-hidden="true">
+      <path d="M10.5 6.5a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" />
+      <path d="M9.5 9.5 14 14" />
     </svg>
   );
 }
 
-function CropIcon() {
+function RailDuplicateIcon() {
   return (
-    <svg {...ICON} aria-hidden="true">
-      <path d="M6 2v14a2 2 0 0 0 2 2h14" />
-      <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+    <svg {...RAIL_ICON} aria-hidden="true">
+      <path d="M1.9 5.3h7.3v5.4H1.9z" />
+      <path d="M5.4 2.9h6.7v10.2H5.4z" />
     </svg>
   );
 }
 
-function MaskIcon() {
+function RailCropIcon() {
   return (
-    <svg {...ICON} aria-hidden="true">
-      <circle cx="9" cy="12" r="6" />
-      <circle cx="15" cy="12" r="6" />
+    <svg {...RAIL_ICON} aria-hidden="true">
+      <path d="M4.5 1.5V11a.6.6 0 0 0 .6.6h9.4" />
+      <path d="M1.5 4.5H11a.6.6 0 0 1 .6.6V14.5" />
+    </svg>
+  );
+}
+
+function RailCornerIcon() {
+  return (
+    <svg {...RAIL_ICON} aria-hidden="true">
+      <path d="M4.7 6.5a2 2 0 0 1 2-2H11a2 2 0 0 1 2 2v4.3a2 2 0 0 1-2 2H6.7a2 2 0 0 1-2-2Z" />
+      <path d="M4.3 2.3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
+      <path d="M4.3 3.2v2.2" />
+      <path d="M3.2 4.3h2.2" />
     </svg>
   );
 }
@@ -755,15 +771,15 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
               >
                 <button
                   type="button"
-                  className="tk-railbtn"
+                  className="tk-railbtn tk-railbtn-active"
                   aria-label="Cursor tool"
                   title="Cursor"
-                  aria-pressed={false}
+                  aria-pressed={true}
                 >
-                  <CursorIcon />
+                  <RailCloseIcon />
                 </button>
                 <button type="button" className="tk-railbtn" aria-label="Split clip — not available in the MVP" title="Not available in the MVP" disabled>
-                  <SplitIcon />
+                  <RailScissorsIcon />
                 </button>
                 {/* Divider after button 2 */}
                 <div aria-hidden="true" style={{ width: 20, height: 1, background: "rgba(0,0,0,0.09)", flexShrink: 0 }} />
@@ -775,12 +791,12 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
                   aria-pressed={false}
                   onClick={() => setActiveTab("zoom")}
                 >
-                  <ZoomMoveIcon />
+                  <RailMagnifierIcon />
                 </button>
                 {/* Divider after button 3 */}
                 <div aria-hidden="true" style={{ width: 20, height: 1, background: "rgba(0,0,0,0.09)", flexShrink: 0 }} />
                 <button type="button" className="tk-railbtn" aria-label="Auto frame — not available in the MVP" title="Not available in the MVP" disabled>
-                  <FrameIcon />
+                  <RailDuplicateIcon />
                 </button>
                 <button
                   type="button"
@@ -789,14 +805,25 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
                   title="Crop"
                   aria-pressed={true}
                 >
-                  <CropIcon />
+                  <RailCropIcon />
                 </button>
                 <button type="button" className="tk-railbtn" aria-label="Mask — not available in the MVP" title="Not available in the MVP" disabled>
-                  <MaskIcon />
+                  <RailCornerIcon />
                 </button>
               </nav>
 
-              <div style={{ width: "100%", maxWidth: 760 }}>
+              {/* Size the preview by the stage HEIGHT (16:9) so the gradient frame fills
+                  ~84% of the dark stage height with ~48px dark margin top/bottom — matching
+                  the design. Width follows the aspect ratio and is capped to the stage. */}
+              <div
+                style={{
+                  height: "88%",
+                  maxHeight: "88%",
+                  maxWidth: "100%",
+                  aspectRatio: "16 / 9",
+                  display: "flex",
+                }}
+              >
                 <Preview project={displayProject} currentTime={currentTime} />
               </div>
 
