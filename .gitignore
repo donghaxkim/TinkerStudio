@@ -11,6 +11,9 @@ generated/
 AGENTS.md
 agents.md
 
+# Local planning notes
+docs/plans/
+
 # Playwright MCP scratch output
 .playwright-mcp/
 
