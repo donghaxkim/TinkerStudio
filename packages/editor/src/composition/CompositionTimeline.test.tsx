@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { CompositionTimeline } from "./CompositionTimeline.js";
 import type { CompositionTimelineModel } from "./compositionTimelineModel.js";
 
@@ -59,5 +59,47 @@ describe("CompositionTimeline (display)", () => {
     render(<CompositionTimeline model={{ durationSeconds: 0, clips: [], labels: [] }} currentTime={0} />);
     expect(screen.getByTestId("composition-timeline")).toBeInTheDocument();
     expect(screen.getByTestId("composition-playhead")).toHaveStyle({ left: "0%" });
+  });
+});
+
+function mockBounds(el: HTMLElement, width: number, left = 0) {
+  vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+    left,
+    width,
+    top: 0,
+    right: left + width,
+    bottom: 56,
+    height: 56,
+    x: left,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect);
+}
+
+describe("CompositionTimeline (interaction)", () => {
+  it("seeks to the clicked time on the track", () => {
+    const onSeek = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={0} onSeek={onSeek} />);
+    const track = screen.getByTestId("composition-timeline");
+    mockBounds(track, 1000);
+    fireEvent.click(track, { clientX: 500 });
+    expect(onSeek).toHaveBeenCalledWith(5); // 500/1000 * 10s
+  });
+
+  it("selects a clip and seeks to its start when the clip is clicked, without a second track seek", () => {
+    const onSeek = vi.fn();
+    const onSelectClip = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={0} onSeek={onSeek} onSelectClip={onSelectClip} />);
+    const track = screen.getByTestId("composition-timeline");
+    mockBounds(track, 1000);
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    expect(onSelectClip).toHaveBeenCalledWith(MODEL.clips[1]);
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    expect(onSeek).toHaveBeenCalledWith(4); // feature.start
+  });
+
+  it("labels the timeline track for assistive tech", () => {
+    render(<CompositionTimeline model={MODEL} currentTime={0} />);
+    expect(screen.getByTestId("composition-timeline")).toHaveAttribute("aria-label", "Composition timeline");
   });
 });

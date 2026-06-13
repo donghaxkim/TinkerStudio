@@ -1,4 +1,4 @@
-import { type CSSProperties } from "react";
+import { type CSSProperties, type MouseEvent } from "react";
 import { createTimeScale } from "../timeline/timeScale.js";
 import type { CompositionClip, CompositionTimelineModel } from "./compositionTimelineModel.js";
 
@@ -22,6 +22,7 @@ const trackStyle: CSSProperties = {
   borderRadius: 10,
   overflow: "hidden",
   userSelect: "none",
+  cursor: "pointer",
 };
 
 const clipStyle: CSSProperties = {
@@ -39,6 +40,7 @@ const clipStyle: CSSProperties = {
   whiteSpace: "nowrap",
   overflow: "hidden",
   boxSizing: "border-box",
+  cursor: "pointer",
 };
 
 const selectedClipStyle: CSSProperties = {
@@ -63,11 +65,31 @@ const playheadStyle: CSSProperties = {
   background: "var(--tk-accent, #6C8CFF)",
 };
 
-export function CompositionTimeline({ model, currentTime, selectedClipId }: CompositionTimelineProps) {
+export function CompositionTimeline({ model, currentTime, selectedClipId, onSeek, onSelectClip }: CompositionTimelineProps) {
   const scale = createTimeScale(model.durationSeconds, 100);
 
+  function handleTrackClick(event: MouseEvent<HTMLDivElement>) {
+    if (!onSeek) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const time = createTimeScale(model.durationSeconds, Math.max(1, bounds.width)).pixelsToSeconds(
+      event.clientX - bounds.left,
+    );
+    onSeek(time);
+  }
+
+  function handleClipClick(event: MouseEvent<HTMLDivElement>, clip: CompositionClip) {
+    event.stopPropagation();
+    onSelectClip?.(clip);
+    onSeek?.(clip.start);
+  }
+
   return (
-    <div data-testid="composition-timeline" style={trackStyle}>
+    <div
+      data-testid="composition-timeline"
+      aria-label="Composition timeline"
+      style={trackStyle}
+      onClick={handleTrackClick}
+    >
       {model.clips.map((clip) => {
         const left = scale.secondsToPixels(clip.start);
         const width = scale.secondsToPixels(clip.end) - left;
@@ -78,6 +100,7 @@ export function CompositionTimeline({ model, currentTime, selectedClipId }: Comp
             data-testid={`composition-clip-${clip.id}`}
             data-selected={selected ? "true" : "false"}
             style={{ ...clipStyle, ...(selected && selectedClipStyle), left: `${left}%`, width: `${width}%` }}
+            onClick={(event) => handleClipClick(event, clip)}
           >
             {clip.label ?? clip.id}
           </div>
