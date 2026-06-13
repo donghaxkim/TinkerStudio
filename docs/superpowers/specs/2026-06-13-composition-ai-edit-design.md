@@ -67,10 +67,14 @@ Let a single local user, after generation:
 - No multi-user, accounts, cloud storage, or collaboration.
 - No captions/callouts/voiceover/audio mixing (still out of MVP scope).
 - No new generation modes; generation already exists in `apps/api`.
-- **This slice does not build the real AI edit endpoint.** That is Person A's
-  to implement against the contract in `docs/person-a-composition-edit-contract.md`.
-  Person B builds the full front-end against a deterministic local stub and swaps
-  it for the real endpoint when ready.
+- **Person B builds the real AI edit endpoint** by *composing* Person A's existing
+  `@tinker/demo-assembly` public exports (`createOpencodeHyperframesRepairer` +
+  `runHyperframesRender`) inside `apps/api` — **not** by reimplementing or editing
+  the generation pipeline internals. The `MockCompositionEditClient` is retained as
+  the fast, deterministic dev/test double (real edits spawn the agent CLI and can
+  take many minutes). Person A reviews the edit prompt, the `revisions` schema
+  change, and the scene-structure lint per
+  `docs/person-a-composition-edit-contract.md`.
 - No structured per-tween editing or GSAP-code diffing. Edits are whole-composition
   revisions.
 
@@ -168,8 +172,33 @@ All new/changed code is in Person B territory: `apps/web`, `packages/editor`,
 - **`HttpCompositionEditClient`**: `POST /api/jobs/:id/edits`, then poll the job.
 - **`MockCompositionEditClient`**: deterministic local stub that returns a new
   revision (reusing the current artifacts with a new revision id) so the full loop
-  runs without Person A. Mirrors the `generationClient` / `mockGenerationClient`
-  split.
+  runs fast without spawning the agent. Mirrors the `generationClient` /
+  `mockGenerationClient` split, and remains the dev/test double after the real
+  endpoint exists.
+
+### 6. Edit endpoint in `apps/api` (built by Person B over Person A's exports)
+
+`POST /api/jobs/:id/edits` — Person B implements this by **orchestrating Person A's
+public exports**, not by editing `@tinker/demo-assembly`:
+
+1. Copy the job's current composition into a new revision directory
+   (`generated/local-job/<jobId>/revisions/<revId>/hyperframes/`).
+2. Run `createOpencodeHyperframesRepairer(...)` with the user's `instruction` +
+   scoped `context` (range/clip) as the repair input.
+3. Re-run `runHyperframesRender(...)` (lint + render repair loop) on the revision.
+4. Validate with `validateHyperframesArtifacts`; index artifacts by `kind`.
+5. Append the revision to the job; return the updated snapshot.
+
+**Runtime prerequisites:** the agent CLI (`claude` or `opencode`, via
+`TINKER_HYPERFRAMES_AGENT`) must be installed with model access — the same
+requirement generation already has. Edits are heavyweight (default agent timeout
+1,800,000 ms / 30 min), so the UI treats them like long jobs and the mock double
+covers fast iteration.
+
+**Ownership:** this code lives in `apps/api` (shared, Person-A-review area) and
+imports only `@tinker/demo-assembly`'s public API. The edit prompt (a
+user-instruction variant of the repair prompt), the `revisions` schema change, and
+the clip scene-lint are flagged for Person A review.
 
 ## Revision Model
 
@@ -273,23 +302,29 @@ for fonts/assets before enabling scrub, and drive the preview **only** via
 | **0** | Generation wiring: Vite proxy, `HttpGenerationClient`, `ai-url-planning` request, long-job UX → a real composition opens | none |
 | **1** | `CompositionPreview` + adapter + `CompositionTimeline` (scrubber, playhead, range select) | none |
 | **2** | Context chips + chat rework + `MockCompositionEditClient` → full loop on fake edits | none |
-| **3** | Swap stub → `HttpCompositionEditClient`; clips light up | **`/edits` endpoint + scene lint** |
+| **3** | **Build the real `/edits` endpoint** in `apps/api` (compose `createOpencodeHyperframesRepairer` + `runHyperframesRender`) + `revisions` schema + `HttpCompositionEditClient` | Person A **review** (not build) |
+| **4** | Clip selection via scene-structure lint (each scene = a named nested timeline) | Person A **generator change** — small joint PR |
 
-Each phase is independently demoable. Only Phase 3 is gated on Person A.
+Each phase is independently demoable. Phases 0–3 are Person B build; Phase 4
+touches Person A's generator (a small reviewed change). Range selection works
+without Phase 4; clips light up once it lands. The agent CLI must be configured for
+Phase 3 edits to run for real — the mock double covers everything before that.
 
-## Person A (Samuel) Handoff
+## Person A (Samuel) Review Items
 
-The contract Person A implements is in
-`docs/person-a-composition-edit-contract.md`:
+Person B builds the edit endpoint by composing Person A's exports, so the handoff
+is now **review**, not build. See `docs/person-a-composition-edit-contract.md`:
 
-1. `POST /api/jobs/:id/edits` — run the agent on the existing composition with a
-   scoped instruction; re-run lint/render; return a new revision.
-2. One lint rule: each scene = a named nested timeline (id/label) registered on
-   the master, so clips are discoverable.
-3. Reuse the runner progress dialect; document long-render latency.
-
-Any schema change (e.g., adding `revisions` to the job shape) is a small, joint
-PR per the repo's schema-change workflow.
+1. **Edit prompt** — Person B adds a user-instruction variant of the repair prompt
+   (`buildRepairPrompt`). Person A reviews that it scopes edits sensibly to the
+   given range/clip and respects the composition contract (`window.__timelines`,
+   forbidden files).
+2. **`revisions` / `currentRevisionId` schema change** to the job shape — a small
+   isolated PR, reviewed by both per the repo's schema-change workflow.
+3. **Scene-structure lint (Phase 4)** — each scene = a named nested timeline so
+   clips are discoverable. This touches Person A's generator prompt + lint, so it
+   is either Person A's change or a small Person-B PR he reviews. Not required for
+   Phases 0–3.
 
 ## Licensing
 
@@ -309,8 +344,12 @@ PR per the repo's schema-change workflow.
 
 ## Risks & Tradeoffs
 
-- **Phase 3 gated on Person A.** Mitigation: the stub makes Phases 0–2 fully
-  demoable; the contract is authored by the consumer (Person B).
+- **Edits need the agent CLI + are slow (~minutes, 30-min timeout).** Mitigation:
+  the mock double covers fast iteration; the UI treats real edits as long jobs with
+  honest progress + cancel.
+- **Phase 3/4 touch shared + Person A areas.** Mitigation: the endpoint only
+  consumes `@tinker/demo-assembly` public exports (no internal edits); the prompt,
+  schema change, and scene-lint are explicitly flagged for Person A review.
 - **Clip structure not guaranteed today.** Mitigation: range-only works without
   it; clips degrade gracefully until the lint rule lands.
 - **Heavy-composition preview stutter.** Mitigation: seek instead of real-time

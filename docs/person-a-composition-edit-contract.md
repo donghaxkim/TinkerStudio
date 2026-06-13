@@ -3,8 +3,10 @@
 **From:** Person B (editor / AI-edit UX)
 **To:** Person A (generation pipeline, `apps/api` + `@tinker/demo-assembly`)
 **Related design:** `docs/superpowers/specs/2026-06-13-composition-ai-edit-design.md`
-**Status:** Proposal — please review before implementing. Person B is building the
-full front-end against a local stub and will swap to this endpoint when it lands.
+**Status:** Person B is **building** this endpoint by composing your
+`@tinker/demo-assembly` public exports in `apps/api`. This doc is for your
+**review** — the edit prompt, the schema change, and the clip scene-lint — not a
+build request. Flag anything you'd rather own or change.
 
 ## Why
 
@@ -15,15 +17,20 @@ re-render** — the same kind of agent + lint/render loop you already run for
 generation, but applied to an existing composition with a scoped instruction.
 
 Your API currently has **no edit/iteration endpoint** (explicitly deferred in the
-generation-api-server design). This document specifies exactly what Person B needs
-so the swap from stub to real is zero-UI-change.
+generation-api-server design). Rather than wait, Person B implements it in
+`apps/api` by **composing your existing exports** —
+`createOpencodeHyperframesRepairer` (the repair = edit-an-existing-composition
+primitive) + `runHyperframesRender` (re-render) — without editing
+`@tinker/demo-assembly` internals. This document records the shape so you can
+review the seam and the three items below.
 
-## What Person B needs
+## What Person B is building (please review)
 
 ### 1. `POST /api/jobs/:id/edits`
 
-Run the composition-editing agent on job `:id`'s existing composition and produce
-a new revision.
+Person B's `apps/api` route runs the composition-editing agent on job `:id`'s
+existing composition and produces a new revision, by composing
+`createOpencodeHyperframesRepairer` + `runHyperframesRender`.
 
 **Request body:**
 
@@ -113,12 +120,16 @@ gracefully, so this is not a blocker for shipping Phases 0–2.
   editing model. Revising it to the composition-source model is a **joint** change,
   tracked separately (not part of Person B's slice).
 
-## Acceptance (for Person A)
+## Review checklist (for Person A)
 
-- `POST /api/jobs/:id/edits` accepts the request above, runs the agent on the
-  existing composition, re-renders, and returns a new completed revision with valid
-  artifacts.
-- `GET /api/jobs/:id` returns the job with `revisions` + `currentRevisionId`.
-- Failed edits return a `GenerationError` and leave prior revisions intact.
-- (When ready) generated compositions expose named nested-timeline scenes
-  discoverable via `getChildren`.
+- **Edit prompt:** the user-instruction variant of `buildRepairPrompt` scopes edits
+  to the given range/clip and respects the composition contract
+  (`window.__timelines`, forbidden files, `output.mp4`).
+- **Schema:** the `revisions` / `currentRevisionId` addition to the job shape — OK
+  as a small joint PR?
+- **Reuse:** composing `createOpencodeHyperframesRepairer` + `runHyperframesRender`
+  from `apps/api` is an acceptable use of the public API (no internal edits)?
+- **Scene-lint (Phase 4):** prefer to own the generator change that makes each
+  scene a named nested timeline, or review a small Person-B PR for it?
+- **Anything here you'd rather build or shape yourself** — say so and Person B
+  adjusts.
