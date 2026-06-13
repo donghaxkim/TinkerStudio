@@ -1003,7 +1003,7 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
             </div>
 
             {/* Zoom tab — auto-zoom + manual zoom/clip controls */}
-            <div role="tabpanel" id="panel-zoom" aria-labelledby="tab-zoom" hidden={activeTab !== "zoom"} style={{ display: activeTab === "zoom" ? "grid" : "none", gap: 20, padding: "18px 14px 14px" }}>
+            <div role="tabpanel" id="panel-zoom" aria-labelledby="tab-zoom" hidden={activeTab !== "zoom"} style={{ display: activeTab === "zoom" ? "grid" : "none", gap: 47, padding: "18px 14px 14px" }}>
               <EditorAutoZoomPanel
                 project={project}
                 previewSource={previewSource}
