@@ -9,8 +9,8 @@ import {
 export type CompositionPreviewProps = {
   /** URL of the composition-index artifact (the index.html). */
   src: string;
-  /** The composition id (matches data-composition-id / window.__timelines key). */
-  compositionId: string;
+  /** The composition id (matches data-composition-id / window.__timelines key). Omit to use the sole registered timeline. */
+  compositionId?: string;
   /** Playhead time in seconds; the preview seeks the timeline to it. */
   currentTime?: number;
   /** Called once the timeline is read, with its structured model and live handle. */
@@ -95,7 +95,7 @@ export function CompositionPreview({
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       {status !== "error" ? (
         <iframe
-          key={`${src}::${compositionId}`}
+          key={`${src}::${compositionId ?? "sole"}`}
           ref={iframeRef}
           data-testid="composition-frame"
           title="Composition preview"
