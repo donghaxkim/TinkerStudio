@@ -38,4 +38,10 @@ describe("composition client helpers", () => {
     expect(selectArtifact(completed, "output-video")?.mediaType).toBe("video/mp4");
     expect(selectArtifactUrl(completed, "lint-log")).toBeUndefined();
   });
+
+  it("returns undefined when the job has no result yet", () => {
+    const running = { ...completed, status: "running", result: undefined } as unknown as ApiGenerationJob;
+    expect(selectArtifact(running, "composition-index")).toBeUndefined();
+    expect(selectArtifactUrl(running, "composition-index")).toBeUndefined();
+  });
 });

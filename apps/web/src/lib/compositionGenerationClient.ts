@@ -13,7 +13,11 @@ export type CreateCompositionJobRequest = {
   durationCapSeconds: number;
   aspectRatio: "16:9" | "9:16" | "1:1";
   prompt?: string;
-  /** Defaults to "hyperframes" in the HTTP client if omitted (the server defaults to playwright). */
+  /**
+   * Renderer to use. The API route defaults an omitted renderer to "playwright"
+   * (it strips the schema's "hyperframes" default), so the HTTP client sends
+   * "hyperframes" explicitly to get composition output.
+   */
   renderer?: "hyperframes" | "playwright" | "both";
 };
 
@@ -29,7 +33,9 @@ export interface CompositionGenerationClient {
   waitForJob(jobId: string, options?: WaitForJobOptions): Promise<ApiGenerationJob>;
 }
 
-export function isTerminalStatus(status: ApiGenerationJobStatus): boolean {
+export function isTerminalStatus(
+  status: ApiGenerationJobStatus,
+): status is "completed" | "failed" {
   return status === "completed" || status === "failed";
 }
 
