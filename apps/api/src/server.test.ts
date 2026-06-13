@@ -469,9 +469,11 @@ describe("job routes", () => {
       idGenerator: () => "job-test",
       runner: async (): Promise<ManualFixtureGenerationResult> => {
         await mkdir(join(outputRoot, "hyperframes", "assets"), { recursive: true });
+        await mkdir(join(outputRoot, "playwright", "capture", "videos"), { recursive: true });
         await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>composition</html>");
         await writeFile(join(outputRoot, "hyperframes", "assets", "logo.png"), "png");
         await writeFile(join(outputRoot, "hyperframes", "artifact.unknownext"), "unknown");
+        await writeFile(join(outputRoot, "playwright", "capture", "videos", "clip.webm"), "webm");
         completed.resolve();
         return {
           jobId: "job-test",
@@ -483,6 +485,7 @@ describe("job routes", () => {
             join(outputRoot, "hyperframes", "index.html"),
             join(outputRoot, "hyperframes", "assets", "logo.png"),
             join(outputRoot, "hyperframes", "artifact.unknownext"),
+            join(outputRoot, "playwright", "capture", "videos", "clip.webm"),
           ],
           renderer: "hyperframes",
           rendererResults: {
@@ -520,6 +523,15 @@ describe("job routes", () => {
       expect(unknownArtifactResponse.statusCode).toBe(200);
       expect(unknownArtifactResponse.headers["x-content-type-options"]).toBe("nosniff");
       expect(unknownArtifactResponse.headers["content-type"]).toContain("application/octet-stream");
+
+      const playwrightVideoResponse = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/playwright/capture/videos/clip.webm",
+      });
+
+      expect(playwrightVideoResponse.statusCode).toBe(200);
+      expect(playwrightVideoResponse.headers["x-content-type-options"]).toBe("nosniff");
+      expect(playwrightVideoResponse.headers["content-type"]).toContain("video/webm");
 
       for (const unsafeUrl of [
         "/api/jobs/job-test/artifacts/../package.json",
@@ -776,6 +788,44 @@ describe("artifact indexing", () => {
       relativePath: "hyperframes/notes.txt",
     });
     expect(unknownArtifact?.url.endsWith("/hyperframes/notes.txt")).toBe(true);
+  });
+
+  it("classifies Playwright artifacts and keeps unknown Playwright paths", async () => {
+    const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-playwright-artifacts-"));
+    const artifacts = indexArtifacts({
+      jobId: "job-test",
+      outputRoot,
+      artifactPaths: [
+        join(outputRoot, "playwright", "demo-project.json"),
+        join(outputRoot, "playwright", "storyboard.json"),
+        join(outputRoot, "playwright", "capture-plan.json"),
+        join(outputRoot, "playwright", "capture-result.json"),
+        join(outputRoot, "playwright", "capture", "videos", "clip.webm"),
+        join(outputRoot, "playwright", "capture", "screenshots", "frame.png"),
+        join(outputRoot, "playwright", "capture", "trace.zip"),
+        join(outputRoot, "playwright", "notes.txt"),
+      ],
+    });
+
+    expect(artifacts.map((artifact) => artifact.kind)).toEqual([
+      "playwright-demo-project",
+      "playwright-storyboard",
+      "playwright-capture-plan",
+      "playwright-capture-result",
+      "playwright-video",
+      "playwright-screenshot",
+      "playwright-trace",
+      "other",
+    ]);
+    expect(artifacts[4]).toMatchObject({
+      relativePath: "playwright/capture/videos/clip.webm",
+      url: "/api/jobs/job-test/artifacts/playwright/capture/videos/clip.webm",
+      mediaType: "video/webm",
+    });
+    expect(artifacts[5]).toMatchObject({
+      relativePath: "playwright/capture/screenshots/frame.png",
+      mediaType: "image/png",
+    });
   });
 
   it("excludes artifact paths outside the output root", async () => {
