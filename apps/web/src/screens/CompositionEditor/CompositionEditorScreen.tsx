@@ -30,13 +30,13 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   }
 
   return (
-    <div style={pageStyle}>
+    <div className="tk-porcelain" style={pageStyle}>
       <div style={previewStyle}>
         <CompositionPreview
           src={compositionIndexUrl}
           currentTime={currentTime}
           fallbackVideoSrc={outputVideoUrl}
-          onReady={(readyModel) => setModel(readyModel)}
+          onReady={(readyModel, _handle) => setModel(readyModel)}
           resolveWindow={resolveWindow}
         />
       </div>

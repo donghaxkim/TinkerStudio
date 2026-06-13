@@ -51,5 +51,6 @@ describe("CompositionEditorScreen", () => {
     fireEvent.click(screen.getByTestId("composition-clip-feature"));
     await waitFor(() => expect(seeks).toContain(4));
     expect(screen.getByTestId("composition-clip-feature")).toHaveAttribute("data-selected", "true");
+    expect(screen.getByTestId("composition-playhead")).toHaveStyle({ left: "40%" }); // currentTime 4 / duration 10
   });
 });
