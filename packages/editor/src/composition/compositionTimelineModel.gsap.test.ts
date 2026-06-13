@@ -9,6 +9,8 @@ describe("readCompositionTimeline with a real GSAP timeline", () => {
   it("reads nested labeled scene timelines from a real gsap.timeline()", () => {
     const master = gsap.timeline({ paused: true });
 
+    // paused: true on the children is exactly what makes the master's totalDuration()
+    // return 0 before it ticks — the condition the robust derivation guards against.
     const hook = gsap.timeline({ id: "hook", paused: true });
     hook.to({ v: 0 }, { v: 1, duration: 2 });
 
@@ -29,5 +31,18 @@ describe("readCompositionTimeline with a real GSAP timeline", () => {
     expect(model.clips[1]!.start).toBeCloseTo(2, 5);
     expect(model.clips[1]!.end).toBeCloseTo(5, 5);
     expect(model.labels).toEqual([{ name: "cta", time: 5 }]);
+  });
+
+  it("does not extend duration past content for a trailing label", () => {
+    const master = gsap.timeline({ paused: true });
+    const hook = gsap.timeline({ id: "hook", paused: true });
+    hook.to({ v: 0 }, { v: 1, duration: 2 });
+    master.add(hook, 0);
+    master.addLabel("promo", 10); // trailing marker — no content at t=10
+
+    const model = readCompositionTimeline(master);
+
+    expect(model.durationSeconds).toBeCloseTo(2, 5); // content ends at 2, NOT 10
+    expect(model.labels).toEqual([{ name: "promo", time: 10 }]);
   });
 });
