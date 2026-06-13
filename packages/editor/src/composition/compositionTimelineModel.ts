@@ -59,10 +59,15 @@ function readClipIdentity(child: GsapChildLike, index: number): { id: string; la
  * Read a generated composition's GSAP master timeline into a structured model.
  * Clips are the top-level nested scene timelines (`getChildren(false, false, true)`);
  * a flat composition yields zero clips (the UI then offers range-only selection).
+ *
+ * GSAP quirk: when child timelines are created with `paused: true`, the master's
+ * `totalDuration()` returns 0 until the timeline ticks (no render has occurred).
+ * We therefore fall back to computing duration as the maximum of:
+ *   - the master's own totalDuration() (accurate when children are not paused)
+ *   - the derived end of each child (startTime + totalDuration)
+ *   - the maximum label time
  */
 export function readCompositionTimeline(timeline: GsapTimelineLike): CompositionTimelineModel {
-  const durationSeconds = roundMicros(clampDuration(timeline.totalDuration()));
-
   const clips: CompositionClip[] = timeline
     .getChildren(false, false, true)
     .map((child, index) => {
@@ -75,6 +80,15 @@ export function readCompositionTimeline(timeline: GsapTimelineLike): Composition
   const labels: CompositionTimelineLabel[] = Object.entries(timeline.labels)
     .map(([name, time]) => ({ name, time: roundMicros(time) }))
     .sort((a, b) => a.time - b.time);
+
+  // GSAP may return 0 from totalDuration() for a paused master that has never
+  // ticked, so we take the max of the timeline's own value, each clip's end, and
+  // the latest label time to ensure we always get a correct duration.
+  const maxClipEnd = clips.reduce((m, c) => Math.max(m, c.end), 0);
+  const maxLabelTime = labels.reduce((m, l) => Math.max(m, l.time), 0);
+  const durationSeconds = roundMicros(
+    Math.max(clampDuration(timeline.totalDuration()), maxClipEnd, maxLabelTime),
+  );
 
   return { durationSeconds, clips, labels };
 }
