@@ -33,10 +33,18 @@ function completedJob(id: string, request: CreateCompositionJobRequest): ApiGene
   } as ApiGenerationJob;
 }
 
+/** A non-terminal snapshot derived from a completed job (single home for the result-clearing cast). */
+function runningSnapshot(done: ApiGenerationJob): ApiGenerationJob {
+  return { ...done, status: "running", result: undefined } as ApiGenerationJob;
+}
+
 export function createMockCompositionGenerationClient(): CompositionGenerationClient {
   const jobs = new Map<string, ApiGenerationJob>();
   let counter = 0;
 
+  // Deterministic test double: the stored job is already "completed", so getJob
+  // returns completion immediately. Callers exercise the non-terminal path via
+  // waitForJob's onUpdate sequence (running -> completed) below, not by re-polling getJob.
   async function getJob(jobId: string): Promise<ApiGenerationJob> {
     const job = jobs.get(jobId);
     if (!job) {
@@ -52,13 +60,16 @@ export function createMockCompositionGenerationClient(): CompositionGenerationCl
       const done = completedJob(id, request);
       jobs.set(id, done);
       // Surface a non-terminal snapshot first so callers exercise the poll path.
-      return { ...done, status: "running", result: undefined } as ApiGenerationJob;
+      return runningSnapshot(done);
     },
     getJob,
     async waitForJob(jobId: string, options: WaitForJobOptions = {}): Promise<ApiGenerationJob> {
-      const job = await getJob(jobId);
-      options.onUpdate?.(job);
-      return job;
+      options.signal?.throwIfAborted();
+      const done = await getJob(jobId);
+      // Faithful to the real HTTP client: emit a non-terminal update before the terminal one.
+      options.onUpdate?.(runningSnapshot(done));
+      options.onUpdate?.(done);
+      return done;
     },
   };
 }
