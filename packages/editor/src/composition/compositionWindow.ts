@@ -1,0 +1,76 @@
+import type { GsapTimelineLike } from "./compositionTimelineModel.js";
+
+/** A generated composition's GSAP master timeline, including the controls the preview drives. */
+export interface CompositionTimelineHandle extends GsapTimelineLike {
+  seek(time: number, suppressEvents?: boolean): unknown;
+  play(from?: number, suppressEvents?: boolean): unknown;
+  pause(atTime?: number, suppressEvents?: boolean): unknown;
+}
+
+/** A Window-like object that may carry the Hyperframes timeline registry. */
+export interface TimelineRegistryWindow {
+  __timelines?: Record<string, unknown>;
+}
+
+function isCompositionTimelineHandle(value: unknown): value is CompositionTimelineHandle {
+  if (value === null || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.totalDuration === "function" &&
+    typeof candidate.getChildren === "function" &&
+    typeof candidate.seek === "function" &&
+    typeof candidate.play === "function" &&
+    typeof candidate.pause === "function" &&
+    typeof candidate.labels === "object" &&
+    candidate.labels !== null
+  );
+}
+
+/** Read the registered master timeline for `compositionId`, or undefined if absent/unusable. */
+export function getCompositionTimeline(
+  win: TimelineRegistryWindow | null | undefined,
+  compositionId: string,
+): CompositionTimelineHandle | undefined {
+  const candidate = win?.__timelines?.[compositionId];
+  return isCompositionTimelineHandle(candidate) ? candidate : undefined;
+}
+
+export type WaitForCompositionTimelineOptions = {
+  /** Max time to wait for registration, in ms. Default 4000. */
+  timeoutMs?: number;
+  /** Poll interval in ms. Default 50. */
+  intervalMs?: number;
+  /** Injectable sleep (tests). Default setTimeout-based. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Injectable elapsed-time source (tests). Default performance.now(). */
+  now?: () => number;
+  signal?: AbortSignal;
+};
+
+/**
+ * Poll `getWindow()` until its `__timelines[compositionId]` is a usable handle, or reject on timeout.
+ * `getWindow` is a thunk so the caller can re-read a (possibly slow-to-populate) iframe content window.
+ */
+export async function waitForCompositionTimeline(
+  getWindow: () => TimelineRegistryWindow | null | undefined,
+  compositionId: string,
+  options: WaitForCompositionTimelineOptions = {},
+): Promise<CompositionTimelineHandle> {
+  const timeoutMs = options.timeoutMs ?? 4000;
+  const intervalMs = options.intervalMs ?? 50;
+  const now = options.now ?? (() => performance.now());
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const start = now();
+
+  for (;;) {
+    options.signal?.throwIfAborted();
+    const handle = getCompositionTimeline(getWindow(), compositionId);
+    if (handle) {
+      return handle;
+    }
+    if (now() - start >= timeoutMs) {
+      throw new Error(`Timed out waiting for window.__timelines["${compositionId}"] after ${timeoutMs}ms`);
+    }
+    await sleep(intervalMs);
+  }
+}
