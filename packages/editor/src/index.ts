@@ -55,3 +55,19 @@ export { applyManualEditOperation } from "./manualEditOperations.js";
 export type { PrepareMp4ExportResult } from "./export/prepareMp4Export.js";
 export { prepareMp4Export } from "./export/prepareMp4Export.js";
 export * from "./motion/index.js";
+export type {
+  CompositionClip,
+  CompositionTimelineLabel,
+  CompositionTimelineModel,
+  GsapChildLike,
+  GsapTimelineLike,
+} from "./composition/compositionTimelineModel.js";
+export { readCompositionTimeline } from "./composition/compositionTimelineModel.js";
+export type {
+  CompositionTimelineHandle,
+  TimelineRegistryWindow,
+  WaitForCompositionTimelineOptions,
+} from "./composition/compositionWindow.js";
+export { getCompositionTimeline, waitForCompositionTimeline } from "./composition/compositionWindow.js";
+export type { CompositionPreviewProps } from "./composition/CompositionPreview.js";
+export { CompositionPreview } from "./composition/CompositionPreview.js";
