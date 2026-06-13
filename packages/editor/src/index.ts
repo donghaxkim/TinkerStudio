@@ -68,7 +68,7 @@ export type {
   TimelineRegistryWindow,
   WaitForCompositionTimelineOptions,
 } from "./composition/compositionWindow.js";
-export { getCompositionTimeline, waitForCompositionTimeline } from "./composition/compositionWindow.js";
+export { getCompositionTimeline, getSoleCompositionTimeline, waitForCompositionTimeline } from "./composition/compositionWindow.js";
 export type { CompositionPreviewProps } from "./composition/CompositionPreview.js";
 export { CompositionPreview } from "./composition/CompositionPreview.js";
 export type { CompositionTimelineProps } from "./composition/CompositionTimeline.js";

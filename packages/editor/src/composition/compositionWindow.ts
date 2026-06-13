@@ -67,7 +67,7 @@ export type WaitForCompositionTimelineOptions = {
  */
 export async function waitForCompositionTimeline(
   getWindow: () => TimelineRegistryWindow | null | undefined,
-  compositionId: string | undefined,
+  compositionId?: string,
   options: WaitForCompositionTimelineOptions = {},
 ): Promise<CompositionTimelineHandle> {
   const timeoutMs = options.timeoutMs ?? 4000;

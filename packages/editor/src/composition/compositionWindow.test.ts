@@ -126,4 +126,17 @@ describe("waitForCompositionTimeline with no compositionId", () => {
     const result = await waitForCompositionTimeline(getWindow, undefined, { intervalMs: 0, sleep: async () => undefined, now: () => 0 });
     expect(result).toBe(handle);
   });
+
+  it("times out with a sole-entry message when no handle registers", async () => {
+    let calls = 0;
+    const now = () => (calls++ < 2 ? 0 : 5000);
+    await expect(
+      waitForCompositionTimeline(() => ({ __timelines: {} }), undefined, {
+        timeoutMs: 1000,
+        intervalMs: 0,
+        sleep: async () => undefined,
+        now,
+      }),
+    ).rejects.toThrow(/sole window\.__timelines entry/);
+  });
 });
