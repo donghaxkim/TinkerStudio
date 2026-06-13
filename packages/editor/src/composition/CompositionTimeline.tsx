@@ -77,7 +77,7 @@ export function CompositionTimeline({ model, currentTime, selectedClipId }: Comp
             key={clip.id}
             data-testid={`composition-clip-${clip.id}`}
             data-selected={selected ? "true" : "false"}
-            style={{ ...clipStyle, ...(selected ? selectedClipStyle : {}), left: `${left}%`, width: `${width}%` }}
+            style={{ ...clipStyle, ...(selected && selectedClipStyle), left: `${left}%`, width: `${width}%` }}
           >
             {clip.label ?? clip.id}
           </div>
@@ -86,7 +86,7 @@ export function CompositionTimeline({ model, currentTime, selectedClipId }: Comp
       {model.labels.map((label) => (
         <div
           key={label.name}
-          data-testid={`composition-label-${label.name}`}
+          data-testid={`composition-label-${label.name.replace(/\s+/g, "-")}`}
           style={{ ...labelStyle, left: `${scale.secondsToPixels(label.time)}%` }}
         >
           {label.name}

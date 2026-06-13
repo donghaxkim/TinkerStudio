@@ -44,4 +44,20 @@ describe("CompositionTimeline (display)", () => {
     expect(screen.queryByTestId(/composition-clip-/)).not.toBeInTheDocument();
     expect(screen.getByTestId("composition-playhead")).toHaveStyle({ left: "50%" });
   });
+
+  it("falls back to the clip id when a clip has no label", () => {
+    render(
+      <CompositionTimeline
+        model={{ durationSeconds: 4, clips: [{ id: "clip-0", start: 0, end: 4 }], labels: [] }}
+        currentTime={0}
+      />,
+    );
+    expect(screen.getByTestId("composition-clip-clip-0")).toHaveTextContent("clip-0");
+  });
+
+  it("renders without error when durationSeconds is 0", () => {
+    render(<CompositionTimeline model={{ durationSeconds: 0, clips: [], labels: [] }} currentTime={0} />);
+    expect(screen.getByTestId("composition-timeline")).toBeInTheDocument();
+    expect(screen.getByTestId("composition-playhead")).toHaveStyle({ left: "0%" });
+  });
 });
