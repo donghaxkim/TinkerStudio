@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AiUrlPlanningCreateDemoRequestSchema } from "./createDemoRequest.js";
+import { AiUrlPlanningCreateDemoRequestSchema, AiUrlRendererSchema } from "./createDemoRequest.js";
 import { GenerationErrorSchema } from "./errors.js";
 import { ManualFixtureProgressEventSchema } from "./progress.js";
 
@@ -9,7 +9,7 @@ const ApiCreateDemoRequestSchema = AiUrlPlanningCreateDemoRequestSchema.omit({
 })
   .extend({
     id: z.string().min(1),
-    renderer: z.literal("hyperframes"),
+    renderer: AiUrlRendererSchema,
   })
   .strict();
 
@@ -23,6 +23,13 @@ export const ApiArtifactKindSchema = z.enum([
   "product-analysis",
   "product-analysis-screenshot",
   "repo-analysis",
+  "playwright-demo-project",
+  "playwright-storyboard",
+  "playwright-capture-plan",
+  "playwright-capture-result",
+  "playwright-video",
+  "playwright-screenshot",
+  "playwright-trace",
   "asset",
   "other",
 ]);
