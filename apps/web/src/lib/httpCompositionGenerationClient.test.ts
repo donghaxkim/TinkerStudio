@@ -36,7 +36,7 @@ const validRequest = {
 
 describe("HttpCompositionGenerationClient", () => {
   it("POSTs ai-url-planning to /api/jobs and forces renderer=hyperframes", async () => {
-    const fetchFn = vi.fn(async () => jsonResponse(202, job()));
+    const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(202, job()));
     const client = createHttpCompositionGenerationClient({ fetchFn });
     const created = await client.createJob(validRequest);
     expect(created.status).toBe("queued");
@@ -49,13 +49,13 @@ describe("HttpCompositionGenerationClient", () => {
   });
 
   it("throws the server message on a 422 validation error", async () => {
-    const fetchFn = vi.fn(async () => jsonResponse(422, { status: "failed", stage: "validation", message: "repoUrl: required" }));
+    const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(422, { status: "failed", stage: "validation", message: "repoUrl: required" }));
     const client = createHttpCompositionGenerationClient({ fetchFn });
     await expect(client.createJob(validRequest)).rejects.toThrow("repoUrl: required");
   });
 
   it("GETs a job by id", async () => {
-    const fetchFn = vi.fn(async () => jsonResponse(200, job({ status: "running" })));
+    const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(200, job({ status: "running" })));
     const client = createHttpCompositionGenerationClient({ fetchFn });
     const got = await client.getJob("job-1");
     expect(got.status).toBe("running");
@@ -68,7 +68,7 @@ describe("HttpCompositionGenerationClient", () => {
       result: { artifacts: [{ kind: "output-video", relativePath: "hyperframes/output.mp4", url: "/api/jobs/job-1/artifacts/hyperframes/output.mp4", mediaType: "video/mp4" }] },
     });
     const responses = [jsonResponse(200, job({ status: "running" })), jsonResponse(200, completed)];
-    const fetchFn = vi.fn(async () => responses.shift()!);
+    const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => responses.shift()!);
     const client = createHttpCompositionGenerationClient({ fetchFn });
     const seen: string[] = [];
     const result = await client.waitForJob("job-1", { intervalMs: 0, onUpdate: (j) => seen.push(j.status) });
@@ -78,17 +78,17 @@ describe("HttpCompositionGenerationClient", () => {
   });
 
   it("lets the caller override the renderer", async () => {
-    const fetchFn = vi.fn(async () => jsonResponse(202, job()));
+    const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(202, job()));
     const client = createHttpCompositionGenerationClient({ fetchFn });
     await client.createJob({ ...validRequest, renderer: "both" });
-    const calls = fetchFn.mock.calls as unknown as [string, RequestInit][];
-    const sent = JSON.parse((calls[0]![1]?.body as string) ?? "{}");
+    const [, init] = fetchFn.mock.calls[0]!;
+    const sent = JSON.parse((init?.body as string) ?? "{}");
     expect(sent.renderer).toBe("both");
   });
 
   it("waitForJob rejects once the signal is aborted", async () => {
     const controller = new AbortController();
-    const fetchFn = vi.fn(async () => {
+    const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => {
       controller.abort();
       return jsonResponse(200, job({ status: "running" }));
     });
