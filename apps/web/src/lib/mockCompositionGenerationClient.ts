@@ -65,6 +65,7 @@ export function createMockCompositionGenerationClient(): CompositionGenerationCl
     getJob,
     async waitForJob(jobId: string, options: WaitForJobOptions = {}): Promise<ApiGenerationJob> {
       options.signal?.throwIfAborted();
+      // The mock resolves synchronously — intervalMs is intentionally ignored.
       const done = await getJob(jobId);
       // Faithful to the real HTTP client: emit a non-terminal update before the terminal one.
       options.onUpdate?.(runningSnapshot(done));
