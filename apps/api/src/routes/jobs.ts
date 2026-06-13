@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import type { FastifyInstance } from "fastify";
 import {
   AiUrlPlanningCreateDemoRequestSchema,
+  AiUrlRendererSchema,
   GenerationErrorSchema,
   type AiUrlPlanningCreateDemoRequest,
 } from "@tinker/generation-contract";
@@ -38,7 +39,12 @@ function requestBodyWithoutClientId(body: unknown) {
 const ApiJobCreateRequestBodySchema = AiUrlPlanningCreateDemoRequestSchema.omit({
   id: true,
   outputDirectory: true,
-}).strict();
+  renderer: true,
+})
+  .extend({
+    renderer: AiUrlRendererSchema.optional(),
+  })
+  .strict();
 
 export function registerJobsRoutes(server: FastifyInstance, options: JobsRoutesOptions) {
   server.post("/api/jobs", async (request, reply) => {
@@ -47,15 +53,12 @@ export function registerJobsRoutes(server: FastifyInstance, options: JobsRoutesO
       return reply.status(422).send(validationError(formatZodIssues(parsed.error.issues)));
     }
 
-    if (parsed.data.renderer !== "hyperframes") {
-      return reply.status(422).send(validationError("renderer must be hyperframes"));
-    }
-
     if (!options.queue.hasCapacity()) {
       return reply.status(429).send({ message: "Generation queue is full" });
     }
 
     const id = options.idGenerator();
+    const renderer = parsed.data.renderer ?? "playwright";
     const acceptedRequest = {
       id,
       mode: "ai-url-planning",
@@ -63,7 +66,7 @@ export function registerJobsRoutes(server: FastifyInstance, options: JobsRoutesO
       productUrl: parsed.data.productUrl,
       durationCapSeconds: parsed.data.durationCapSeconds,
       aspectRatio: parsed.data.aspectRatio,
-      renderer: "hyperframes",
+      renderer,
       ...(parsed.data.prompt === undefined ? {} : { prompt: parsed.data.prompt }),
     } satisfies AiUrlPlanningCreateDemoRequest;
     const outputRoot = resolve(options.repoRoot, "generated", "local-job", id);

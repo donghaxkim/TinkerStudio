@@ -21,12 +21,22 @@ function classifyArtifact(relativePath: string): ApiArtifactKind {
   if (relativePath === "product-analysis.json") return "product-analysis";
   if (relativePath === "product-analysis.png") return "product-analysis-screenshot";
   if (relativePath === "repo-analysis.json") return "repo-analysis";
+  if (relativePath === "playwright/demo-project.json") return "playwright-demo-project";
+  if (relativePath === "playwright/storyboard.json") return "playwright-storyboard";
+  if (relativePath === "playwright/capture-plan.json") return "playwright-capture-plan";
+  if (relativePath === "playwright/capture-result.json") return "playwright-capture-result";
+  if (relativePath.startsWith("playwright/capture/videos/")) return "playwright-video";
+  if (relativePath.startsWith("playwright/capture/screenshots/")) return "playwright-screenshot";
+  if (relativePath.startsWith("playwright/") && (relativePath.endsWith(".zip") || relativePath.endsWith(".trace"))) {
+    return "playwright-trace";
+  }
   if (relativePath.startsWith("hyperframes/assets/")) return "asset";
   return "other";
 }
 
 export function mediaTypeForPath(relativePath: string) {
   if (relativePath.endsWith(".mp4")) return "video/mp4";
+  if (relativePath.endsWith(".webm")) return "video/webm";
   if (relativePath.endsWith(".html")) return "text/html; charset=utf-8";
   if (relativePath.endsWith(".json")) return "application/json; charset=utf-8";
   if (relativePath.endsWith(".png")) return "image/png";

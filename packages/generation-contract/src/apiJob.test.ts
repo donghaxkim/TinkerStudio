@@ -49,27 +49,39 @@ describe("API generation job contract", () => {
       "product-analysis",
       "product-analysis-screenshot",
       "repo-analysis",
+      "playwright-demo-project",
+      "playwright-storyboard",
+      "playwright-capture-plan",
+      "playwright-capture-result",
+      "playwright-video",
+      "playwright-screenshot",
+      "playwright-trace",
       "asset",
       "other",
     ]);
   });
 
   it("parses queued and completed API job snapshots", () => {
-    const queued = parseApiGenerationJob({
-      id: "job-test",
-      status: "queued",
-      request,
-      createdAt: "2026-06-11T00:00:00.000Z",
-      updatedAt: "2026-06-11T00:00:00.000Z",
-      progressEvents: [],
-    });
+    for (const renderer of ["hyperframes", "playwright", "both"] as const) {
+      const queued = parseApiGenerationJob({
+        id: `job-${renderer}`,
+        status: "queued",
+        request: { ...request, id: `job-${renderer}`, renderer },
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+        progressEvents: [],
+      });
 
-    expect(queued.status).toBe("queued");
-    expect(queued.request.id).toBe("job-test");
+      expect(queued.status).toBe("queued");
+      expect(queued.request.id).toBe(`job-${renderer}`);
+      expect(queued.request.renderer).toBe(renderer);
+    }
 
     const completed = parseApiGenerationJob({
-      ...queued,
+      id: "job-test",
       status: "completed",
+      request,
+      createdAt: "2026-06-11T00:00:00.000Z",
       updatedAt: "2026-06-11T00:00:02.000Z",
       progressEvents: [progressEvent],
       result: {
@@ -80,11 +92,17 @@ describe("API generation job contract", () => {
             url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
             mediaType: "video/mp4",
           },
+          {
+            kind: "playwright-video",
+            relativePath: "playwright/capture/videos/clip.webm",
+            url: "/api/jobs/job-test/artifacts/playwright/capture/videos/clip.webm",
+            mediaType: "video/webm",
+          },
         ],
       },
     });
 
-    expect(completed.result?.artifacts[0]?.kind).toBe("output-video");
+    expect(completed.result?.artifacts.map((artifact) => artifact.kind)).toEqual(["output-video", "playwright-video"]);
   });
 
   it("requires AI URL planning requests and explicit progress events", () => {
@@ -147,18 +165,16 @@ describe("API generation job contract", () => {
       }).success,
     ).toBe(false);
 
-    for (const renderer of ["playwright", "both"] as const) {
-      expect(
-        safeParseApiGenerationJob({
-          id: "job-test",
-          status: "queued",
-          request: { ...request, renderer },
-          createdAt: "2026-06-11T00:00:00.000Z",
-          updatedAt: "2026-06-11T00:00:00.000Z",
-          progressEvents: [],
-        }).success,
-      ).toBe(false);
-    }
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-test",
+        status: "queued",
+        request: { ...request, renderer: "canvas" },
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+        progressEvents: [],
+      }).success,
+    ).toBe(false);
 
     expect(
       safeParseApiGenerationJob({
