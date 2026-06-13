@@ -272,9 +272,12 @@ function CursorIcon() {
 function FrameTabIcon() {
   return (
     <svg {...TAB_ICON} aria-hidden="true">
-      <rect x="4" y="4" width="16" height="16" rx="2" />
-      <line x1="4" y1="9" x2="20" y2="9" />
-      <line x1="9" y1="4" x2="9" y2="20" />
+      {/* Rounded rectangle frame */}
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      {/* Sun / circle highlight (top-left) */}
+      <circle cx="8.5" cy="10" r="1.5" />
+      {/* Mountain / diagonal line (bottom-right) */}
+      <polyline points="3,16 8,11 12,15 15,12 21,17" />
     </svg>
   );
 }
@@ -778,11 +781,11 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
                 >
                   <RailCloseIcon />
                 </button>
+                {/* Divider after button 1 (X/close) — groups: {X} | {scissors, magnifier} | {duplicate, crop, corner} */}
+                <div aria-hidden="true" style={{ width: 20, height: 1, background: "rgba(0,0,0,0.09)", flexShrink: 0 }} />
                 <button type="button" className="tk-railbtn" aria-label="Split clip — not available in the MVP" title="Not available in the MVP" disabled>
                   <RailScissorsIcon />
                 </button>
-                {/* Divider after button 2 */}
-                <div aria-hidden="true" style={{ width: 20, height: 1, background: "rgba(0,0,0,0.09)", flexShrink: 0 }} />
                 <button
                   type="button"
                   className="tk-railbtn"
@@ -793,7 +796,7 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
                 >
                   <RailMagnifierIcon />
                 </button>
-                {/* Divider after button 3 */}
+                {/* Divider after button 3 (magnifier) */}
                 <div aria-hidden="true" style={{ width: 20, height: 1, background: "rgba(0,0,0,0.09)", flexShrink: 0 }} />
                 <button type="button" className="tk-railbtn" aria-label="Auto frame — not available in the MVP" title="Not available in the MVP" disabled>
                   <RailDuplicateIcon />
@@ -812,15 +815,15 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
                 </button>
               </nav>
 
-              {/* Size the preview by the stage HEIGHT (16:9) so the gradient frame fills
-                  ~84% of the dark stage height with ~48px dark margin top/bottom — matching
-                  the design. Width follows the aspect ratio and is capped to the stage. */}
+              {/* Size the preview by the stage HEIGHT so the gradient frame fills
+                  ~84% of the dark stage height. The gradient frame aspect is ~1.60:1
+                  (dashboard 749×443 + 34px even padding → ~817×511), NOT 16:9.
+                  Width follows naturally from height × source aspect ratio. */}
               <div
                 style={{
                   height: "88%",
                   maxHeight: "88%",
                   maxWidth: "100%",
-                  aspectRatio: "16 / 9",
                   display: "flex",
                 }}
               >

@@ -9,13 +9,12 @@ export type PreviewProps = {
 };
 
 // Outer stage — warm-charcoal frame (M2).
-// Fills its container (the EditorScreen height-bound 16:9 wrapper) so the gradient
-// frame inside grows to ~84% of the dark stage height. `aspectRatio` keeps the box
-// 16:9 when the container is only width-constrained (e.g. in isolated tests).
+// Fills its container (the EditorScreen height-bound wrapper) so the gradient
+// frame inside grows to ~84% of the dark stage height. No fixed aspect ratio:
+// width is fit-content so it hugs the gradient frame (~1.60:1, not 16:9).
 const stageStyle: CSSProperties = {
   position: "relative",
-  aspectRatio: "16 / 9",
-  width: "100%",
+  width: "fit-content",
   height: "100%",
   minHeight: 0,
   overflow: "hidden",
@@ -27,26 +26,29 @@ const stageStyle: CSSProperties = {
 };
 
 // Gradient wallpaper that sits behind the dashboard window (M1).
-// Inset from the stage so a warm-charcoal frame remains; the gradient itself
-// shows an even ~34px margin around the dashboard on all sides.
+// Height fills the stage (minus 12px margin on each side); width is fit-content,
+// hugging the dashboard (height-driven, 749/443 aspect) + 34px padding on each side.
+// This gives aspect ~1.60:1 (817×511) instead of 16:9.
 const wallpaperStyle: CSSProperties = {
-  position: "absolute",
-  inset: 12,
+  position: "relative",
+  margin: 12,
+  height: "calc(100% - 24px)",
+  width: "fit-content",
   borderRadius: 18,
   background: "var(--tk-preview-wallpaper, linear-gradient(135deg,#3D3A52 0%,#6B5876 52%,#C98B6E 100%))",
-  display: "grid",
-  placeItems: "center",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   padding: "34px",
+  boxSizing: "border-box",
 };
 
-// Dashboard window — fluid width with aspect-ratio-driven height and soft drop shadow (M3).
-// width:"100%" + aspectRatio fills the padded wallpaper box so all four gradient margins
-// stay an even ~34px; maxWidth/maxHeight guard against overflow.
+// Dashboard window — height-driven so the wallpaper hugs it with even 34px margins.
+// Height fills the wallpaper content area (wallpaper height minus 34px top + 34px bottom padding).
+// Width follows from the source aspect ratio (749/443 ≈ 1.69), making wallpaper ~1.60:1.
 const dashboardWindowStyle: CSSProperties = {
   position: "relative",
-  width: "100%",
-  maxWidth: "100%",
-  maxHeight: "100%",
+  height: "100%",
   aspectRatio: "749 / 443",
   overflow: "hidden",
   borderRadius: 10,
@@ -153,7 +155,7 @@ export function Preview({ project, currentTime }: PreviewProps) {
   };
 
   return (
-    <section aria-label="Preview" style={{ width: "100%", height: "100%", display: "flex" }}>
+    <section aria-label="Preview" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div data-testid="preview-stage" style={stageStyle}>
         <div style={wallpaperStyle}>
           <div
