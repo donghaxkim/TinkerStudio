@@ -1,0 +1,1103 @@
+import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { resolve } from "node:path";
+import { describe, expect, it, test } from "vitest";
+import type {
+  AiUrlPlanningCreateDemoRequest,
+  GenerationError,
+  ManualFixtureGenerationResult,
+  ManualFixtureProgressEvent,
+} from "@tinker/generation-contract";
+import { readConfig } from "./config.js";
+import { indexArtifacts } from "./jobs/artifactIndex.js";
+import { createJobQueue } from "./jobs/jobQueue.js";
+import { createJobStore } from "./jobs/jobStore.js";
+import { buildServer } from "./server.js";
+import { createGenerationWorker, type GenerationRunner } from "./workers/generationWorker.js";
+
+const request: AiUrlPlanningCreateDemoRequest = {
+  id: "job-test",
+  mode: "ai-url-planning",
+  repoUrl: "https://github.com/example/product",
+  productUrl: "https://example.com",
+  prompt: "Make a short demo.",
+  durationCapSeconds: 12,
+  aspectRatio: "16:9",
+  renderer: "hyperframes",
+};
+
+const runningEvent: ManualFixtureProgressEvent = {
+  jobId: "job-test",
+  status: "running",
+  message: "AI URL analysis started",
+  time: "2026-06-11T00:00:01.000Z",
+};
+
+function testConfig(repoRoot: string) {
+  return {
+    port: 4500,
+    host: "127.0.0.1" as const,
+    corsOrigins: ["http://localhost:5173"],
+    repoRoot,
+  };
+}
+
+describe("readConfig", () => {
+  test("uses local development defaults", () => {
+    expect(readConfig({})).toEqual({
+      port: 4500,
+      host: "127.0.0.1",
+      corsOrigins: ["http://localhost:5173", "http://127.0.0.1:5173"],
+      repoRoot: resolve(process.cwd(), "../.."),
+    });
+  });
+});
+
+describe("buildServer", () => {
+  test("returns ok from the health endpoint", async () => {
+    const server = await buildServer({ config: readConfig({}) });
+
+    try {
+      const response = await server.inject({ method: "GET", url: "/health" });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ ok: true });
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("returns a malformed JSON response for invalid JSON bodies", async () => {
+    const server = await buildServer({ config: readConfig({}) });
+    server.post("/echo", async (request) => request.body);
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/echo",
+        headers: { "content-type": "application/json" },
+        payload: "{",
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({ message: "Malformed JSON body" });
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("preserves custom 400 errors without labeling them as malformed JSON", async () => {
+    const server = await buildServer({ config: readConfig({}) });
+    server.get("/custom-400", async () => {
+      const error = new Error("Custom bad request") as Error & { statusCode: number };
+      error.statusCode = 400;
+      throw error;
+    });
+
+    try {
+      const response = await server.inject({ method: "GET", url: "/custom-400" });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({ message: "Custom bad request" });
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("preserves custom 422 errors", async () => {
+    const server = await buildServer({ config: readConfig({}) });
+    server.get("/custom-422", async () => {
+      const error = new Error("Validation failed") as Error & { statusCode: number };
+      error.statusCode = 422;
+      throw error;
+    });
+
+    try {
+      const response = await server.inject({ method: "GET", url: "/custom-422" });
+
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body)).toEqual({ message: "Validation failed" });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+describe("job routes", () => {
+  const validBody = {
+    mode: "ai-url-planning",
+    repoUrl: "https://github.com/example/product",
+    productUrl: "https://example.com",
+    prompt: "Make a short demo.",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+  } as const;
+
+  it("accepts AI URL jobs, injects the server id, runs Hyperframes, and exposes completed snapshots", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (rawRequest, options): Promise<ManualFixtureGenerationResult> => {
+        expect(rawRequest).toEqual({
+          ...validBody,
+          id: "job-test",
+          renderer: "hyperframes",
+        });
+        expect(rawRequest).not.toMatchObject({ id: "client-id" });
+        options?.onProgress?.(runningEvent);
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>composition</html>");
+        await writeFile(join(outputRoot, "hyperframes", "output.mp4"), "video");
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [
+            join(outputRoot, "hyperframes", "index.html"),
+            join(outputRoot, "hyperframes", "output.mp4"),
+          ],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      const postResponse = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: { ...validBody, id: "client-id" },
+      });
+
+      expect(postResponse.statusCode).toBe(202);
+      expect(JSON.parse(postResponse.body)).toMatchObject({
+        id: "job-test",
+        status: "queued",
+        request: { id: "job-test", renderer: "hyperframes" },
+      });
+
+      await completed.promise;
+      await Promise.resolve();
+
+      const getResponse = await server.inject({ method: "GET", url: "/api/jobs/job-test" });
+
+      expect(getResponse.statusCode).toBe(200);
+      expect(JSON.parse(getResponse.body)).toMatchObject({
+        id: "job-test",
+        status: "completed",
+        result: {
+          artifacts: [
+            { kind: "composition-index", relativePath: "hyperframes/index.html" },
+            { kind: "output-video", relativePath: "hyperframes/output.mp4" },
+          ],
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("ignores malformed client ids before validating job requests", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-client-id-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
+        expect(rawRequest).toMatchObject({ id: "job-test", mode: "ai-url-planning", renderer: "hyperframes" });
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: { ...validBody, id: "" },
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(JSON.parse(response.body)).toMatchObject({
+        id: "job-test",
+        status: "queued",
+        request: { id: "job-test" },
+      });
+      await completed.promise;
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects unknown extra fields on job requests", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-unknown-field-${randomUUID()}-`));
+    const server = await buildServer({ config: testConfig(repoRoot) });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: { ...validBody, chatEndpoint: "https://example.com/chat" },
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body)).toMatchObject({ status: "failed", stage: "validation" });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("accepts omitted renderer and stores Hyperframes in the response snapshot", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-default-renderer-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
+        expect(rawRequest).toMatchObject({ id: "job-test", mode: "ai-url-planning", renderer: "hyperframes" });
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      const response = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+
+      expect(response.statusCode).toBe(202);
+      expect(JSON.parse(response.body)).toMatchObject({
+        id: "job-test",
+        status: "queued",
+        request: { id: "job-test", renderer: "hyperframes" },
+      });
+      await completed.promise;
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects invalid job requests and caps pending queue capacity", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-validation-${randomUUID()}-`));
+    const validationServer = await buildServer({ config: testConfig(repoRoot) });
+
+    try {
+      for (const invalidBody of [
+        { ...validBody, renderer: "playwright" },
+        { ...validBody, renderer: "both" },
+        { ...validBody, outputDirectory: "generated/local-job/x" },
+        { ...validBody, mode: "manual-fixture" },
+        {
+          repoUrl: validBody.repoUrl,
+          productUrl: validBody.productUrl,
+          prompt: "Assisted",
+          durationCapSeconds: 12,
+          aspectRatio: "16:9",
+        },
+      ]) {
+        const response = await validationServer.inject({ method: "POST", url: "/api/jobs", payload: invalidBody });
+
+        expect(response.statusCode).toBe(422);
+        expect(JSON.parse(response.body)).toMatchObject({ status: "failed", stage: "validation" });
+      }
+    } finally {
+      await validationServer.close();
+    }
+
+    const blocker = deferred<void>();
+    let idCount = 0;
+    const capacityServer = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => `job-${++idCount}`,
+      maxPendingJobs: 1,
+      runner: async () => {
+        await blocker.promise;
+        return {
+          jobId: "job-blocked",
+          status: "completed",
+          projectPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "output.mp4"),
+          captureResultPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "generation-manifest.json"),
+          outputDirectory: join(repoRoot, "generated", "local-job", "job-blocked"),
+          artifactPaths: [],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "output.mp4"),
+              generationManifestPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(repoRoot, "generated", "local-job", "job-blocked", "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const first = await capacityServer.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      const second = await capacityServer.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      const third = await capacityServer.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+
+      expect(first.statusCode).toBe(202);
+      expect(second.statusCode).toBe(202);
+      expect(third.statusCode).toBe(429);
+      expect(JSON.parse(third.body)).toEqual({ message: "Generation queue is full" });
+    } finally {
+      blocker.resolve();
+      await Promise.resolve();
+      await capacityServer.close();
+    }
+  });
+
+  it("serves safe job artifacts and rejects traversal or encoded slash paths", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-route-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        await mkdir(join(outputRoot, "hyperframes", "assets"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>composition</html>");
+        await writeFile(join(outputRoot, "hyperframes", "assets", "logo.png"), "png");
+        await writeFile(join(outputRoot, "hyperframes", "artifact.unknownext"), "unknown");
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [
+            join(outputRoot, "hyperframes", "index.html"),
+            join(outputRoot, "hyperframes", "assets", "logo.png"),
+            join(outputRoot, "hyperframes", "artifact.unknownext"),
+          ],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+      await completed.promise;
+      await Promise.resolve();
+
+      const artifactResponse = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+      });
+
+      expect(artifactResponse.statusCode).toBe(200);
+      expect(artifactResponse.headers["x-content-type-options"]).toBe("nosniff");
+      expect(artifactResponse.headers["content-type"]).toContain("text/html");
+      expect(artifactResponse.body).toContain("composition");
+
+      const unknownArtifactResponse = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/artifact.unknownext",
+      });
+
+      expect(unknownArtifactResponse.statusCode).toBe(200);
+      expect(unknownArtifactResponse.headers["x-content-type-options"]).toBe("nosniff");
+      expect(unknownArtifactResponse.headers["content-type"]).toContain("application/octet-stream");
+
+      for (const unsafeUrl of [
+        "/api/jobs/job-test/artifacts/../package.json",
+        "/api/jobs/job-test/artifacts/%2e%2e/package.json",
+        "/api/jobs/job-test/artifacts/hyperframes%2findex.html",
+        "/api/jobs/missing/artifacts/hyperframes/index.html",
+      ]) {
+        const response = await server.inject({ method: "GET", url: unsafeUrl });
+        expect(response.statusCode).toBe(404);
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects symlinked artifacts that resolve outside the job output root", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-symlink-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const outsidePath = join(repoRoot, "outside.txt");
+    const symlinkPath = join(outputRoot, "hyperframes", "outside.txt");
+    const completed = deferred<void>();
+    let symlinkUnsupported = false;
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(outsidePath, "outside output root");
+        try {
+          await symlink(outsidePath, symlinkPath);
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "EACCES" || code === "EPERM" || code === "ENOSYS" || code === "ENOTSUP") {
+            symlinkUnsupported = true;
+          } else {
+            throw error;
+          }
+        }
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: symlinkUnsupported ? [] : [symlinkPath],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+      await completed.promise;
+      await Promise.resolve();
+
+      if (symlinkUnsupported) {
+        return;
+      }
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/outside.txt",
+      });
+
+      expect(response.statusCode).toBe(404);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects completed job files that were not recorded as artifacts", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-unlisted-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>composition</html>");
+        await writeFile(join(outputRoot, "hyperframes", "secret.txt"), "not listed");
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [join(outputRoot, "hyperframes", "index.html")],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+      await completed.promise;
+      await waitForJobStatus(server, "job-test", "completed");
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/secret.txt",
+      });
+
+      expect(response.statusCode).toBe(404);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects existing artifact files while a job is still running", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-running-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const running = deferred<void>();
+    const unblock = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async (_rawRequest, options): Promise<ManualFixtureGenerationResult> => {
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>partial</html>");
+        options?.onProgress?.(runningEvent);
+        running.resolve();
+        await unblock.promise;
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [join(outputRoot, "hyperframes", "index.html")],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+      await running.promise;
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+      });
+
+      expect(response.statusCode).toBe(404);
+    } finally {
+      unblock.resolve();
+      await server.close();
+    }
+  });
+
+  it("rejects existing artifact files after a job fails", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-failed-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const wroteFile = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      runner: async () => {
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>failed</html>");
+        wroteFile.resolve();
+        throw new Error("generation failed");
+      },
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+      await wroteFile.promise;
+      await waitForJobStatus(server, "job-test", "failed");
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+      });
+
+      expect(response.statusCode).toBe(404);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+describe("artifact indexing", () => {
+  it("classifies known Hyperframes artifacts and preserves unknown paths", async () => {
+    const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-artifacts-"));
+    const artifacts = indexArtifacts({
+      jobId: "job-test",
+      outputRoot,
+      artifactPaths: [
+        join(outputRoot, "hyperframes", "output.mp4"),
+        join(outputRoot, "hyperframes", "index.html"),
+        join(outputRoot, "hyperframes", "asset-manifest.json"),
+        join(outputRoot, "hyperframes", "generation-manifest.json"),
+        join(outputRoot, "hyperframes", "lint.log"),
+        join(outputRoot, "hyperframes", "render.log"),
+        join(outputRoot, "product-analysis.json"),
+        join(outputRoot, "product-analysis.png"),
+        join(outputRoot, "repo-analysis.json"),
+        join(outputRoot, "hyperframes", "assets", "logo.png"),
+        join(outputRoot, "hyperframes", "notes.txt"),
+      ],
+    });
+
+    expect(artifacts.map((artifact) => artifact.kind)).toEqual([
+      "output-video",
+      "composition-index",
+      "asset-manifest",
+      "generation-manifest",
+      "lint-log",
+      "render-log",
+      "product-analysis",
+      "product-analysis-screenshot",
+      "repo-analysis",
+      "asset",
+      "other",
+    ]);
+    expect(artifacts[0]).toMatchObject({
+      relativePath: "hyperframes/output.mp4",
+      url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
+      mediaType: "video/mp4",
+    });
+
+    const unknownArtifact = artifacts.find((artifact) => artifact.relativePath === "hyperframes/notes.txt");
+    expect(unknownArtifact).toMatchObject({
+      kind: "other",
+      relativePath: "hyperframes/notes.txt",
+    });
+    expect(unknownArtifact?.url.endsWith("/hyperframes/notes.txt")).toBe(true);
+  });
+
+  it("excludes artifact paths outside the output root", async () => {
+    const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-artifacts-"));
+    const artifacts = indexArtifacts({
+      jobId: "job-test",
+      outputRoot,
+      artifactPaths: [
+        join(outputRoot, "hyperframes", "index.html"),
+        join(outputRoot, "..", "outside.txt"),
+      ],
+    });
+
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.relativePath).toBe("hyperframes/index.html");
+  });
+});
+
+describe("job store", () => {
+  it("creates snapshots, appends progress, and stores terminal result xor error", () => {
+    const store = createJobStore();
+    store.create({
+      id: "job-test",
+      request,
+      outputRoot: "/tmp/job-test",
+      now: "2026-06-11T00:00:00.000Z",
+    });
+
+    expect(store.getSnapshot("job-test")?.status).toBe("queued");
+
+    store.appendProgress("job-test", runningEvent);
+    expect(store.getSnapshot("job-test")?.status).toBe("running");
+    expect(store.getSnapshot("job-test")?.progressEvents).toEqual([runningEvent]);
+
+    store.complete("job-test", {
+      artifacts: [
+        {
+          kind: "composition-index",
+          relativePath: "hyperframes/index.html",
+          url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+          mediaType: "text/html; charset=utf-8",
+        },
+      ],
+    }, "2026-06-11T00:00:02.000Z");
+
+    const completed = store.getSnapshot("job-test");
+    expect(completed?.status).toBe("completed");
+    expect(completed?.result?.artifacts[0]?.kind).toBe("composition-index");
+    expect(completed?.error).toBeUndefined();
+  });
+
+  it("stores failed jobs with typed generation errors", () => {
+    const store = createJobStore();
+    const error: GenerationError = {
+      status: "failed",
+      stage: "planning",
+      message: "Planner failed",
+    };
+
+    store.create({
+      id: "job-test",
+      request,
+      outputRoot: "/tmp/job-test",
+      now: "2026-06-11T00:00:00.000Z",
+    });
+    store.fail("job-test", error, "2026-06-11T00:00:02.000Z");
+
+    const failed = store.getSnapshot("job-test");
+    expect(failed?.status).toBe("failed");
+    expect(failed?.error).toEqual(error);
+    expect(failed?.result).toBeUndefined();
+  });
+
+  it("uses the server job id in request snapshots", () => {
+    const store = createJobStore();
+
+    const snapshot = store.create({
+      id: "server-job-id",
+      request: { ...request, id: "client-job-id" },
+      outputRoot: "/tmp/server-job-id",
+      now: "2026-06-11T00:00:00.000Z",
+    });
+
+    expect(snapshot.id).toBe("server-job-id");
+    expect(snapshot.request.id).toBe("server-job-id");
+  });
+
+  it("does not sanitize invalid API request fields into valid snapshots", () => {
+    const store = createJobStore();
+
+    expect(() => store.create({
+      id: "job-playwright",
+      request: { ...request, renderer: "playwright" },
+      outputRoot: "/tmp/job-playwright",
+      now: "2026-06-11T00:00:00.000Z",
+    })).toThrow();
+
+    expect(() => store.create({
+      id: "job-output-directory",
+      request: { ...request, outputDirectory: "/tmp/output" },
+      outputRoot: "/tmp/job-output-directory",
+      now: "2026-06-11T00:00:00.000Z",
+    })).toThrow();
+  });
+
+  it("does not persist invalid records when create validation fails", () => {
+    const store = createJobStore();
+
+    expect(() => store.create({
+      id: "job-invalid",
+      request: { ...request, renderer: "playwright" },
+      outputRoot: "/tmp/job-invalid",
+      now: "2026-06-11T00:00:00.000Z",
+    })).toThrow();
+
+    expect(store.getRecord("job-invalid")).toBeUndefined();
+    expect(store.getSnapshot("job-invalid")).toBeUndefined();
+  });
+
+  it("ignores terminal progress statuses until complete or fail records terminal payloads", () => {
+    for (const status of ["completed", "failed"] as const) {
+      const store = createJobStore();
+      const id = `job-${status}`;
+      store.create({
+        id,
+        request: { ...request, id },
+        outputRoot: `/tmp/${id}`,
+        now: "2026-06-11T00:00:00.000Z",
+      });
+      store.appendProgress(id, { ...runningEvent, jobId: id });
+
+      store.appendProgress(id, {
+        jobId: id,
+        status,
+        message: `${status} progress event`,
+        time: "2026-06-11T00:00:02.000Z",
+      });
+
+      expect(store.getSnapshot(id)?.status).toBe("running");
+    }
+  });
+
+  it("keeps completed jobs terminal after later progress events", () => {
+    const store = createJobStore();
+    store.create({
+      id: "job-completed-terminal",
+      request: { ...request, id: "job-completed-terminal" },
+      outputRoot: "/tmp/job-completed-terminal",
+      now: "2026-06-11T00:00:00.000Z",
+    });
+    store.complete("job-completed-terminal", { artifacts: [] }, "2026-06-11T00:00:02.000Z");
+
+    store.appendProgress("job-completed-terminal", {
+      jobId: "job-completed-terminal",
+      status: "running",
+      message: "Late progress event",
+      time: "2026-06-11T00:00:03.000Z",
+    });
+
+    const snapshot = store.getSnapshot("job-completed-terminal");
+    expect(snapshot?.status).toBe("completed");
+    expect(snapshot?.result).toEqual({ artifacts: [] });
+  });
+
+  it("keeps the previous updatedAt for progress events without datetime times", () => {
+    const store = createJobStore();
+    store.create({
+      id: "job-invalid-progress-time",
+      request: { ...request, id: "job-invalid-progress-time" },
+      outputRoot: "/tmp/job-invalid-progress-time",
+      now: "2026-06-11T00:00:00.000Z",
+    });
+
+    store.appendProgress("job-invalid-progress-time", {
+      jobId: "job-invalid-progress-time",
+      status: "running",
+      message: "Progress with non-datetime time",
+      time: "not-a-datetime",
+    });
+
+    const snapshot = store.getSnapshot("job-invalid-progress-time");
+    expect(snapshot?.status).toBe("running");
+    expect(snapshot?.updatedAt).toBe("2026-06-11T00:00:00.000Z");
+  });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((innerResolve, innerReject) => {
+    resolve = innerResolve;
+    reject = innerReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function waitForJobStatus(
+  server: Awaited<ReturnType<typeof buildServer>>,
+  id: string,
+  status: "completed" | "failed",
+) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const response = await server.inject({ method: "GET", url: `/api/jobs/${id}` });
+    const snapshot = JSON.parse(response.body) as { status?: string };
+    if (snapshot.status === status) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  throw new Error(`Timed out waiting for ${id} to become ${status}`);
+}
+
+describe("job queue", () => {
+  it("runs one job at a time in FIFO order and bounds pending jobs", async () => {
+    const first = deferred<void>();
+    const started: string[] = [];
+    const finished: string[] = [];
+    const queue = createJobQueue({
+      maxPendingJobs: 1,
+      runJob: async (id) => {
+        started.push(id);
+        if (id === "job-1") {
+          await first.promise;
+        }
+        finished.push(id);
+      },
+    });
+
+    expect(queue.pendingCount()).toBe(0);
+    expect(queue.hasCapacity()).toBe(true);
+    expect(queue.isRunning()).toBe(false);
+
+    expect(queue.enqueue("job-1")).toBe(true);
+    expect(queue.pendingCount()).toBe(0);
+    expect(queue.hasCapacity()).toBe(true);
+    expect(queue.isRunning()).toBe(true);
+
+    expect(queue.enqueue("job-2")).toBe(true);
+    expect(queue.pendingCount()).toBe(1);
+    expect(queue.hasCapacity()).toBe(false);
+    expect(queue.isRunning()).toBe(true);
+
+    expect(queue.enqueue("job-3")).toBe(false);
+    expect(queue.pendingCount()).toBe(1);
+    expect(queue.hasCapacity()).toBe(false);
+    expect(queue.isRunning()).toBe(true);
+
+    await Promise.resolve();
+    expect(started).toEqual(["job-1"]);
+
+    first.resolve();
+    await first.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(started).toEqual(["job-1", "job-2"]);
+    expect(finished).toEqual(["job-1", "job-2"]);
+    expect(queue.pendingCount()).toBe(0);
+    expect(queue.hasCapacity()).toBe(true);
+    expect(queue.isRunning()).toBe(false);
+  });
+
+  it("continues draining after a job rejects", async () => {
+    const started: string[] = [];
+    const queue = createJobQueue({
+      maxPendingJobs: 2,
+      runJob: async (id) => {
+        started.push(id);
+        if (id === "job-1") {
+          throw new Error("first job failed");
+        }
+      },
+    });
+
+    expect(queue.enqueue("job-1")).toBe(true);
+    expect(queue.enqueue("job-2")).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(started).toEqual(["job-1", "job-2"]);
+    expect(queue.pendingCount()).toBe(0);
+    expect(queue.isRunning()).toBe(false);
+  });
+});
+
+describe("generation worker", () => {
+  it("invokes the runner, appends progress, indexes artifacts, and completes the job", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-"));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const store = createJobStore();
+    store.create({ id: "job-test", request, outputRoot, now: "2026-06-11T00:00:00.000Z" });
+
+    const runner: GenerationRunner = async (rawRequest, options) => {
+      expect(rawRequest).toMatchObject({ id: "job-test", mode: "ai-url-planning", renderer: "hyperframes" });
+      options?.onProgress?.({
+        jobId: "job-test",
+        status: "running",
+        message: "AI URL analysis started",
+        time: "2026-06-11T00:00:01.000Z",
+      });
+      await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+      await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html></html>");
+      await writeFile(join(outputRoot, "hyperframes", "output.mp4"), "video");
+      return {
+        jobId: "job-test",
+        status: "completed",
+        projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+        captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+        outputDirectory: outputRoot,
+        artifactPaths: [join(outputRoot, "hyperframes", "index.html"), join(outputRoot, "hyperframes", "output.mp4")],
+        renderer: "hyperframes",
+        rendererResults: {
+          hyperframes: {
+            outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+            generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+            assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+          },
+        },
+      };
+    };
+
+    const worker = createGenerationWorker({ store, runner, now: () => "2026-06-11T00:00:02.000Z" });
+    await worker("job-test");
+
+    const completed = store.getSnapshot("job-test");
+    expect(completed?.status).toBe("completed");
+    expect(completed?.progressEvents.map((event) => event.message)).toEqual(["AI URL analysis started"]);
+    expect(completed?.result?.artifacts.map((artifact) => artifact.kind)).toEqual(["composition-index", "output-video"]);
+  });
+
+  it("ignores progress events for a different job id", async () => {
+    const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-progress-"));
+    const store = createJobStore();
+    store.create({ id: "job-test", request, outputRoot, now: "2026-06-11T00:00:00.000Z" });
+
+    const runner: GenerationRunner = async (_rawRequest, options) => {
+      options?.onProgress?.({
+        jobId: "other-job",
+        status: "running",
+        message: "Progress for another job",
+        time: "2026-06-11T00:00:01.000Z",
+      });
+      return {
+        jobId: "job-test",
+        status: "completed",
+        projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+        captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+        outputDirectory: outputRoot,
+        artifactPaths: [],
+        renderer: "hyperframes",
+        rendererResults: {
+          hyperframes: {
+            outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+            generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+            assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+          },
+        },
+      };
+    };
+
+    const worker = createGenerationWorker({ store, runner, now: () => "2026-06-11T00:00:02.000Z" });
+    await worker("job-test");
+
+    const completed = store.getSnapshot("job-test");
+    expect(completed?.status).toBe("completed");
+    expect(completed?.progressEvents).toEqual([]);
+  });
+
+  it("fails unknown empty-message errors with a non-empty typed generation error", async () => {
+    for (const [id, thrown] of [
+      ["job-empty-error", new Error("")],
+      ["job-empty-string", ""],
+    ] as const) {
+      const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-error-"));
+      const store = createJobStore();
+      store.create({ id, request: { ...request, id }, outputRoot, now: "2026-06-11T00:00:00.000Z" });
+
+      const runner: GenerationRunner = async () => {
+        throw thrown;
+      };
+      const worker = createGenerationWorker({ store, runner, now: () => "2026-06-11T00:00:02.000Z" });
+
+      await expect(worker(id)).resolves.toBeUndefined();
+
+      const failed = store.getSnapshot(id);
+      expect(failed?.status).toBe("failed");
+      expect(failed?.error).toMatchObject({ status: "failed", stage: "unknown" });
+      expect(failed?.error?.message.trim().length).toBeGreaterThan(0);
+    }
+  });
+});
