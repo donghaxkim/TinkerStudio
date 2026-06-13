@@ -25,15 +25,21 @@ export function createHttpCompositionGenerationClient(
     if (!response.ok) {
       throw new Error(await readErrorMessage(response));
     }
-    const parsed = safeParseApiGenerationJob(await response.json());
+    let raw: unknown;
+    try {
+      raw = await response.json();
+    } catch {
+      throw new Error(`Server returned a non-JSON response (status ${response.status})`);
+    }
+    const parsed = safeParseApiGenerationJob(raw);
     if (!parsed.success) {
       throw new Error(`Malformed job response: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`);
     }
     return parsed.data;
   }
 
-  async function getJob(jobId: string): Promise<ApiGenerationJob> {
-    return readJob(await fetchFn(`${baseUrl}/api/jobs/${jobId}`));
+  async function getJob(jobId: string, signal?: AbortSignal): Promise<ApiGenerationJob> {
+    return readJob(await fetchFn(`${baseUrl}/api/jobs/${jobId}`, { signal }));
   }
 
   return {
@@ -52,7 +58,7 @@ export function createHttpCompositionGenerationClient(
       const intervalMs = waitOptions.intervalMs ?? DEFAULT_POLL_INTERVAL_MS;
       for (;;) {
         waitOptions.signal?.throwIfAborted();
-        const job = await getJob(jobId);
+        const job = await getJob(jobId, waitOptions.signal);
         waitOptions.onUpdate?.(job);
         if (isTerminalStatus(job.status)) {
           return job;
@@ -77,18 +83,20 @@ async function readErrorMessage(response: Response): Promise<string> {
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
+    const abortError = () => signal?.reason ?? new DOMException("The operation was aborted", "AbortError");
     if (signal?.aborted) {
-      reject(signal.reason);
+      reject(abortError());
       return;
     }
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(signal.reason);
-      },
-      { once: true },
-    );
+    let timer: ReturnType<typeof setTimeout>;
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError());
+    };
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }

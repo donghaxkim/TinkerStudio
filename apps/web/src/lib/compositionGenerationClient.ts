@@ -15,13 +15,14 @@ export type CreateCompositionJobRequest = {
   prompt?: string;
   /**
    * Renderer to use. The API route defaults an omitted renderer to "playwright"
-   * (it strips the schema's "hyperframes" default), so the HTTP client sends
-   * "hyperframes" explicitly to get composition output.
+   * (it strips the schema's "hyperframes" default), so the HTTP client defaults
+   * this to "hyperframes" for composition output. Callers may still override it.
    */
   renderer?: "hyperframes" | "playwright" | "both";
 };
 
 export type WaitForJobOptions = {
+  /** Poll interval in ms between job status checks. @default 1500 */
   intervalMs?: number;
   onUpdate?: (job: ApiGenerationJob) => void;
   signal?: AbortSignal;

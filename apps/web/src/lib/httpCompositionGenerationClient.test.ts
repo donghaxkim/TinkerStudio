@@ -76,4 +76,25 @@ describe("HttpCompositionGenerationClient", () => {
     expect(seen).toEqual(["running", "completed"]);
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
+
+  it("lets the caller override the renderer", async () => {
+    const fetchFn = vi.fn(async () => jsonResponse(202, job()));
+    const client = createHttpCompositionGenerationClient({ fetchFn });
+    await client.createJob({ ...validRequest, renderer: "both" });
+    const calls = fetchFn.mock.calls as unknown as [string, RequestInit][];
+    const sent = JSON.parse((calls[0]![1]?.body as string) ?? "{}");
+    expect(sent.renderer).toBe("both");
+  });
+
+  it("waitForJob rejects once the signal is aborted", async () => {
+    const controller = new AbortController();
+    const fetchFn = vi.fn(async () => {
+      controller.abort();
+      return jsonResponse(200, job({ status: "running" }));
+    });
+    const client = createHttpCompositionGenerationClient({ fetchFn });
+    await expect(
+      client.waitForJob("job-1", { intervalMs: 5, signal: controller.signal }),
+    ).rejects.toThrow();
+  });
 });
