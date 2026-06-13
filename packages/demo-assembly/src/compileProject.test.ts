@@ -99,12 +99,21 @@ const shortCaptureProject = DemoProjectSchema.parse(
     captureResult: {
       ...input.captureResult,
       clips: [{ ...input.captureResult.clips[0]!, duration: 6 }],
+      events: [
+        ...input.captureResult.events,
+        { type: "zoomTarget", time: 5, x: 80, y: 96, width: 140, height: 48, label: "Late target" },
+      ],
     },
   }),
 );
 
-assert.equal(shortCaptureProject.duration, 12);
+// Footage is the source of truth: the timeline must not outlive the captured
+// clip (LongCut rendered 4.3 seconds of black past the end of footage).
+assert.equal(shortCaptureProject.duration, 6);
 assert.equal(shortCaptureProject.tracks[0]?.clips[0]?.end, 6);
 assert.equal(shortCaptureProject.tracks[0]?.clips[0]?.sourceEnd, 6);
+
+const lateZoom = shortCaptureProject.zooms[shortCaptureProject.zooms.length - 1];
+assert.ok(lateZoom !== undefined && lateZoom.end <= 6, `zooms must end inside footage, got ${lateZoom?.end}`);
 
 console.log("compileProject tests passed");

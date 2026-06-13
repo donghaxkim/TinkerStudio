@@ -9,6 +9,7 @@ export type NormalizedZoomRegion = {
   end: number;
   focus: ZoomFocus;
   scale: number;
+  transitionSeconds?: number;
   target: ZoomKeyframe["target"];
   easing: ZoomKeyframe["easing"];
 };
@@ -43,6 +44,13 @@ type ResolveWithCursorFollowOptions = {
 export type DeterministicCameraOptions = ResolveWithCursorFollowOptions & {
   maxTime?: number;
 };
+
+export const MAX_ZOOM_SCALE = 2.4;
+export const ZOOM_CONTEXT_SCALE_FACTOR = 0.85;
+
+const ZOOM_TRANSITION_DURATION_RATIO = 0.35;
+const MIN_ZOOM_TRANSITION_SECONDS = 0.45;
+const MAX_ZOOM_TRANSITION_SECONDS = 1;
 
 const IDENTITY_FOCUS: ZoomFocus = { cx: 0.5, cy: 0.5 };
 const DEFAULT_TRANSITION_SECONDS = 0.2;
@@ -90,7 +98,7 @@ function ease(progress: number, easing: ZoomKeyframe["easing"]) {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 }
 
-function rampStrength(region: NormalizedZoomRegion, time: number, transitionSeconds: number) {
+function rampStrength(region: NormalizedZoomRegion, time: number, fallbackTransitionSeconds: number) {
   if (time < region.start || time > region.end) {
     return 0;
   }
@@ -100,7 +108,7 @@ function rampStrength(region: NormalizedZoomRegion, time: number, transitionSeco
     return 0;
   }
 
-  const transition = clamp(transitionSeconds, 0, duration / 2);
+  const transition = clamp(region.transitionSeconds ?? fallbackTransitionSeconds, 0, duration / 2);
   if (transition === 0) {
     return 1;
   }
@@ -154,7 +162,16 @@ export function normalizeZoomRegions(
     .map((zoom) => {
       const targetWidth = safePositive(zoom.target.width, width);
       const targetHeight = safePositive(zoom.target.height, height);
-      const scale = cleanNumber(Math.max(1, Math.min(width / targetWidth, height / targetHeight)));
+      const fillScale = Math.max(1, Math.min(width / targetWidth, height / targetHeight));
+      const derivedScale = clamp(fillScale * ZOOM_CONTEXT_SCALE_FACTOR, 1, MAX_ZOOM_SCALE);
+      const scale = cleanNumber(
+        zoom.scale !== undefined && Number.isFinite(zoom.scale) ? Math.max(1, zoom.scale) : derivedScale,
+      );
+      const start = cleanNumber(zoom.start);
+      const end = cleanNumber(zoom.end);
+      const transitionSeconds = cleanNumber(
+        clamp((end - start) * ZOOM_TRANSITION_DURATION_RATIO, MIN_ZOOM_TRANSITION_SECONDS, MAX_ZOOM_TRANSITION_SECONDS),
+      );
       const focus = clampFocus(
         {
           cx: (zoom.target.x + targetWidth / 2) / width,
@@ -165,10 +182,11 @@ export function normalizeZoomRegions(
 
       return {
         id: zoom.id,
-        start: cleanNumber(zoom.start),
-        end: cleanNumber(zoom.end),
+        start,
+        end,
         focus,
         scale,
+        transitionSeconds,
         target: zoom.target,
         easing: zoom.easing,
       };
@@ -356,7 +374,11 @@ function collectDeterministicCameraSampleTimes(
 
   for (const region of regions) {
     const duration = region.end - region.start;
-    const transitionSeconds = clamp(requestedTransitionSeconds, 0, duration > 0 ? duration / 2 : 0);
+    const transitionSeconds = clamp(
+      region.transitionSeconds ?? requestedTransitionSeconds,
+      0,
+      duration > 0 ? duration / 2 : 0,
+    );
 
     addDeterministicSampleTime(times, region.start, time);
     addDeterministicSampleTime(times, region.start + transitionSeconds, time);

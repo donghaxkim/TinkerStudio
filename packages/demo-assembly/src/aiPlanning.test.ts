@@ -110,6 +110,15 @@ assert.equal(parsedStoryboard.durationCapSeconds, 10);
 assert.equal(parsedStoryboard.aspectRatio, "16:9");
 assert.equal(parsedStoryboard.beats.length, 2);
 
+const parsedStoryboardWithNarration = parseStoryboardJson(
+  JSON.stringify({
+    ...storyboardFixture,
+    beats: storyboardFixture.beats.map((beat) => ({ ...beat, narration: "Voiceover copy for the generated demo." })),
+  }),
+);
+assert.equal(parsedStoryboardWithNarration.beats.length, 2);
+assert.equal("narration" in parsedStoryboardWithNarration.beats[0]!, false);
+
 const parsedCapturePlan = parseCapturePlanJson(JSON.stringify(capturePlanFixture));
 assert.equal(parsedCapturePlan.targetUrl, "http://127.0.0.1:3000/");
 assert.deepEqual(parsedCapturePlan.viewport, { width: 1280, height: 720 });
