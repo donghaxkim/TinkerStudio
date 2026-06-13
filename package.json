@@ -7,6 +7,7 @@
   "scripts": {
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
+    "api:dev": "pnpm --filter @tinker/api dev",
     "validate:schema": "pnpm --filter @tinker/project-schema validate:sample",
     "generate:manual-demo": "pnpm --filter @tinker/demo-assembly generate:manual-demo",
     "generate:local-job": "pnpm --filter @tinker/demo-assembly generate:local-job",
