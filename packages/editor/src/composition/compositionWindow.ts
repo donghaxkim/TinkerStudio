@@ -29,10 +29,23 @@ function isCompositionTimelineHandle(value: unknown): value is CompositionTimeli
 /** Read the registered master timeline for `compositionId`, or undefined if absent/unusable. */
 export function getCompositionTimeline(
   win: TimelineRegistryWindow | null | undefined,
-  compositionId: string,
+  compositionId?: string,
 ): CompositionTimelineHandle | undefined {
+  if (compositionId === undefined) {
+    return getSoleCompositionTimeline(win);
+  }
   const candidate = win?.__timelines?.[compositionId];
   return isCompositionTimelineHandle(candidate) ? candidate : undefined;
+}
+
+/** Read the sole registered timeline — for a generated composition that registers exactly one master. */
+export function getSoleCompositionTimeline(
+  win: TimelineRegistryWindow | null | undefined,
+): CompositionTimelineHandle | undefined {
+  const registry = win?.__timelines;
+  if (!registry) return undefined;
+  const handles = Object.values(registry).filter(isCompositionTimelineHandle);
+  return handles.length === 1 ? handles[0] : undefined;
 }
 
 export type WaitForCompositionTimelineOptions = {
@@ -54,7 +67,7 @@ export type WaitForCompositionTimelineOptions = {
  */
 export async function waitForCompositionTimeline(
   getWindow: () => TimelineRegistryWindow | null | undefined,
-  compositionId: string,
+  compositionId: string | undefined,
   options: WaitForCompositionTimelineOptions = {},
 ): Promise<CompositionTimelineHandle> {
   const timeoutMs = options.timeoutMs ?? 4000;
@@ -70,7 +83,8 @@ export async function waitForCompositionTimeline(
       return handle;
     }
     if (now() - start >= timeoutMs) {
-      throw new Error(`Timed out waiting for window.__timelines["${compositionId}"] after ${timeoutMs}ms`);
+      const target = compositionId === undefined ? "the sole window.__timelines entry" : `window.__timelines["${compositionId}"]`;
+      throw new Error(`Timed out waiting for ${target} after ${timeoutMs}ms`);
     }
     await sleep(intervalMs);
   }

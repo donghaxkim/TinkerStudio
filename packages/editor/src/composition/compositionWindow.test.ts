@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getCompositionTimeline,
+  getSoleCompositionTimeline,
   waitForCompositionTimeline,
   type CompositionTimelineHandle,
   type TimelineRegistryWindow,
@@ -88,5 +89,41 @@ describe("waitForCompositionTimeline", () => {
         now,
       }),
     ).rejects.toThrow(/Timed out waiting/);
+  });
+});
+
+describe("getSoleCompositionTimeline", () => {
+  it("returns the only registered handle", () => {
+    const handle = fakeHandle();
+    expect(getSoleCompositionTimeline({ __timelines: { only: handle } })).toBe(handle);
+  });
+
+  it("returns undefined when there are zero or multiple handles", () => {
+    expect(getSoleCompositionTimeline({ __timelines: {} })).toBeUndefined();
+    expect(getSoleCompositionTimeline({ __timelines: { a: fakeHandle(), b: fakeHandle() } })).toBeUndefined();
+    expect(getSoleCompositionTimeline(undefined)).toBeUndefined();
+  });
+
+  it("ignores non-handle registry values when picking the sole handle", () => {
+    const handle = fakeHandle();
+    const win = { __timelines: { good: handle, junk: { totalDuration: () => 1 } } } as unknown as TimelineRegistryWindow;
+    expect(getSoleCompositionTimeline(win)).toBe(handle);
+  });
+});
+
+describe("getCompositionTimeline with no compositionId", () => {
+  it("falls back to the sole registered handle", () => {
+    const handle = fakeHandle();
+    expect(getCompositionTimeline({ __timelines: { only: handle } })).toBe(handle);
+  });
+});
+
+describe("waitForCompositionTimeline with no compositionId", () => {
+  it("resolves the sole handle once it registers", async () => {
+    const handle = fakeHandle();
+    let calls = 0;
+    const getWindow = (): TimelineRegistryWindow => (++calls >= 2 ? { __timelines: { only: handle } } : { __timelines: {} });
+    const result = await waitForCompositionTimeline(getWindow, undefined, { intervalMs: 0, sleep: async () => undefined, now: () => 0 });
+    expect(result).toBe(handle);
   });
 });
