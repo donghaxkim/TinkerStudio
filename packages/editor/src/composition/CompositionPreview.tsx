@@ -56,6 +56,13 @@ export function CompositionPreview({
 
   useEffect(() => () => waitAbortRef.current?.abort(), []);
 
+  // Re-initialize when the composition identity changes, so a new src/id can load
+  // and an earlier error state does not stick forever.
+  useEffect(() => {
+    setStatus("loading");
+    handleRef.current = undefined;
+  }, [src, compositionId]);
+
   function handleLoad() {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -68,7 +75,6 @@ export function CompositionPreview({
         if (controller.signal.aborted) return;
         handleRef.current = handle;
         handle.pause();
-        handle.seek(currentTime);
         setStatus("ready");
         onReady?.(readCompositionTimeline(handle), handle);
       })
@@ -89,6 +95,7 @@ export function CompositionPreview({
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       {status !== "error" ? (
         <iframe
+          key={`${src}::${compositionId}`}
           ref={iframeRef}
           data-testid="composition-frame"
           title="Composition preview"

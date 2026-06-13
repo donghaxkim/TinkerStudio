@@ -19,7 +19,8 @@ const SRC = "/api/jobs/j/artifacts/hyperframes/index.html";
 
 describe("CompositionPreview", () => {
   it("reads the timeline on iframe load and reports the model", async () => {
-    const handle = fakeHandle();
+    const pause = vi.fn();
+    const handle = fakeHandle({ pause });
     const onReady = vi.fn();
     render(
       <CompositionPreview
@@ -34,6 +35,7 @@ describe("CompositionPreview", () => {
     const [model] = onReady.mock.calls[0]!;
     expect(model.durationSeconds).toBe(8);
     expect(model.clips).toHaveLength(1);
+    expect(pause).toHaveBeenCalled();
   });
 
   it("seeks the timeline when currentTime changes after ready", async () => {
@@ -46,7 +48,7 @@ describe("CompositionPreview", () => {
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(seek).toHaveBeenCalledWith(0));
     rerender(<CompositionPreview src={SRC} compositionId="sample" currentTime={3.5} resolveWindow={resolveWindow} />);
-    expect(seek).toHaveBeenCalledWith(3.5);
+    await waitFor(() => expect(seek).toHaveBeenCalledWith(3.5));
   });
 
   it("falls back to the rendered video when the timeline never registers", async () => {
@@ -82,5 +84,25 @@ describe("CompositionPreview", () => {
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(screen.getByTestId("composition-error")).toBeInTheDocument());
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("does not call onReady or onError after unmount", async () => {
+    const onReady = vi.fn();
+    const onError = vi.fn();
+    const { unmount } = render(
+      <CompositionPreview
+        src={SRC}
+        compositionId="sample"
+        onReady={onReady}
+        onError={onError}
+        timeoutMs={200}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: {} })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    unmount();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(onReady).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
   });
 });
