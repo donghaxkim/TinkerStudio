@@ -405,7 +405,7 @@ export function EditorManualControls({
             No zoom moves yet.
           </p>
         ) : (
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 12 }}>
             {project.zooms.map((zoom, index) => {
               const isSelected = selectedEntity?.type === "zoom" && selectedEntity.id === zoom.id;
               return (

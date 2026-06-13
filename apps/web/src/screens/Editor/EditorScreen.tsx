@@ -171,7 +171,10 @@ function CloseIcon() {
 // are pixel-parity with porcelainnew.html. Order top→bottom:
 //   1 X/close · 2 scissors · 3 magnifier · 4 duplicate · 5 crop · 6 corner.
 
+// X/close icon stays at 15px / strokeWidth 1.7 (button 1).
 const RAIL_ICON = { width: 15, height: 15, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+// Buttons 2–6: slightly larger (17px) and finer stroke (1.4) per design.
+const RAIL_ICON_LG = { width: 17, height: 17, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.4, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
 function RailCloseIcon() {
   return (
@@ -184,7 +187,7 @@ function RailCloseIcon() {
 
 function RailScissorsIcon() {
   return (
-    <svg {...RAIL_ICON} aria-hidden="true">
+    <svg {...RAIL_ICON_LG} aria-hidden="true">
       <path d="M5.8 5 A1.8 1.8 0 1 1 2.2 5 A1.8 1.8 0 1 1 5.8 5 Z" />
       <path d="M5.8 11 A1.8 1.8 0 1 1 2.2 11 A1.8 1.8 0 1 1 5.8 11 Z" />
       <path d="M5.4 5.9 13 10.6" />
@@ -195,7 +198,7 @@ function RailScissorsIcon() {
 
 function RailMagnifierIcon() {
   return (
-    <svg {...RAIL_ICON} aria-hidden="true">
+    <svg {...RAIL_ICON_LG} aria-hidden="true">
       <path d="M10.5 6.5a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" />
       <path d="M9.5 9.5 14 14" />
     </svg>
@@ -204,7 +207,7 @@ function RailMagnifierIcon() {
 
 function RailDuplicateIcon() {
   return (
-    <svg {...RAIL_ICON} aria-hidden="true">
+    <svg {...RAIL_ICON_LG} aria-hidden="true">
       <path d="M1.9 5.3h7.3v5.4H1.9z" />
       <path d="M5.4 2.9h6.7v10.2H5.4z" />
     </svg>
@@ -213,7 +216,7 @@ function RailDuplicateIcon() {
 
 function RailCropIcon() {
   return (
-    <svg {...RAIL_ICON} aria-hidden="true">
+    <svg {...RAIL_ICON_LG} aria-hidden="true">
       <path d="M4.5 1.5V11a.6.6 0 0 0 .6.6h9.4" />
       <path d="M1.5 4.5H11a.6.6 0 0 1 .6.6V14.5" />
     </svg>
@@ -222,7 +225,7 @@ function RailCropIcon() {
 
 function RailCornerIcon() {
   return (
-    <svg {...RAIL_ICON} aria-hidden="true">
+    <svg {...RAIL_ICON_LG} aria-hidden="true">
       <path d="M4.7 6.5a2 2 0 0 1 2-2H11a2 2 0 0 1 2 2v4.3a2 2 0 0 1-2 2H6.7a2 2 0 0 1-2-2Z" />
       <path d="M4.3 2.3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
       <path d="M4.3 3.2v2.2" />
@@ -274,8 +277,6 @@ function FrameTabIcon() {
     <svg {...TAB_ICON} aria-hidden="true">
       {/* Rounded rectangle frame */}
       <rect x="3" y="5" width="18" height="14" rx="2" />
-      {/* Sun / circle highlight (top-left) */}
-      <circle cx="8.5" cy="10" r="1.5" />
       {/* Mountain / diagonal line (bottom-right) */}
       <polyline points="3,16 8,11 12,15 15,12 21,17" />
     </svg>
@@ -963,6 +964,7 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
             gridTemplateRows: "auto minmax(0, 1fr)",
             minHeight: 0,
             background: "var(--tk-panel-bg)",
+            borderLeft: "1px solid var(--tk-border, rgba(20,20,15,0.12))",
           }}
         >
           <div role="tablist" aria-label="Editor panel tabs" style={{ display: "flex", gap: 6, padding: 10 }}>
@@ -1001,7 +1003,7 @@ export function EditorScreen({ initialProject, projectOrigin, onOpenSettings, on
             </div>
 
             {/* Zoom tab — auto-zoom + manual zoom/clip controls */}
-            <div role="tabpanel" id="panel-zoom" aria-labelledby="tab-zoom" hidden={activeTab !== "zoom"} style={{ display: activeTab === "zoom" ? "grid" : "none", gap: 12, padding: 14 }}>
+            <div role="tabpanel" id="panel-zoom" aria-labelledby="tab-zoom" hidden={activeTab !== "zoom"} style={{ display: activeTab === "zoom" ? "grid" : "none", gap: 20, padding: "18px 14px 14px" }}>
               <EditorAutoZoomPanel
                 project={project}
                 previewSource={previewSource}
