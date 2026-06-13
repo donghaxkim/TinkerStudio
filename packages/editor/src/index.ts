@@ -63,3 +63,11 @@ export type {
   GsapTimelineLike,
 } from "./composition/compositionTimelineModel.js";
 export { readCompositionTimeline } from "./composition/compositionTimelineModel.js";
+export type {
+  CompositionTimelineHandle,
+  TimelineRegistryWindow,
+  WaitForCompositionTimelineOptions,
+} from "./composition/compositionWindow.js";
+export { getCompositionTimeline, waitForCompositionTimeline } from "./composition/compositionWindow.js";
+export type { CompositionPreviewProps } from "./composition/CompositionPreview.js";
+export { CompositionPreview } from "./composition/CompositionPreview.js";
