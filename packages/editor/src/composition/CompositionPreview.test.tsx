@@ -105,4 +105,19 @@ describe("CompositionPreview", () => {
     expect(onReady).not.toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
   });
+
+  it("reads the sole timeline when no compositionId is given", async () => {
+    const handle = fakeHandle();
+    const onReady = vi.fn();
+    render(
+      <CompositionPreview
+        src={SRC}
+        onReady={onReady}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { whatever: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
+    expect(onReady.mock.calls[0]![0].durationSeconds).toBe(8);
+  });
 });
