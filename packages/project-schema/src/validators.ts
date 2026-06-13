@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ResolvedCursorSettings } from "./types.js";
 
 export const PROJECT_SCHEMA_VERSION = "0.1.0" as const;
 
@@ -130,6 +131,14 @@ export const ZoomKeyframeSchema = z.object({
   target: RectSchema,
   scale: z.number().positive().optional(),
   easing: z.enum(["linear", "easeIn", "easeOut", "easeInOut"]).default("easeInOut"),
+  /**
+   * Human-readable label for this zoom move (PB-012, Person B).
+   * Optional and additive — existing projects without a name still validate.
+   * Displayed in the timeline zoom bar and the Zoom-panel rowcard list in place
+   * of the generic "Zoom N" fallback. Examples: "Invite modal", "Share button".
+   * NOTE FOR PERSON A: do NOT make this required — the field is optional by design.
+   */
+  name: z.string().min(1).optional(),
 });
 
 export const CursorEventSchema = z.discriminatedUnion("type", [
@@ -158,6 +167,56 @@ export const CursorEventSchema = z.discriminatedUnion("type", [
     deltaY: z.number().default(0),
   }),
 ]);
+
+/**
+ * Visible cursor/click DISPLAY settings (PB-006, added by Person B).
+ *
+ * These tune how the cursor overlay and click emphasis are RENDERED in both the
+ * browser preview and the node export. They are distinct from `cursorEvents`,
+ * which is recorded telemetry describing where/when the cursor moved.
+ *
+ * NOTE FOR PERSON A: this is a new OPTIONAL top-level field on `DemoProject`.
+ * It is fully backward compatible — every existing project and any generated
+ * output that omits `cursor` still validates unchanged. Please review whether
+ * generated projects should set these fields explicitly. Do not make it required.
+ *
+ * Defaults when the whole `cursor` object is absent (see CURSOR_SETTINGS_DEFAULTS):
+ *   - cursor shown (hidden = false)
+ *   - clickEffect = "ring" (matches the prior accent-ring behavior)
+ *   - clickEffectDurationMs = 500 (matches the prior 0.5s click display window)
+ */
+export const ClickEffectSchema = z.enum(["ring", "ripple", "none"]);
+
+export const CursorSettingsSchema = z
+  .object({
+    hidden: z.boolean().optional(),
+    clickEffect: ClickEffectSchema.optional(),
+    clickEffectDurationMs: z.number().positive().optional(),
+  })
+  .strict();
+
+export const CURSOR_SETTINGS_DEFAULTS: ResolvedCursorSettings = {
+  hidden: false,
+  clickEffect: "ring",
+  clickEffectDurationMs: 500,
+};
+
+/**
+ * Resolve the effective cursor/click display settings for a project, applying
+ * PB-006 defaults to any absent member. This is the SINGLE source of truth shared
+ * by the browser preview and the node export so the two stay in parity: both call
+ * this helper rather than reading `project.cursor` directly.
+ */
+export function resolveCursorSettings(
+  cursor: z.infer<typeof CursorSettingsSchema> | undefined,
+): ResolvedCursorSettings {
+  return {
+    hidden: cursor?.hidden ?? CURSOR_SETTINGS_DEFAULTS.hidden,
+    clickEffect: cursor?.clickEffect ?? CURSOR_SETTINGS_DEFAULTS.clickEffect,
+    clickEffectDurationMs:
+      cursor?.clickEffectDurationMs ?? CURSOR_SETTINGS_DEFAULTS.clickEffectDurationMs,
+  };
+}
 
 export const AddZoomOperationSchema = z.object({
   type: z.literal("add_zoom"),
@@ -206,6 +265,9 @@ export const DemoProjectSchema = z
     tracks: z.array(TrackSchema),
     zooms: z.array(ZoomKeyframeSchema).default([]),
     cursorEvents: z.array(CursorEventSchema).default([]),
+    // PB-006 (Person B): optional, backward-compatible cursor/click DISPLAY settings.
+    // Absent → defaults in CURSOR_SETTINGS_DEFAULTS (cursor shown, "ring" click effect).
+    cursor: CursorSettingsSchema.optional(),
     aiEditHistory: z.array(AIEditSchema).default([]),
     metadata: z
       .object({

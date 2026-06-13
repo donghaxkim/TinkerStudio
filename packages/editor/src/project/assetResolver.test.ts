@@ -35,6 +35,8 @@ describe("assetResolver", () => {
     expect(isBrowserRenderableMedia({ id: "remote", type: "video", uri: "https://example.com/video.mp4", source: "remote", metadata: {} })).toBe(true);
     expect(isBrowserRenderableMedia({ id: "fixture", type: "video", uri: "assets/capture-001.mp4", source: "captured", metadata: {} })).toBe(true);
     expect(isBrowserRenderableMedia({ id: "local", type: "video", uri: "uploads/capture.mp4", source: "captured", metadata: {} })).toBe(false);
+    expect(isBrowserRenderableMedia({ id: "remote-image", type: "image", uri: "https://example.com/image.png", source: "remote", metadata: {} })).toBe(true);
+    expect(isBrowserRenderableMedia({ id: "fixture-image", type: "image", uri: "assets/driftboard-dashboard.png", source: "captured", metadata: {} })).toBe(true);
   });
 
   it("resolves browser preview URLs through one structured path", () => {
@@ -43,22 +45,39 @@ describe("assetResolver", () => {
       assetId: "remote",
       consumer: "preview",
       url: "https://example.com/video.mp4",
+      kind: "video",
     });
     expect(resolveBrowserPreviewAsset({ id: "blob", type: "video", uri: "blob:https://example.com/id", source: "generated", metadata: {} }, "preview")).toEqual({
       ok: true,
       assetId: "blob",
       consumer: "preview",
       url: "blob:https://example.com/id",
+      kind: "video",
     });
     expect(resolveBrowserPreviewAsset({ id: "fixture", type: "video", uri: "assets/capture-001.mp4", source: "captured", metadata: {} }, "preview")).toEqual({
       ok: true,
       assetId: "fixture",
       consumer: "preview",
       url: expect.stringContaining("capture-001.mp4"),
+      kind: "video",
+    });
+    expect(resolveBrowserPreviewAsset({ id: "remote-image", type: "image", uri: "https://example.com/image.png", source: "remote", metadata: {} }, "preview")).toEqual({
+      ok: true,
+      assetId: "remote-image",
+      consumer: "preview",
+      url: "https://example.com/image.png",
+      kind: "image",
+    });
+    expect(resolveBrowserPreviewAsset({ id: "fixture-image", type: "image", uri: "assets/driftboard-dashboard.png", source: "captured", metadata: {} }, "preview")).toEqual({
+      ok: true,
+      assetId: "fixture-image",
+      consumer: "preview",
+      url: expect.stringContaining("driftboard-dashboard.png"),
+      kind: "image",
     });
   });
 
-  it("returns structured browser preview errors for unsupported local paths and wrong asset types", () => {
+  it("returns structured browser preview errors for unsupported local paths and unrenderable asset types", () => {
     expect(resolveBrowserPreviewAsset({ id: "local", type: "video", uri: "uploads/capture.mp4", source: "captured", metadata: {} }, "preview")).toEqual({
       ok: false,
       error: expect.objectContaining({
@@ -68,11 +87,11 @@ describe("assetResolver", () => {
         consumer: "preview",
       }),
     });
-    expect(resolveBrowserPreviewAsset({ id: "image", type: "image", uri: "https://example.com/image.png", source: "remote", metadata: {} }, "preview")).toEqual({
+    expect(resolveBrowserPreviewAsset({ id: "trace-asset", type: "trace", uri: "https://example.com/trace.json", source: "generated", metadata: {} }, "preview")).toEqual({
       ok: false,
       error: expect.objectContaining({
         code: "type_mismatch",
-        assetId: "image",
+        assetId: "trace-asset",
         consumer: "preview",
       }),
     });

@@ -70,14 +70,19 @@ function toZoomKeyframe(event: CaptureEvent, index: number, duration: number): Z
 }
 
 export function compileProject(input: CompileProjectInput): DemoProject {
-  const duration = input.storyboard.durationCapSeconds;
   const videoAsset = input.captureResult.clips.find((asset) => asset.type === "video");
 
   if (!videoAsset) {
     throw new Error("Cannot compile DemoProject without a captured video asset");
   }
 
-  const clipDuration = videoAsset.duration !== undefined ? Math.min(duration, videoAsset.duration) : duration;
+  // Footage is the source of truth: a timeline longer than the captured clip
+  // renders black frames past the end of footage.
+  const duration =
+    videoAsset.duration !== undefined
+      ? Math.min(input.storyboard.durationCapSeconds, videoAsset.duration)
+      : input.storyboard.durationCapSeconds;
+  const clipDuration = duration;
   const assets = [...input.captureResult.clips, ...input.captureResult.screenshots].map(toProjectAsset);
   const cursorEvents = input.captureResult.events.flatMap((event) => {
     const cursorEvent = toCursorEvent(event);

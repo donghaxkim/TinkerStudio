@@ -85,6 +85,7 @@ export function normalizeCursorTelemetry(
   const duration = hasDuration ? Math.max(0, options.duration ?? 0) : undefined;
 
   return events
+    .filter((event) => event.type !== "scroll")
     .filter((event) => Number.isFinite(event.time) && Number.isFinite(event.x) && Number.isFinite(event.y))
     .map((event) => {
       const time = duration === undefined ? event.time : clamp(event.time, 0, duration);

@@ -84,6 +84,75 @@ describe("applyManualEditOperation", () => {
     expect(result.project.assets.map((asset) => asset.id)).toContain("asset_capture_001");
   });
 
+  it("trims a clip with valid source bounds within the asset duration", () => {
+    const result = expectOk(
+      applyManualEditOperation(sampleProject, {
+        type: "trim_clip",
+        id: "clip_capture_001",
+        start: 1,
+        end: 20,
+        sourceStart: 0,
+        sourceEnd: 40,
+      }),
+    );
+
+    expect(result.project.tracks[0]?.clips[0]).toEqual(
+      expect.objectContaining({ id: "clip_capture_001", sourceStart: 0, sourceEnd: 40 }),
+    );
+  });
+
+  it("rejects a negative sourceStart", () => {
+    const result = applyManualEditOperation(sampleProject, {
+      type: "trim_clip",
+      id: "clip_capture_001",
+      start: 1,
+      end: 20,
+      sourceStart: -1,
+      sourceEnd: 20,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("invalid_range");
+      expect(result.error.message).toMatch(/sourceStart/i);
+    }
+  });
+
+  it("rejects a sourceEnd that is not greater than sourceStart", () => {
+    const result = applyManualEditOperation(sampleProject, {
+      type: "trim_clip",
+      id: "clip_capture_001",
+      start: 1,
+      end: 20,
+      sourceStart: 10,
+      sourceEnd: 10,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("invalid_range");
+      expect(result.error.message).toMatch(/sourceEnd/i);
+    }
+  });
+
+  it("rejects a sourceEnd beyond the referenced asset duration", () => {
+    // asset_capture_001 has duration 45.
+    const result = applyManualEditOperation(sampleProject, {
+      type: "trim_clip",
+      id: "clip_capture_001",
+      start: 1,
+      end: 20,
+      sourceStart: 0,
+      sourceEnd: 46,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("invalid_range");
+      expect(result.error.message).toMatch(/asset/i);
+    }
+  });
+
   it("removes zooms by id", () => {
     const result = expectOk(
       applyManualEditOperation(sampleProject, { type: "remove_entity", entityType: "zoom", id: "zoom_001" }),

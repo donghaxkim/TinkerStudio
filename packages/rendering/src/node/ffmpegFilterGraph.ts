@@ -1,4 +1,4 @@
-import type { DemoProject } from "@tinker/project-schema";
+import { resolveCursorSettings, type DemoProject } from "@tinker/project-schema";
 import {
   type CameraTransform,
   normalizeCursorTelemetry,
@@ -110,21 +110,37 @@ function appendCursorFilters(
   project: DemoProject,
   plan: FinalRenderPlan,
 ) {
+  // PB-006: resolve the SAME cursor/click display settings the preview uses, so the
+  // exported MP4 matches the browser preview's intent.
+  const cursorSettings = resolveCursorSettings(project.cursor);
+
+  // Hidden → no cursor overlay at all in the export (parity with preview hiding it).
+  if (cursorSettings.hidden) {
+    return inputLabel;
+  }
+
   const cursorPoints = normalizeCursorTelemetry(project.cursorEvents, {
     frame: plan.source,
     duration: plan.timeline.duration,
   });
   const placement = sourceToOutputPlacement(plan);
+  // clickEffect "none" → render click points as plain cursor markers (no emphasis),
+  // matching the preview, where the accent ring + ripple are suppressed.
+  const emphasizeClicks = cursorSettings.clickEffect !== "none";
+  const clickDisplaySeconds = cursorSettings.clickEffectDurationMs / 1000;
   let currentLabel = inputLabel;
 
   cursorPoints.forEach((point, index) => {
     const nextLabel = `cursor${index}`;
-    const size = point.type === "click" ? 30 : 20;
-    const color = point.type === "click" ? "#fbbf24@0.90" : "#e2e8f0@0.70";
+    const isEmphasizedClick = point.type === "click" && emphasizeClicks;
+    // Ripple reads as a slightly larger emphasis box than ring; both are accent-colored.
+    const emphasisSize = cursorSettings.clickEffect === "ripple" ? 34 : 30;
+    const size = isEmphasizedClick ? emphasisSize : 20;
+    const color = isEmphasizedClick ? "#fbbf24@0.90" : "#e2e8f0@0.70";
     const position = mapSourcePointToOutput(point.cx, point.cy, placement);
     const x = Math.round(position.x - size / 2);
     const y = Math.round(position.y - size / 2);
-    const duration = point.type === "click" ? 0.5 : 0.25;
+    const duration = isEmphasizedClick ? clickDisplaySeconds : 0.25;
     const end = Math.min(plan.timeline.duration, point.time + duration);
 
     filters.push(

@@ -37,8 +37,8 @@ describe("cursor telemetry", () => {
       { frame },
     );
 
-    expect(normalized.map((point) => point.time)).toEqual([1, 3, 4]);
-    expect(normalized.map((point) => point.type)).toEqual(["scroll", "click", "move"]);
+    expect(normalized.map((point) => point.time)).toEqual([3, 4]);
+    expect(normalized.map((point) => point.type)).toEqual(["click", "move"]);
   });
 
   it("converts cursor positions between pixel and normalized coordinates", () => {
@@ -114,5 +114,21 @@ describe("cursor telemetry", () => {
       cy: 0.3,
     });
     expect(interpolateCursorPosition(points, 1)).toEqual(points[0]);
+  });
+
+  it("excludes scroll events from cursor telemetry", () => {
+    // Scroll events carry page scroll offsets, not cursor positions; treating
+    // them as cursor points painted a phantom cursor at (0,0) on LongCut.
+    const normalized = normalizeCursorTelemetry(
+      [
+        { time: 1, type: "scroll", x: 0, y: 0, deltaX: 0, deltaY: 420 },
+        { time: 2, type: "move", x: 100, y: 50 },
+        { time: 3, type: "click", x: 120, y: 60 },
+      ],
+      { frame },
+    );
+
+    expect(normalized.map((point) => point.type)).toEqual(["move", "click"]);
+    expect(normalized.map((point) => point.time)).toEqual([2, 3]);
   });
 });

@@ -1,12 +1,19 @@
 import type { DemoProject } from "@tinker/project-schema";
+import { DemoProjectSchema } from "@tinker/project-schema";
 import {
   type CreateDemoRequest,
   type GenerationJob,
   type GenerationPhase,
   type GenerationProgressEvent,
 } from "@tinker/generation-contract";
-import sampleProject from "../../../../packages/project-schema/fixtures/demo-project.sample.json";
+// Golden generated-project fixture (PB-010): the canonical example of Person A's
+// expected generation output (driftboard demo). A successful mock job returns THIS as
+// `result.project`, so Create Demo success opens the driftboard timeline (4 scenes).
+// Parse once at load so the mock always emits a genuine, schema-valid DemoProject.
+import goldenProjectInput from "../../../../packages/project-schema/fixtures/person-a-generated-project.sample.json";
 import type { GenerationClient } from "./generationClient.js";
+
+const goldenProject: DemoProject = DemoProjectSchema.parse(goldenProjectInput);
 
 type MockMode = "succeeded" | "failed" | "invalid-result";
 
@@ -73,9 +80,9 @@ export function createMockGenerationClient(options: MockGenerationClientOptions 
               result: {
                 project:
                   mode === "invalid-result"
-                    ? ({ ...sampleProject, duration: -1 } as unknown as DemoProject)
-                    : (sampleProject as DemoProject),
-                warnings: mode === "succeeded" ? ["Mock generation used the sample project fixture."] : [],
+                    ? ({ ...goldenProject, duration: -1 } as unknown as DemoProject)
+                    : goldenProject,
+                warnings: mode === "succeeded" ? ["Mock generation used the golden driftboard fixture."] : [],
               },
             };
 

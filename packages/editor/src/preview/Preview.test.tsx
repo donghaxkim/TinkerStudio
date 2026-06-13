@@ -19,6 +19,19 @@ describe("Preview", () => {
     expect(screen.queryByTestId("missing-asset-placeholder")).not.toBeInTheDocument();
   });
 
+  it("video does not render browser controls (clean preview stage)", () => {
+    render(<Preview project={sampleProject} currentTime={0} />);
+
+    expect(screen.getByTestId("preview-video")).not.toHaveAttribute("controls");
+  });
+
+  it("does not render a header or timecode output above the stage", () => {
+    render(<Preview project={sampleProject} currentTime={0} />);
+
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("renders a placeholder for non-previewable local media", () => {
     render(
       <Preview
@@ -32,6 +45,55 @@ describe("Preview", () => {
 
     expect(screen.getByTestId("missing-asset-placeholder")).toHaveTextContent("Preview placeholder");
     expect(screen.getByTestId("missing-asset-placeholder")).toHaveTextContent("Primary browser capture");
+  });
+
+  it("renders an image asset with an img element instead of a video", () => {
+    const imageProject = {
+      ...sampleProject,
+      assets: sampleProject.assets.map((asset) => ({
+        ...asset,
+        type: "image" as const,
+        uri: "https://example.com/dashboard.png",
+        mimeType: "image/png",
+      })),
+    };
+
+    render(<Preview project={imageProject} currentTime={0} />);
+
+    expect(screen.getByTestId("preview-image")).toHaveAttribute("src", "https://example.com/dashboard.png");
+    expect(screen.queryByTestId("preview-video")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("missing-asset-placeholder")).not.toBeInTheDocument();
+  });
+
+  it("renders the bundled dashboard image for the driftboard fixture", () => {
+    const dashboardProject = {
+      ...sampleProject,
+      assets: [
+        {
+          id: "asset_dashboard_png",
+          type: "image" as const,
+          uri: "assets/driftboard-dashboard.png",
+          source: "captured" as const,
+          name: "Driftboard dashboard screenshot",
+          mimeType: "image/png",
+          width: 750,
+          height: 444,
+          metadata: {},
+        },
+      ],
+      tracks: [
+        {
+          ...sampleProject.tracks[0],
+          clips: [{ ...sampleProject.tracks[0].clips[0], assetId: "asset_dashboard_png" }],
+        },
+      ],
+    };
+
+    render(<Preview project={dashboardProject} currentTime={0} />);
+
+    expect(screen.getByTestId("preview-image")).toHaveAttribute("src", expect.stringContaining("driftboard-dashboard.png"));
+    expect(screen.queryByTestId("preview-video")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("missing-asset-placeholder")).not.toBeInTheDocument();
   });
 
   it("renders active zoom overlay at 14s", () => {
@@ -98,6 +160,45 @@ describe("Preview", () => {
     expectPercent(click.style.top, expected.pointTop);
   });
 
+  describe("PB-006 cursor display settings", () => {
+    const clickProject = {
+      ...sampleProject,
+      cursorEvents: [
+        { time: 1, type: "move" as const, x: 960, y: 540 },
+        { time: 1, type: "click" as const, x: 960, y: 540 },
+      ],
+    };
+
+    it("renders the cursor and a ring click indicator by default", () => {
+      render(<Preview project={clickProject} currentTime={1} />);
+
+      expect(screen.getByTestId("active-cursor")).toBeInTheDocument();
+      const click = screen.getByTestId("click-event");
+      expect(click).toBeInTheDocument();
+      expect(click).toHaveAttribute("data-click-effect", "ring");
+    });
+
+    it("renders no cursor or click overlay when cursor.hidden is true", () => {
+      render(<Preview project={{ ...clickProject, cursor: { hidden: true } }} currentTime={1} />);
+
+      expect(screen.queryByTestId("active-cursor")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("click-event")).not.toBeInTheDocument();
+    });
+
+    it("keeps the cursor but renders no click indicator when clickEffect is none", () => {
+      render(<Preview project={{ ...clickProject, cursor: { clickEffect: "none" } }} currentTime={1} />);
+
+      expect(screen.getByTestId("active-cursor")).toBeInTheDocument();
+      expect(screen.queryByTestId("click-event")).not.toBeInTheDocument();
+    });
+
+    it("marks the click indicator as a ripple when clickEffect is ripple", () => {
+      render(<Preview project={{ ...clickProject, cursor: { clickEffect: "ripple" } }} currentTime={1} />);
+
+      expect(screen.getByTestId("click-event")).toHaveAttribute("data-click-effect", "ripple");
+    });
+  });
+
   it("positions off-center zooms with the same crop-window geometry as export", () => {
     const project = {
       ...sampleProject,
@@ -124,10 +225,10 @@ describe("Preview", () => {
     const layer = screen.getByTestId("preview-motion-layer");
     const cursor = screen.getByTestId("active-cursor");
 
-    expectPercent(layer.style.left, -100);
-    expectPercent(layer.style.top, -100);
-    expectPercent(layer.style.width, 400);
-    expectPercent(layer.style.height, 400);
+    expectPercent(layer.style.left, -40);
+    expectPercent(layer.style.top, -40);
+    expectPercent(layer.style.width, 240);
+    expectPercent(layer.style.height, 240);
     expectPercent(cursor.style.left, 37.5);
     expectPercent(cursor.style.top, 37.5);
   });

@@ -6,8 +6,10 @@ import type {
   AssetSchema,
   AssetSourceSchema,
   AssetTypeSchema,
+  ClickEffectSchema,
   ClipSchema,
   CursorEventSchema,
+  CursorSettingsSchema,
   DemoProjectSchema,
   RemoveEntityOperationSchema,
   TrackSchema,
@@ -24,8 +26,17 @@ export type TrackType = z.infer<typeof TrackTypeSchema>;
 export type Track = z.infer<typeof TrackSchema>;
 export type ZoomKeyframe = z.infer<typeof ZoomKeyframeSchema>;
 export type CursorEvent = z.infer<typeof CursorEventSchema>;
+export type ClickEffect = z.infer<typeof ClickEffectSchema>;
+export type CursorSettings = z.infer<typeof CursorSettingsSchema>;
 export type AddZoomOperation = z.infer<typeof AddZoomOperationSchema>;
 export type RemoveEntityOperation = z.infer<typeof RemoveEntityOperationSchema>;
 export type AIEditOperation = z.infer<typeof AIEditOperationSchema>;
 export type AIEdit = z.infer<typeof AIEditSchema>;
 export type DemoProject = z.infer<typeof DemoProjectSchema>;
+
+/** The fully-resolved cursor/click display settings after defaults are applied (PB-006). */
+export type ResolvedCursorSettings = {
+  hidden: boolean;
+  clickEffect: ClickEffect;
+  clickEffectDurationMs: number;
+};
