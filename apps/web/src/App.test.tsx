@@ -175,3 +175,11 @@ describe("App shell state machine", () => {
     expect(titleAfterReturn).toBe(generatedTitle);
   });
 });
+
+describe("App composition route", () => {
+  it("opens the composition demo from the create screen entry", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Composition demo (beta)" }));
+    expect(screen.getByRole("button", { name: "Generate" })).toBeInTheDocument();
+  });
+});
