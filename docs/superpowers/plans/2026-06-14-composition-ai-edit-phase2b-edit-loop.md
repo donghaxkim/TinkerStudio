@@ -93,14 +93,14 @@ export type CompositionRevision = {
   outputVideoUrl?: string;
 };
 
-export type EditComposingOptions = {
+export type EditComposeOptions = {
   /** Coarse progress: the client emits "running" before resolving. */
   onUpdate?: (status: "running") => void;
   signal?: AbortSignal;
 };
 
 export interface CompositionEditClient {
-  editComposition(request: CompositionEditRequest, options?: EditComposingOptions): Promise<CompositionRevision>;
+  editComposition(request: CompositionEditRequest, options?: EditComposeOptions): Promise<CompositionRevision>;
 }
 ```
 
@@ -545,14 +545,18 @@ In `<CompositionChatPanel>`, pass the edit props:
   onRemoveRef={handleRemoveRef}
   hasSelection={selection !== undefined}
   onAddToChat={handleAddToChat}
-  {...(editEnabled ? { onSend: handleSend } : {})}
-  status={edit.status}
-  isPreviewing={edit.isPreviewing}
-  onAccept={edit.accept}
-  onReject={edit.reject}
-  canUndo={edit.canUndo}
-  onUndo={edit.undo}
-  {...(edit.error === undefined ? {} : { error: edit.error })}
+  {...(editEnabled
+    ? {
+        onSend: handleSend,
+        status: edit.status,
+        isPreviewing: edit.isPreviewing,
+        onAccept: edit.accept,
+        onReject: edit.reject,
+        canUndo: edit.canUndo,
+        onUndo: edit.undo,
+        ...(edit.error === undefined ? {} : { error: edit.error }),
+      }
+    : {})}
 />
 ```
 
