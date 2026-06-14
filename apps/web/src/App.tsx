@@ -1,14 +1,16 @@
 import { useState } from "react";
 import type { DemoProject } from "@tinker/project-schema";
 import { createMockGenerationClient } from "./lib/mockGenerationClient.js";
+import { createMockCompositionGenerationClient } from "./lib/mockCompositionGenerationClient.js";
 import { loadSampleProject } from "./fixtures/loadSampleProject.js";
 import { CreateDemoScreen } from "./screens/CreateDemo/CreateDemoScreen.js";
 import { EditorScreen, type ProjectOrigin } from "./screens/Editor/EditorScreen.js";
 import { SettingsScreen } from "./screens/Settings/SettingsScreen.js";
+import { CompositionDemoScreen } from "./screens/CompositionEditor/CompositionDemoScreen.js";
 
 // Route before settings (so Settings knows where to return)
 type PreSettingsRoute = "create" | "editor";
-type Route = "create" | "editor" | "settings";
+type Route = "create" | "editor" | "settings" | "composition";
 
 type AppState = {
   route: Route;
@@ -18,6 +20,7 @@ type AppState = {
 };
 
 const generationClient = createMockGenerationClient();
+const compositionClient = createMockCompositionGenerationClient();
 
 export function App() {
   const [state, setState] = useState<AppState>({
@@ -76,14 +79,33 @@ export function App() {
     return <SettingsScreen onClose={handleCloseSettings} />;
   }
 
+  if (state.route === "composition") {
+    return (
+      <CompositionDemoScreen
+        client={compositionClient}
+        onBack={() => setState((prev) => ({ ...prev, route: "create" }))}
+      />
+    );
+  }
+
   // route === "create"
   return (
-    <CreateDemoScreen
-      generationClient={generationClient}
-      onProjectGenerated={handleProjectGenerated}
-      onUseSampleProject={handleUseSampleProject}
-      onReturnToEditor={handleReturnToEditor}
-      hasInProgressProject={state.project !== undefined}
-    />
+    <>
+      <CreateDemoScreen
+        generationClient={generationClient}
+        onProjectGenerated={handleProjectGenerated}
+        onUseSampleProject={handleUseSampleProject}
+        onReturnToEditor={handleReturnToEditor}
+        hasInProgressProject={state.project !== undefined}
+      />
+      <button
+        type="button"
+        className="tk-btn"
+        style={{ position: "fixed", right: 16, bottom: 16, zIndex: 10 }}
+        onClick={() => setState((prev) => ({ ...prev, route: "composition" }))}
+      >
+        Composition demo (beta)
+      </button>
+    </>
   );
 }
