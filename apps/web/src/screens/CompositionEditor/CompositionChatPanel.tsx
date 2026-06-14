@@ -8,8 +8,15 @@ export type CompositionChatPanelProps = {
   onRemoveRef: (id: string) => void;
   hasSelection: boolean;
   onAddToChat: () => void;
-  /** 2b wires this; absent/false in 2a keeps Send disabled. */
   onSend?: () => void;
+  // 2b edit-loop state (all optional; absent = Phase 2a behavior):
+  status?: "idle" | "drafting" | "preview" | "error";
+  error?: string;
+  isPreviewing?: boolean;
+  onAccept?: () => void;
+  onReject?: () => void;
+  canUndo?: boolean;
+  onUndo?: () => void;
 };
 
 const panelStyle: CSSProperties = {
@@ -19,7 +26,10 @@ const panelStyle: CSSProperties = {
 
 export function CompositionChatPanel({
   instruction, onInstructionChange, contextRefs, onRemoveRef, hasSelection, onAddToChat, onSend,
+  status = "idle", error, isPreviewing, onAccept, onReject, canUndo, onUndo,
 }: CompositionChatPanelProps) {
+  const drafting = status === "drafting";
+  const sendDisabled = onSend === undefined || instruction.trim() === "" || drafting;
   return (
     <aside aria-label="Chat" style={panelStyle}>
       <button type="button" className="tk-btn" aria-label="Add selection to chat" disabled={!hasSelection} onClick={onAddToChat}>
@@ -40,6 +50,23 @@ export function CompositionChatPanel({
       </div>
 
       <div style={{ display: "grid", gap: 8 }}>
+        {drafting ? (
+          <div role="status" style={{ fontSize: 12.5, color: "var(--tk-text-sec)" }}>Drafting edit…</div>
+        ) : null}
+        {status === "error" && error ? (
+          <div role="alert" style={{ fontSize: 12.5, color: "var(--tk-danger, #C0392B)" }}>{error}</div>
+        ) : null}
+        {isPreviewing ? (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="tk-btn tk-btn-accent" aria-label="Accept edit" onClick={onAccept}>Accept</button>
+            <button type="button" className="tk-btn" aria-label="Reject edit" onClick={onReject}>Reject</button>
+          </div>
+        ) : null}
+        {canUndo ? (
+          <button type="button" className="tk-btn" aria-label="Undo last edit" onClick={onUndo} style={{ justifySelf: "start" }}>
+            Undo last edit
+          </button>
+        ) : null}
         <textarea
           className="tk-input"
           aria-label="Edit instruction"
@@ -52,7 +79,7 @@ export function CompositionChatPanel({
           type="button"
           className="tk-send"
           aria-label="Send (coming in Phase 2b)"
-          disabled={onSend === undefined}
+          disabled={sendDisabled}
           title={onSend === undefined ? "AI editing arrives in Phase 2b" : "Send"}
           onClick={onSend}
         >

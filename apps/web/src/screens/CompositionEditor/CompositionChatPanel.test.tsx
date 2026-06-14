@@ -39,4 +39,41 @@ describe("CompositionChatPanel", () => {
     render(<CompositionChatPanel {...props()} />);
     expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
   });
+
+  it("enables Send when onSend is provided and instruction is non-empty", () => {
+    const onSend = vi.fn();
+    render(<CompositionChatPanel {...props({ instruction: "punch in", onSend })} />);
+    const send = screen.getByRole("button", { name: /send/i });
+    expect(send).not.toBeDisabled();
+    fireEvent.click(send);
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables Send while drafting and shows a drafting state", () => {
+    render(<CompositionChatPanel {...props({ instruction: "x", onSend: () => undefined, status: "drafting" })} />);
+    expect(screen.getByText(/drafting/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+  });
+
+  it("shows Accept and Reject while previewing", () => {
+    const onAccept = vi.fn();
+    const onReject = vi.fn();
+    render(<CompositionChatPanel {...props({ status: "preview", isPreviewing: true, onAccept, onReject })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Accept edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reject edit" }));
+    expect(onAccept).toHaveBeenCalledTimes(1);
+    expect(onReject).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows an error message", () => {
+    render(<CompositionChatPanel {...props({ status: "error", error: "Server error" })} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Server error");
+  });
+
+  it("shows Undo when canUndo", () => {
+    const onUndo = vi.fn();
+    render(<CompositionChatPanel {...props({ canUndo: true, onUndo })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Undo last edit" }));
+    expect(onUndo).toHaveBeenCalledTimes(1);
+  });
 });
