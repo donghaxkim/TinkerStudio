@@ -182,4 +182,12 @@ describe("App composition route", () => {
     fireEvent.click(screen.getByRole("button", { name: "Composition demo (beta)" }));
     expect(screen.getByRole("button", { name: "Generate" })).toBeInTheDocument();
   });
+
+  it("returns to the create screen via the composition Back button", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Composition demo (beta)" }));
+    expect(screen.queryByRole("button", { name: "Composition demo (beta)" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("button", { name: "Composition demo (beta)" })).toBeInTheDocument();
+  });
 });

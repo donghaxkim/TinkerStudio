@@ -80,7 +80,12 @@ export function App() {
   }
 
   if (state.route === "composition") {
-    return <CompositionDemoScreen client={compositionClient} />;
+    return (
+      <CompositionDemoScreen
+        client={compositionClient}
+        onBack={() => setState((prev) => ({ ...prev, route: "create" }))}
+      />
+    );
   }
 
   // route === "create"

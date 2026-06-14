@@ -7,6 +7,8 @@ import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
 
 export type CompositionDemoScreenProps = {
   client: CompositionGenerationClient;
+  /** Optional: render a Back button that calls this. */
+  onBack?: () => void;
   /** Test seam forwarded to CompositionEditorScreen. */
   resolveWindow?: (iframe: HTMLIFrameElement) => TimelineRegistryWindow | null | undefined;
 };
@@ -14,21 +16,35 @@ export type CompositionDemoScreenProps = {
 const pageStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: 12, height: "100%", minHeight: 0, padding: 24 };
 const fieldStyle: CSSProperties = { display: "grid", gap: 4 };
 
-export function CompositionDemoScreen({ client, resolveWindow }: CompositionDemoScreenProps) {
+export function CompositionDemoScreen({ client, onBack, resolveWindow }: CompositionDemoScreenProps) {
   const job = useCompositionGenerationJob(client);
   const [repoUrl, setRepoUrl] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [prompt, setPrompt] = useState("");
 
+  const backButton = onBack ? (
+    <button type="button" className="tk-btn" onClick={onBack} style={{ alignSelf: "flex-start" }}>
+      Back
+    </button>
+  ) : null;
+
   if (job.phase === "completed" && job.job) {
     const compositionIndexUrl = selectArtifactUrl(job.job, "composition-index");
     if (compositionIndexUrl) {
-      return (
+      const editor = (
         <CompositionEditorScreen
           compositionIndexUrl={compositionIndexUrl}
           outputVideoUrl={selectArtifactUrl(job.job, "output-video")}
           resolveWindow={resolveWindow}
         />
+      );
+      return onBack ? (
+        <div className="tk-porcelain" style={pageStyle}>
+          {backButton}
+          {editor}
+        </div>
+      ) : (
+        editor
       );
     }
     return (
@@ -52,6 +68,7 @@ export function CompositionDemoScreen({ client, resolveWindow }: CompositionDemo
 
   return (
     <div className="tk-porcelain" style={pageStyle}>
+      {backButton}
       <div aria-live="polite" aria-atomic="true">
         {job.phase === "running" ? "Generating composition…" : ""}
       </div>
