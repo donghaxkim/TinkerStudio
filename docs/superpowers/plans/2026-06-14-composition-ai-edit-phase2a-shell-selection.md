@@ -281,9 +281,10 @@ export type CompositionTimelineProps = {
 };
 ```
 
-Inside the component, add refs/state and a px→seconds helper, replacing the single `handleTrackClick`:
+Inside the component, add refs/state and a px→seconds helper, replacing the single `handleTrackClick`. **Extend the existing `react` import on line 1** (add `useRef`, `useState`) — do NOT add a second `import ... from "react"` line (redeclaration error):
 
 ```ts
+// line 1 becomes:
 import { useRef, useState, type CSSProperties, type MouseEvent } from "react";
 
 const DRAG_THRESHOLD_PX = 4;
