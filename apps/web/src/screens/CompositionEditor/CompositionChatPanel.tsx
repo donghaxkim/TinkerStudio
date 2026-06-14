@@ -78,7 +78,7 @@ export function CompositionChatPanel({
         <button
           type="button"
           className="tk-send"
-          aria-label="Send (coming in Phase 2b)"
+          aria-label={onSend === undefined ? "Send (coming in Phase 2b)" : "Send"}
           disabled={sendDisabled}
           title={onSend === undefined ? "AI editing arrives in Phase 2b" : "Send"}
           onClick={onSend}
