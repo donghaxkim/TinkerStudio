@@ -10,6 +10,8 @@ import {
   type TimelineRegistryWindow,
 } from "@tinker/editor";
 import { chatContextRefFromSelection, type ChatContextRef } from "../../lib/chatContext.js";
+import type { CompositionEditClient, CompositionRevision } from "../../lib/compositionEditClient.js";
+import { useCompositionEditFlow } from "./useCompositionEditFlow.js";
 import { useCompositionPlayback } from "./useCompositionPlayback.js";
 import { CompositionPlaybackBar } from "./CompositionPlaybackBar.js";
 import { CompositionChatPanel } from "./CompositionChatPanel.js";
@@ -19,6 +21,9 @@ export type CompositionEditorScreenProps = {
   outputVideoUrl?: string;
   /** Render a back affordance in the app bar (returns to the create/request screen). */
   onBack?: () => void;
+  /** Enables the AI edit loop when provided together with editClient. */
+  jobId?: string;
+  editClient?: CompositionEditClient;
   resolveWindow?: (iframe: HTMLIFrameElement) => TimelineRegistryWindow | null | undefined;
 };
 
@@ -41,7 +46,7 @@ const stageStyle: CSSProperties = {
   background: "var(--tk-preview-bg)", display: "flex", alignItems: "center", justifyContent: "center",
 };
 
-export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, onBack, resolveWindow }: CompositionEditorScreenProps) {
+export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, onBack, jobId, editClient, resolveWindow }: CompositionEditorScreenProps) {
   const [model, setModel] = useState<CompositionTimelineModel | undefined>(undefined);
   const [selection, setSelection] = useState<CompositionSelection | undefined>(undefined);
   const [contextRefs, setContextRefs] = useState<ChatContextRef[]>([]);
@@ -70,6 +75,20 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
   }
   function handleRemoveRef(id: string) { setContextRefs((refs) => refs.filter((r) => r.id !== id)); }
 
+  const baseRevision: CompositionRevision = useMemo(
+    () => ({ id: "rev-0", compositionIndexUrl, ...(outputVideoUrl === undefined ? {} : { outputVideoUrl }) }),
+    [compositionIndexUrl, outputVideoUrl],
+  );
+  const noopClient = useMemo<CompositionEditClient>(() => ({ editComposition: async () => baseRevision }), [baseRevision]);
+  const edit = useCompositionEditFlow({ jobId: jobId ?? "", client: editClient ?? noopClient, baseRevision });
+  const editEnabled = jobId !== undefined && editClient !== undefined;
+
+  function handleSend() {
+    void edit.submit(instruction, contextRefs);
+    setInstruction("");
+    setContextRefs([]);
+  }
+
   return (
     <div className="tk-porcelain" style={shellStyle}>
       <header style={headerStyle}>
@@ -95,9 +114,9 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
         <div style={leftColStyle}>
           <section aria-label="Preview stage" style={stageStyle}>
             <CompositionPreview
-              src={compositionIndexUrl}
+              src={edit.currentCompositionUrl}
               currentTime={playback.currentTime}
-              fallbackVideoSrc={outputVideoUrl}
+              fallbackVideoSrc={edit.currentVideoUrl}
               onReady={(readyModel) => setModel(readyModel)}
               resolveWindow={resolveWindow}
             />
@@ -136,6 +155,18 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
           onRemoveRef={handleRemoveRef}
           hasSelection={selection !== undefined}
           onAddToChat={handleAddToChat}
+          {...(editEnabled
+            ? {
+                onSend: handleSend,
+                status: edit.status,
+                isPreviewing: edit.isPreviewing,
+                onAccept: edit.accept,
+                onReject: edit.reject,
+                canUndo: edit.canUndo,
+                onUndo: edit.undo,
+                ...(edit.error === undefined ? {} : { error: edit.error }),
+              }
+            : {})}
         />
       </div>
     </div>

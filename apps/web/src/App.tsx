@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { DemoProject } from "@tinker/project-schema";
 import { createMockGenerationClient } from "./lib/mockGenerationClient.js";
 import { createMockCompositionGenerationClient } from "./lib/mockCompositionGenerationClient.js";
+import { createMockCompositionEditClient } from "./lib/mockCompositionEditClient.js";
 import { loadSampleProject } from "./fixtures/loadSampleProject.js";
 import { CreateDemoScreen } from "./screens/CreateDemo/CreateDemoScreen.js";
 import { EditorScreen, type ProjectOrigin } from "./screens/Editor/EditorScreen.js";
@@ -21,6 +22,7 @@ type AppState = {
 
 const generationClient = createMockGenerationClient();
 const compositionClient = createMockCompositionGenerationClient();
+const compositionEditClient = createMockCompositionEditClient();
 
 export function App() {
   const [state, setState] = useState<AppState>({
@@ -83,6 +85,7 @@ export function App() {
     return (
       <CompositionDemoScreen
         client={compositionClient}
+        editClient={compositionEditClient}
         onBack={() => setState((prev) => ({ ...prev, route: "create" }))}
       />
     );

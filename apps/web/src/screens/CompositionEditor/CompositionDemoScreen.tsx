@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type FormEvent } from "react";
 import type { TimelineRegistryWindow } from "@tinker/editor";
+import type { CompositionEditClient } from "../../lib/compositionEditClient.js";
 import type { CompositionGenerationClient } from "../../lib/compositionGenerationClient.js";
 import { selectArtifactUrl } from "../../lib/compositionGenerationClient.js";
 import { useCompositionGenerationJob } from "../../lib/useCompositionGenerationJob.js";
@@ -7,6 +8,7 @@ import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
 
 export type CompositionDemoScreenProps = {
   client: CompositionGenerationClient;
+  editClient?: CompositionEditClient;
   /** Optional: render a Back button that calls this. */
   onBack?: () => void;
   /** Test seam forwarded to CompositionEditorScreen. */
@@ -16,7 +18,7 @@ export type CompositionDemoScreenProps = {
 const pageStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: 12, height: "100%", minHeight: 0, padding: 24 };
 const fieldStyle: CSSProperties = { display: "grid", gap: 4 };
 
-export function CompositionDemoScreen({ client, onBack, resolveWindow }: CompositionDemoScreenProps) {
+export function CompositionDemoScreen({ client, editClient, onBack, resolveWindow }: CompositionDemoScreenProps) {
   const job = useCompositionGenerationJob(client);
   const [repoUrl, setRepoUrl] = useState("");
   const [productUrl, setProductUrl] = useState("");
@@ -37,6 +39,8 @@ export function CompositionDemoScreen({ client, onBack, resolveWindow }: Composi
         <CompositionEditorScreen
           compositionIndexUrl={compositionIndexUrl}
           outputVideoUrl={selectArtifactUrl(job.job, "output-video")}
+          jobId={job.job.id}
+          {...(editClient ? { editClient } : {})}
           onBack={onBack}
           resolveWindow={resolveWindow}
         />
