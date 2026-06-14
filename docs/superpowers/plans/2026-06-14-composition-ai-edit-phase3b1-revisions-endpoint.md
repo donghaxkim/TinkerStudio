@@ -71,13 +71,12 @@ describe("EditCompositionRequestBodySchema", () => {
 });
 ```
 
-Append to `packages/generation-contract/src/apiJob.test.ts` (create the file if absent; mirror existing schema tests):
+**Append** to the **existing** `packages/generation-contract/src/apiJob.test.ts` (it is present, ~333 lines). Add `ApiRevisionSchema` to its existing `./index.js` import rather than adding a duplicate `./apiJob.js` import line; the fixture below is illustrative (rename `baseJob` if it shadows an existing const):
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { ApiGenerationJobSchema, ApiRevisionSchema } from "./apiJob.js";
+// (ApiGenerationJobSchema, ApiRevisionSchema come from the file's existing "./index.js" import)
 
-const baseJob = {
+const revBaseJob = {
   id: "job-1", status: "completed" as const,
   request: { id: "job-1", mode: "ai-url-planning", repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9", renderer: "hyperframes" },
   createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
@@ -88,19 +87,19 @@ describe("ApiRevisionSchema", () => {
   it("requires result when completed, error when failed", () => {
     expect(ApiRevisionSchema.safeParse({ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:00.000Z", result: { artifacts: [] } }).success).toBe(true);
     expect(ApiRevisionSchema.safeParse({ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:00.000Z" }).success).toBe(false);
-    expect(ApiRevisionSchema.safeParse({ id: "rev-1", status: "failed", createdAt: "2026-01-01T00:00:00.000Z", error: { status: "failed", stage: "edit", message: "boom" } }).success).toBe(true);
+    expect(ApiRevisionSchema.safeParse({ id: "rev-1", status: "failed", createdAt: "2026-01-01T00:00:00.000Z", error: { status: "failed", stage: "unknown", message: "boom" } }).success).toBe(true);
   });
 });
 
 describe("ApiGenerationJobSchema with revisions", () => {
   it("accepts a completed job carrying revisions + currentRevisionId", () => {
     expect(ApiGenerationJobSchema.safeParse({
-      ...baseJob, currentRevisionId: "rev-1",
+      ...revBaseJob, currentRevisionId: "rev-1",
       revisions: [{ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:00.000Z", result: { artifacts: [] } }],
     }).success).toBe(true);
   });
   it("still accepts a job with no revisions (back-compat)", () => {
-    expect(ApiGenerationJobSchema.safeParse(baseJob).success).toBe(true);
+    expect(ApiGenerationJobSchema.safeParse(revBaseJob).success).toBe(true);
   });
 });
 ```
@@ -115,6 +114,9 @@ import { z } from "zod";
 
 export const EditContextRefSchema = z
   .object({
+    // `id` is optional so the web `ChatContextRef` (which carries an `id`) conforms
+    // to this `.strict()` schema when POSTed in 3b-5.
+    id: z.string().min(1).optional(),
     kind: z.enum(["range", "clip"]),
     start: z.number(),
     end: z.number(),
@@ -170,8 +172,10 @@ Add to the `ApiGenerationJobSchema` object (before `.strict()`):
 > `ApiRevisionSchema`'s `superRefine` lenient (no "result only when completed" rule —
 > a revision may briefly be non-terminal in 3b-4).
 
-Export from `index.ts`: add `export * from "./editRequest.js";` and add
-`ApiRevisionSchema`, `ApiRevision` to the `apiJob` exports (match the existing export style).
+Export: add `export * from "./editRequest.js";` to **`validators.ts`** (the real barrel —
+`index.ts` just re-exports `validators.js`). `ApiRevisionSchema`/`ApiRevision` flow out
+automatically via the existing `export * from "./apiJob.js"` in `validators.ts` — no
+manual addition needed for them.
 
 - [ ] **Step 4: Run → PASS.**
 - [ ] **Step 5: Typecheck + commit.**
@@ -218,7 +222,7 @@ describe("jobStore revisions", () => {
     const store = createJobStore();
     completed(store);
     store.setPendingEdit("j", { revId: "rev-1", instruction: "x", context: [] });
-    store.failRevision("j", "rev-1", { status: "failed", stage: "edit", message: "boom" }, "2026-01-01T00:00:03.000Z");
+    store.failRevision("j", "rev-1", { status: "failed", stage: "unknown", message: "boom" }, "2026-01-01T00:00:03.000Z");
     const snap = store.getSnapshot("j")!;
     expect(snap.status).toBe("completed");
     expect(snap.revisions?.[0]).toMatchObject({ id: "rev-1", status: "failed" });
@@ -372,9 +376,10 @@ export function createEditWorker(options: EditWorkerOptions) {
     if (record === undefined || edit === undefined) return;
     try {
       const result = await options.runEdit(record, edit);
-      options.store.appendRevision(id, { id: edit.revId, status: "completed", createdAt: now(), result }, now());
+      const t = now();
+      options.store.appendRevision(id, { id: edit.revId, status: "completed", createdAt: t, result }, t);
     } catch (err) {
-      options.store.failRevision(id, edit.revId, { status: "failed", stage: "edit", message: err instanceof Error ? err.message : String(err) }, now());
+      options.store.failRevision(id, edit.revId, { status: "failed", stage: "unknown", message: err instanceof Error ? err.message : String(err) }, now());
     }
   };
 }
@@ -412,42 +417,54 @@ git commit -m "feat(api): edit worker behind RunEdit seam + queue dispatch by pe
 
 **Files:** `apps/api/src/routes/jobs.ts`; extend `apps/api/src/server.test.ts`.
 
-- [ ] **Step 1: Failing test** — append to `server.test.ts` (it already builds the server with an injected `runner` + uses `server.inject`; add an injected `runEdit` fake):
+- [ ] **Step 1: Failing test** — append to `server.test.ts`. **First READ `server.test.ts`** and reuse its REAL helpers (verified to exist): `testConfig(repoRoot)` is a **function** taking a `repoRoot` (make one with `await mkdtemp(join(tmpdir(), "tinker-api-")...)`); the **inline completed-runner** pattern (~lines 145-176) returning a full `ManualFixtureGenerationResult` and resolving a `deferred`; `deferred<T>()` (~line 1019) and `waitForJobStatus(server, id, status)` (~line 1029). There is **no** `makeSeqIdGen`/`flushQueue`/`fakeCompletedRunner` — do not use them. Add a small `waitForRevision(server, id)` loop modeled on `waitForJobStatus` (the parent stays `completed`, so poll `GET /api/jobs/:id` until `revisions?.[0]` exists). Inject `runEdit` (new option).
 
 ```ts
   it("POST /api/jobs/:id/edits enqueues an edit and appends a revision", async () => {
-    const runEdit = async () => ({ artifacts: [{ kind: "composition-index" as const, relativePath: "revisions/rev/hyperframes/index.html", url: "/api/jobs/x/artifacts/revisions/rev/hyperframes/index.html", mediaType: "text/html" }] });
-    const server = await buildServer({ config: testConfig, runner: fakeCompletedRunner, runEdit, now: () => "2026-01-01T00:00:00.000Z", idGenerator: makeSeqIdGen() });
-    // create + complete a job first (drive the generation path as existing tests do), then:
+    const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-edit-"));
+    const completed = deferred<void>();
+    const runEdit = async () => ({
+      artifacts: [{ kind: "composition-index" as const, relativePath: "revisions/rev/hyperframes/index.html", url: "/api/jobs/x/artifacts/revisions/rev/hyperframes/index.html", mediaType: "text/html" }],
+    });
+    let n = 0;
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      runner: <inline completed runner: copy the ~line 145-176 fake; write index.html/output.mp4 under outputRoot/hyperframes; resolve(completed)>,
+      runEdit,
+      idGenerator: () => `id-${++n}`, // job id and revId differ
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
     const created = await server.inject({ method: "POST", url: "/api/jobs", payload: { repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9" } });
     const jobId = created.json().id;
-    await flushQueue(); // existing helper / await the worker microtask
+    await completed.promise; await Promise.resolve();
+    await waitForJobStatus(server, jobId, "completed");
     const edit = await server.inject({ method: "POST", url: `/api/jobs/${jobId}/edits`, payload: { instruction: "punch in", context: [] } });
     expect(edit.statusCode).toBe(202);
-    await flushQueue();
+    await waitForRevision(server, jobId); // small poll loop modeled on waitForJobStatus
     const got = await server.inject({ method: "GET", url: `/api/jobs/${jobId}` });
+    expect(got.json().status).toBe("completed");          // parent unchanged
     expect(got.json().revisions?.[0]?.status).toBe("completed");
   });
 
   it("POST /edits → 404 for unknown job, 422 for bad body", async () => {
-    const server = await buildServer({ config: testConfig, runEdit: async () => ({ artifacts: [] }) });
+    const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-edit-"));
+    const server = await buildServer({ config: testConfig(repoRoot), runEdit: async () => ({ artifacts: [] }) });
     expect((await server.inject({ method: "POST", url: "/api/jobs/nope/edits", payload: { instruction: "x", context: [] } })).statusCode).toBe(404);
     const created = await server.inject({ method: "POST", url: "/api/jobs", payload: { repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9" } });
     expect((await server.inject({ method: "POST", url: `/api/jobs/${created.json().id}/edits`, payload: { instruction: "", context: [] } })).statusCode).toBe(422);
   });
 ```
 
-> Reuse the file's existing `testConfig`, runner fakes, id generator, and queue-flush
-> helper. If a completed-job fake runner / flush helper isn't present, add a minimal one
-> mirroring the existing generation tests. The edit route does not require the job to be
-> `completed` first (it stashes `pendingEdit` regardless); the happy-path test drives a
-> completed job for realism.
+> `validationError`/`formatZodIssues` are module-private in `routes/jobs.ts` — the new
+> route lives in the same module, so no import is needed. The edit route does not
+> require the job to be `completed` first (it stashes `pendingEdit` regardless); the
+> happy-path test drives a completed job for realism.
 
 - [ ] **Step 2: Run → FAIL.** `pnpm --filter @tinker/api exec vitest run src/server.test.ts`
 
 - [ ] **Step 3: Implement** in `routes/jobs.ts`. Add to imports:
-`import { EditCompositionRequestBodySchema, type EditContextRef } from "@tinker/generation-contract";`
-Add a `revIdGenerator` to `JobsRoutesOptions` (default in `server.ts` to a counter or reuse `idGenerator`), then register:
+`import { EditCompositionRequestBodySchema } from "@tinker/generation-contract";`
+Reuse the existing `options.idGenerator` for the revId (no new plumbing), then register:
 
 ```ts
   server.post<{ Params: { id: string } }>("/api/jobs/:id/edits", async (request, reply) => {
@@ -466,7 +483,7 @@ Add a `revIdGenerator` to `JobsRoutesOptions` (default in `server.ts` to a count
     options.store.setPendingEdit(request.params.id, {
       revId,
       instruction: parsed.data.instruction,
-      context: parsed.data.context as EditContextRef[],
+      context: parsed.data.context,
     });
     if (!options.queue.enqueue(request.params.id)) {
       return reply.status(429).send({ message: "Generation queue is full" });
