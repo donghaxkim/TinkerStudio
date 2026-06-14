@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiGenerationJob } from "@tinker/generation-contract";
 import type { CompositionGenerationClient, CreateCompositionJobRequest } from "./compositionGenerationClient.js";
 
@@ -52,6 +52,8 @@ export function useCompositionGenerationJob(client: CompositionGenerationClient)
     abortRef.current?.abort();
     setState({ phase: "idle" });
   }, []);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   return { ...state, start, cancel };
 }

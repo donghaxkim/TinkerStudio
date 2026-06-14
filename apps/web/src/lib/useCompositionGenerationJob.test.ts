@@ -1,6 +1,6 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { selectArtifactUrl } from "./compositionGenerationClient.js";
+import { selectArtifactUrl, type CompositionGenerationClient } from "./compositionGenerationClient.js";
 import { createMockCompositionGenerationClient } from "./mockCompositionGenerationClient.js";
 import { useCompositionGenerationJob } from "./useCompositionGenerationJob.js";
 
@@ -44,5 +44,45 @@ describe("useCompositionGenerationJob", () => {
     });
     expect(result.current.phase).toBe("failed");
     expect(result.current.error).toBe("queue full");
+  });
+
+  it("returns to idle and does not complete when cancelled mid-flight", async () => {
+    const client = {
+      createJob: async () => ({ id: "j" }),
+      getJob: async () => ({ id: "j" }),
+      waitForJob: (_id: string, opts?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          opts?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    } as unknown as CompositionGenerationClient;
+
+    const { result } = renderHook(() => useCompositionGenerationJob(client));
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.start(REQUEST);
+    });
+    await waitFor(() => expect(result.current.phase).toBe("running"));
+    act(() => {
+      result.current.cancel();
+    });
+    await act(async () => {
+      await started;
+    });
+    expect(result.current.phase).toBe("idle");
+  });
+
+  it("reports failed when the job resolves to a failed terminal status", async () => {
+    const client = {
+      createJob: async () => ({ id: "j" }),
+      getJob: async () => ({ id: "j" }),
+      waitForJob: async () => ({ id: "j", status: "failed", error: { message: "render failed" } }),
+    } as unknown as CompositionGenerationClient;
+
+    const { result } = renderHook(() => useCompositionGenerationJob(client));
+    await act(async () => {
+      await result.current.start(REQUEST);
+    });
+    expect(result.current.phase).toBe("failed");
+    expect(result.current.error).toBe("render failed");
   });
 });
