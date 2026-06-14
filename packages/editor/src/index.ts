@@ -73,3 +73,5 @@ export type { CompositionPreviewProps } from "./composition/CompositionPreview.j
 export { CompositionPreview } from "./composition/CompositionPreview.js";
 export type { CompositionTimelineProps } from "./composition/CompositionTimeline.js";
 export { CompositionTimeline } from "./composition/CompositionTimeline.js";
+export type { CompositionSelection } from "./composition/selection.js";
+export { rangeSelection, clipSelection } from "./composition/selection.js";
