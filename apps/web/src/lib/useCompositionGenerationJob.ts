@@ -27,6 +27,7 @@ export function useCompositionGenerationJob(client: CompositionGenerationClient)
       setState({ phase: "running" });
       try {
         const created = await client.createJob(request);
+        if (controller.signal.aborted) return;
         const job = await client.waitForJob(created.id, {
           signal: controller.signal,
           onUpdate: (updated) => {
