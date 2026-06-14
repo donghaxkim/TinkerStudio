@@ -102,4 +102,37 @@ describe("CompositionTimeline (interaction)", () => {
     render(<CompositionTimeline model={MODEL} currentTime={0} />);
     expect(screen.getByTestId("composition-timeline")).toHaveAttribute("aria-label", "Composition timeline");
   });
+
+  it("emits a normalized range when the track is dragged, and renders a band", () => {
+    const onSelectRange = vi.fn();
+    const onSeek = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={0} onSeek={onSeek} onSelectRange={onSelectRange} />);
+    const track = screen.getByTestId("composition-timeline");
+    mockBounds(track, 1000);
+    fireEvent.mouseDown(track, { clientX: 600 });
+    fireEvent.mouseMove(track, { clientX: 200 });
+    fireEvent.mouseUp(track, { clientX: 200 });
+    expect(onSelectRange).toHaveBeenCalledWith({ start: 2, end: 6 }); // normalized
+    // the browser fires a click after a drag — it must NOT seek
+    fireEvent.click(track, { clientX: 200 });
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+
+  it("treats a press with no movement as a click (still seeks)", () => {
+    const onSelectRange = vi.fn();
+    const onSeek = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={0} onSeek={onSeek} onSelectRange={onSelectRange} />);
+    const track = screen.getByTestId("composition-timeline");
+    mockBounds(track, 1000);
+    fireEvent.mouseDown(track, { clientX: 500 });
+    fireEvent.mouseUp(track, { clientX: 500 });
+    fireEvent.click(track, { clientX: 500 });
+    expect(onSelectRange).not.toHaveBeenCalled();
+    expect(onSeek).toHaveBeenCalledWith(5);
+  });
+
+  it("renders a controlled selection band from the selection prop", () => {
+    render(<CompositionTimeline model={MODEL} currentTime={0} selection={{ start: 2, end: 6 }} />);
+    expect(screen.getByTestId("composition-selection-band")).toHaveStyle({ left: "20%", width: "40%" });
+  });
 });

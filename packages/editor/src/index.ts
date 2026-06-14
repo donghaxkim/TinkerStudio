@@ -6,6 +6,7 @@ export type { TimeScale } from "./timeline/timeScale.js";
 export { createTimeScale } from "./timeline/timeScale.js";
 export { Timeline } from "./timeline/Timeline.js";
 export type { TimelineProps } from "./timeline/Timeline.js";
+export { formatTimecode } from "./timeline/formatTimecode.js";
 export type { ActivePreviewOverlays } from "./preview/activeOverlays.js";
 export { getActivePreviewOverlays } from "./preview/activeOverlays.js";
 export type { PreviewMotionState } from "./preview/previewMotionState.js";
@@ -73,3 +74,5 @@ export type { CompositionPreviewProps } from "./composition/CompositionPreview.j
 export { CompositionPreview } from "./composition/CompositionPreview.js";
 export type { CompositionTimelineProps } from "./composition/CompositionTimeline.js";
 export { CompositionTimeline } from "./composition/CompositionTimeline.js";
+export type { CompositionSelection } from "./composition/selection.js";
+export { rangeSelection, clipSelection } from "./composition/selection.js";
