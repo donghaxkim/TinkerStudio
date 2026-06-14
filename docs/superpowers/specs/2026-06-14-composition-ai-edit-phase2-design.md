@@ -80,12 +80,21 @@ Rebuild `CompositionEditorScreen` in the porcelain shell, **no AI yet**:
 - **App bar** — Tinker Studio wordmark · (Preview) · Export (stub). Back/exit.
 - **Preview stage** — dark rounded stage housing `CompositionPreview` (existing).
 - **Playback bar** — play/pause + scrub via a `requestAnimationFrame` loop that
-  advances `currentTime` and calls `preview.seek(t)`; prev/next jump between
-  `model.clips` boundaries; timecode `m:ss.s / m:ss.s` from the timeline duration.
-  (Ports the legacy bar's rAF pattern; drives the iframe instead of a `DemoProject`.)
+  advances `currentTime` **state**, which `CompositionPreview` seeks to (declarative,
+  via its existing `currentTime`-keyed effect — there is no imperative `preview.seek`
+  drive path; identical to the legacy `Preview`). prev/next jump between
+  `model.clips` boundaries; **for a flat composition (zero clips) prev/next disable
+  or fall back to 0 / duration**. Timecode `m:ss.s / m:ss.s`. Reuse `formatTimecode`
+  by **extracting it to a shared util** (e.g. `packages/editor/src/timeline/`) rather
+  than copying the private one in `EditorScreen.tsx`.
 - **Timeline** — existing `CompositionTimeline` (click-clip, click-seek) **plus
   drag-to-select a range** (deferred from Phase 1c): a drag paints a selection band
-  and emits a range `Selection`.
+  and emits a range `Selection`. **Click/drag disambiguation:** replace the current
+  `onClick` seek (`CompositionTimeline.tsx` `handleTrackClick`) with
+  pointer/mouse down→move→up handlers — sub-threshold movement = a click (seek), a
+  supra-threshold drag = a range selection — so a drag does not spuriously seek to
+  the mouseup point. The existing click-seek and click-clip tests must stay green
+  under the new handler.
 - **Right Chat panel frame** — composer + chips area + (disabled) send. Selecting a
   range/clip and pressing **"+ Add to chat"** creates a removable **context chip**.
   No send/edit yet.
@@ -110,17 +119,34 @@ stage chips in the composer.
 
 ## Components & data shapes
 
+**Type homes (resolves where each type is defined/exported):**
+
 - **`Selection`** = `{ kind: "range"; start; end }` | `{ kind: "clip"; clipId;
-  label?; start; end }`.
+  label?; start; end }`. **Defined in and exported from `packages/editor`** (added to
+  `packages/editor/src/index.ts`, alongside `CompositionClip`), because
+  `CompositionTimeline` emits it.
 - **`ChatContextRef`** = `{ id; kind: "range" | "clip"; start; end; clipId?;
   label? }` — built from a `Selection` on "+ Add to chat". Multiple allowed.
+  **Defined in `apps/web/src/lib/`** (NOT `@tinker/ai-edit-ui`).
 - **`CompositionEditRequest`** = `{ jobId; instruction; context: ChatContextRef[] }`
   (an empty `context` means "edit the whole composition") — matches the body in
-  `docs/person-a-composition-edit-contract.md`.
+  `docs/person-a-composition-edit-contract.md`. **Defined in `apps/web/src/lib/`.**
+- **`Revision`** = a **new client-side type** in `apps/web/src/lib/`, e.g.
+  `{ id: string; artifacts: ApiArtifact[] }` (or the resolved
+  `compositionIndexUrl` / `outputVideoUrl`). It is **NOT** an extension of
+  `ApiGenerationJob` — that schema is `.strict()` (`packages/generation-contract`)
+  and its `revisions` / `currentRevisionId` fields are the Phase-3,
+  Person-A-reviewed change. **Phase 2 does not modify `@tinker/generation-contract`.**
 - **Revision stack** — client-managed: `revisions: Revision[]`, `currentIndex`.
   Accept pushes; Reject discards the previewed revision; Undo decrements. The server
   (later) retains every revision's artifacts; Accept/Reject/Undo is a client-side
   pointer.
+
+> **Note (resolves a parent-spec divergence):** the parent design placed
+> `ChatContextRef` / `useCompositionEditFlow` in `packages/ai-edit-ui`. This slice
+> deliberately does **not** touch `@tinker/ai-edit-ui` (it is legacy,
+> `DemoProject`-bound). The composition-edit types and hook live in
+> `apps/web/src/lib/` instead, with `Selection` in `packages/editor`.
 
 ## Data flow
 
@@ -137,8 +163,12 @@ stage chips in the composer.
 - **Components** (shell pieces, chat panel, chips, timeline drag-select) live with
   the rest of the composition code: `packages/editor/src/composition/` and
   `apps/web/src/screens/CompositionEditor/`.
-- **Mock edit client + flow hook** live in `apps/web/src/lib/`, mirroring where Phase
-  0/1 put `mockCompositionGenerationClient` and `useCompositionGenerationJob`.
+- **Mock edit client + flow hook + the `ChatContextRef`/`CompositionEditRequest`/
+  `Revision` types** live in `apps/web/src/lib/`, mirroring where Phase 0/1 put
+  `mockCompositionGenerationClient` and `useCompositionGenerationJob`.
+- **`Selection`** is exported from `@tinker/editor` (`packages/editor/src/index.ts`);
+  new screen components are imported directly (no `CompositionEditor/` barrel, as
+  today).
 - **`@tinker/ai-edit-ui`, `EditorScreen`, `DemoProject`, `@tinker/demo-assembly` are
   not imported, edited, or deleted.** Legacy tests stay green untouched.
 
