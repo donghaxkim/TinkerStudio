@@ -90,34 +90,48 @@ Accept/export** so the preview is fast.
 
 ### Agent integration (compose Samuel's PUBLIC exports — no edits to his package)
 
-- Run the agent via **public** `defaultRunOpencode(prompt, { cwd, logDir,
-  repoCheckoutDirectory? })` (`hyperframesPlanning.ts:277`). The agent runs in a
-  **sandbox copy** (`cwd`) and writes output back to `logDir`, so the patched
-  `index.html` must land in `logDir` (the revision dir). `buildEditPrompt` is **ours**
-  (greenfield — NOT a variant of the private `buildRepairPrompt`).
-- **No repo checkout in v1.** `repoCheckoutDirectory` is **optional** on
-  `defaultRunOpencode`, and editing an existing composition does not need the source
-  repo (the product context is already baked into the composition). *(Future: repo-
-  aware edits need Samuel to export a checkout-only primitive — `defaultFetchRepo` is
-  private and `analyzeRepo` couples clone + a full agent analysis; deferred.)*
+- **Use `defaultRunOpencode` as a "run the agent, return its text" primitive.** Its
+  signature is `defaultRunOpencode(prompt, { cwd, logDir, repoCheckoutDirectory? }) =>
+  Promise<string>` and it **returns the agent's text output**. So our `buildEditPrompt`
+  instructs the agent to emit **search/replace blocks as text** (NOT to write files),
+  and **we** parse + fuzzy-apply them ourselves (3b-2) — keeping the high-reliability
+  apply step under our control, per the research.
+- **Sandbox params (corrected):** the agent runs in `logDir/.tinker-opencode-workspace`,
+  and `prepareOpencodeSandbox` copies `repoCheckoutDirectory ?? cwd` into a read-only
+  `repository/`. So `cwd` must be a **real existing dir** but its contents are
+  irrelevant to a block-returning edit — point `cwd` at a small throwaway dir, set
+  `logDir` for logs, omit `repoCheckoutDirectory`, and **`buildEditPrompt` must NOT
+  tell the agent to read `repository/`**. (Editing a composition needs no source repo;
+  repo-aware edits are deferred — `defaultFetchRepo` is private and `analyzeRepo`
+  couples clone + agent analysis.)
+- `buildEditPrompt` is **ours** (greenfield — NOT a variant of the private
+  `buildRepairPrompt`): it carries the instruction, the scoped clip(s), the symbol
+  map, and the target `index.html` snippet, and asks for search/replace blocks.
 - **Render for export only:** `runHyperframesRender({ hyperframesDir, outputVideoPath })`
   on Accept / first export — not per draft.
 
 ### The endpoint (`apps/api`, Fastify — mirrors `routes/jobs.ts`)
 
 - **`POST /api/jobs/:id/edits`** — body `{ instruction: string, context:
-  ChatContextRef[] }` (`.strict()` zod). 404 if no job, 429 if queue full, **202** +
-  job snapshot. Enqueues an **edit job**.
+  EditContextRef[] }` validated by a **new `.strict()` zod schema in
+  `@tinker/generation-contract`** (`apps/api` cannot import `apps/web`'s
+  `ChatContextRef`; both packages depend on `generation-contract`, so the wire shape
+  lives there and the web `ChatContextRef` conforms to it). 404 if no job, 429 if
+  queue full, **202** + job snapshot. Enqueues an **edit job**.
 - **Queue branching:** add `kind: "generation" | "edit"` to `JobRecord`; keep the one
   concurrency-1 queue, and `runJob(id)` looks up the record and dispatches to the
-  generation worker or the new **edit worker** by `kind`. (Concurrency-1 means an edit
-  blocks new generations and vice-versa — acceptable for local single-user.)
-- **Edit worker** (3b-4): copy the current composition → new revision dir
-  `generated/local-job/<id>/revisions/<revId>/hyperframes/` → **localize → agent
-  (search/replace, `cwd`=sandbox, output→`logDir`=revision dir) → fuzzy apply →
-  validate + structural lint** → append the revision (status `completed`; render
-  deferred). Edit progress lives on the **revision**, not the parent job's
-  `progressEvents`.
+  generation worker or the new **edit worker** by `kind`. `buildServer` gains a
+  `runEdit` injection seam alongside the existing `runner` (so endpoint/worker tests
+  inject a fake). (Concurrency-1 means an edit blocks new generations and vice-versa —
+  acceptable for local single-user.)
+- **Edit worker** (3b-4): resolve the **current composition source** — base
+  `<outputRoot>/hyperframes` if no `currentRevisionId`, else
+  `<outputRoot>/revisions/<currentRevisionId>/hyperframes` — copy it → new revision dir
+  `generated/local-job/<id>/revisions/<revId>/hyperframes/` → **localize → run agent
+  (returns search/replace text) → fuzzy-apply to the revision's `index.html` →
+  validate + structural lint** → append the revision (status `completed`;
+  `currentRevisionId` ← new revId; render deferred). Edit progress lives on the
+  **revision**, not the parent job's `progressEvents`.
 - **Seam:** the worker takes an injected `runEdit` (real = `defaultRunOpencode`
   composition; fake in tests returns a canned patched `index.html`). Endpoint +
   worker tests use the fake (mirrors `server.test.ts`'s injected `runner`); the fuzzy
@@ -136,10 +150,14 @@ Accept/export** so the preview is fast.
   `record.status === "completed"`, so flipping the parent to `running` would make the
   **base composition unservable** and break the live preview mid-edit.
 - **Touch points (exhaustive):** `JobRecord` (+`revisions`, `currentRevisionId`,
-  `kind`); `jobStore` gains `appendRevision` / `failRevision` / `setCurrentRevision`
-  (keep every `snapshot()` valid — it re-`parse`s through `.strict()` on each read);
-  `hasValidSnapshotDatetime`; existing `server.test.ts` snapshot assertions (new
-  optional fields).
+  `kind`); **`snapshot()` / `hasValidSnapshotDatetime` must STRIP `kind`** before
+  `.parse()` — `kind` is a record-only field, NOT in the `.strict()` API schema, so an
+  un-stripped `kind` throws "Unrecognized key" (today `snapshot()` strips only
+  `outputRoot`); `jobStore` gains `appendRevision` / `failRevision` (each keeps every
+  `snapshot()` valid), and `currentRevisionId` is set to the **newest appended**
+  revision at `appendRevision` time (no Accept-driven server call — Accept/Reject/Undo
+  stay a client-side pointer, Phase 2b); `buildServer` `runEdit` seam; existing
+  `server.test.ts` snapshot assertions tolerate the new optional fields.
 
 ### Serving revision artifacts (fixes the classification + route gap)
 
@@ -166,10 +184,14 @@ Accept/export** so the preview is fast.
 
 ## 3c — Real export
 
-- The Export button downloads the **current revision's `output-video`**. Because
-  render is deferred, the current revision usually has **no `output-video` yet** — so
-  export **triggers `runHyperframesRender` first** (honest progress), then offers the
-  download. (Render also runs on Accept so the common case is already rendered.)
+- **Accept/Reject/Undo stay a client-side pointer** over the server-retained
+  revisions (Phase 2b); the client passes its **current `revisionId`** to export.
+- Export targets that revision: if it has **no `output-video` yet** (render is
+  deferred), export **triggers `runHyperframesRender` first** for that revision dir
+  (honest progress) and indexes the new `output-video` onto the revision, then the
+  Export button downloads it. The exact trigger (a `POST
+  /api/jobs/:id/revisions/:revId/render` or render-on-first-export) is pinned in the
+  3c plan. (Render also runs on Accept, so the common case is already rendered.)
 
 ## Samuel review / coordination items
 
