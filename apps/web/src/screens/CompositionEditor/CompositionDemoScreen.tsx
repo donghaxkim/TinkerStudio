@@ -31,6 +31,11 @@ export function CompositionDemoScreen({ client, resolveWindow }: CompositionDemo
         />
       );
     }
+    return (
+      <div className="tk-porcelain" style={pageStyle} role="alert">
+        Generation completed but produced no composition to open.
+      </div>
+    );
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -47,10 +52,12 @@ export function CompositionDemoScreen({ client, resolveWindow }: CompositionDemo
 
   return (
     <div className="tk-porcelain" style={pageStyle}>
+      <div aria-live="polite" aria-atomic="true">
+        {job.phase === "running" ? "Generating composition…" : ""}
+      </div>
       {job.phase === "running" ? (
-        <div data-testid="composition-generating" aria-live="polite">
-          Generating composition…{" "}
-          <button type="button" className="tk-btn" onClick={job.cancel}>
+        <div data-testid="composition-generating">
+          <button type="button" className="tk-btn" onClick={() => job.cancel()}>
             Cancel
           </button>
         </div>
@@ -75,7 +82,7 @@ export function CompositionDemoScreen({ client, resolveWindow }: CompositionDemo
       )}
       {job.phase === "failed" ? (
         <div role="alert" style={{ color: "var(--tk-danger, #C0392B)" }}>
-          {job.error}
+          {job.error ?? "Generation failed."}
         </div>
       ) : null}
     </div>
