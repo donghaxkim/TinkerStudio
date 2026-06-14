@@ -17,12 +17,18 @@ import { CompositionChatPanel } from "./CompositionChatPanel.js";
 export type CompositionEditorScreenProps = {
   compositionIndexUrl: string;
   outputVideoUrl?: string;
+  /** Render a back affordance in the app bar (returns to the create/request screen). */
+  onBack?: () => void;
   resolveWindow?: (iframe: HTMLIFrameElement) => TimelineRegistryWindow | null | undefined;
 };
 
 const shellStyle: CSSProperties = {
-  height: "100%", minHeight: 0, display: "grid", gridTemplateRows: "52px minmax(0,1fr)",
+  height: "100vh", maxHeight: "100vh", overflow: "hidden", display: "grid", gridTemplateRows: "52px minmax(0,1fr)",
   background: "var(--tk-app-bg)", color: "var(--tk-text)", fontFamily: "var(--tk-font)",
+};
+const wordmarkButtonStyle: CSSProperties = {
+  display: "inline-flex", alignItems: "baseline", gap: 6, border: "none", background: "transparent",
+  padding: "4px 2px", borderRadius: "var(--tk-radius-sm)",
 };
 const headerStyle: CSSProperties = {
   display: "flex", alignItems: "center", gap: 12, padding: "0 14px",
@@ -35,7 +41,7 @@ const stageStyle: CSSProperties = {
   background: "var(--tk-preview-bg)", display: "flex", alignItems: "center", justifyContent: "center",
 };
 
-export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, resolveWindow }: CompositionEditorScreenProps) {
+export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, onBack, resolveWindow }: CompositionEditorScreenProps) {
   const [model, setModel] = useState<CompositionTimelineModel | undefined>(undefined);
   const [selection, setSelection] = useState<CompositionSelection | undefined>(undefined);
   const [contextRefs, setContextRefs] = useState<ChatContextRef[]>([]);
@@ -67,8 +73,17 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   return (
     <div className="tk-porcelain" style={shellStyle}>
       <header style={headerStyle}>
-        <span style={{ fontSize: 14, fontWeight: 700 }}>Tinker</span>
-        <span style={{ fontSize: 14, color: "var(--tk-text-sec)" }}>Studio</span>
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={!onBack}
+          aria-label="Back to create"
+          title="Back to create"
+          style={{ ...wordmarkButtonStyle, cursor: onBack ? "pointer" : "default" }}
+        >
+          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--tk-text)" }}>Tinker</span>
+          <span style={{ fontSize: 14, fontWeight: 400, color: "var(--tk-text-sec)" }}>Studio</span>
+        </button>
         <div style={{ marginLeft: "auto" }}>
           <button type="button" className="tk-btn tk-btn-accent" aria-label="Export" title="Export (coming soon)" disabled>
             Export

@@ -94,6 +94,23 @@ input::placeholder {
   color: var(--tk-text-ter);
 }
 
+.tk-input {
+  width: 100%;
+  font-family: var(--tk-font);
+  font-size: 13px;
+  color: var(--tk-text);
+  background: var(--tk-card);
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius-md);
+  padding: 9px 11px;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.tk-input:hover { border-color: var(--tk-border-strong); }
+.tk-input:focus { border-color: var(--tk-accent); box-shadow: 0 0 0 3px var(--tk-accent-soft); }
+.tk-input:disabled { opacity: 0.55; cursor: default; }
+
 
 /* ==========================================================================
    COMPONENTS — .tk-* classes

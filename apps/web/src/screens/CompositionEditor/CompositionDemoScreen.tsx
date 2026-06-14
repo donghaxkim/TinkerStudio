@@ -31,20 +31,15 @@ export function CompositionDemoScreen({ client, onBack, resolveWindow }: Composi
   if (job.phase === "completed" && job.job) {
     const compositionIndexUrl = selectArtifactUrl(job.job, "composition-index");
     if (compositionIndexUrl) {
-      const editor = (
+      // Full-bleed: the editor carries its own porcelain app bar (with a Back
+      // affordance), so it is not wrapped in the request-form page chrome.
+      return (
         <CompositionEditorScreen
           compositionIndexUrl={compositionIndexUrl}
           outputVideoUrl={selectArtifactUrl(job.job, "output-video")}
+          onBack={onBack}
           resolveWindow={resolveWindow}
         />
-      );
-      return onBack ? (
-        <div className="tk-porcelain" style={pageStyle}>
-          {backButton}
-          {editor}
-        </div>
-      ) : (
-        editor
       );
     }
     return (

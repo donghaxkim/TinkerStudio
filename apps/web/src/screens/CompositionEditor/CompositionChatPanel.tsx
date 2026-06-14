@@ -56,7 +56,7 @@ export function CompositionChatPanel({
           title={onSend === undefined ? "AI editing arrives in Phase 2b" : "Send"}
           onClick={onSend}
         >
-          Send
+          ↑
         </button>
       </div>
     </aside>
