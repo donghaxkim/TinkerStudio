@@ -1,17 +1,19 @@
-import { type CSSProperties, type MouseEvent } from "react";
+import { useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { createTimeScale } from "../timeline/timeScale.js";
 import type { CompositionClip, CompositionTimelineModel } from "./compositionTimelineModel.js";
 
+const DRAG_THRESHOLD_PX = 4;
+
 export type CompositionTimelineProps = {
   model: CompositionTimelineModel;
-  /** Current playhead time in seconds. */
   currentTime: number;
-  /** Id of the currently selected clip, if any. */
   selectedClipId?: string;
-  /** Seek to a time when the track is clicked (wired in Task 2). */
+  /** Controlled range-selection band, in seconds. */
+  selection?: { start: number; end: number };
   onSeek?: (time: number) => void;
-  /** Select a clip when it is clicked (wired in Task 2). */
   onSelectClip?: (clip: CompositionClip) => void;
+  /** Emitted when the user drags out a range on the track. */
+  onSelectRange?: (range: { start: number; end: number }) => void;
 };
 
 const trackStyle: CSSProperties = {
@@ -65,16 +67,59 @@ const playheadStyle: CSSProperties = {
   background: "var(--tk-accent, #6C8CFF)",
 };
 
-export function CompositionTimeline({ model, currentTime, selectedClipId, onSeek, onSelectClip }: CompositionTimelineProps) {
+export function CompositionTimeline({
+  model,
+  currentTime,
+  selectedClipId,
+  selection,
+  onSeek,
+  onSelectClip,
+  onSelectRange,
+}: CompositionTimelineProps) {
   const scale = createTimeScale(model.durationSeconds, 100);
 
+  const dragRef = useRef<{ startTime: number; startX: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
+  const [liveRange, setLiveRange] = useState<{ start: number; end: number } | null>(null);
+
+  function timeAt(event: MouseEvent<HTMLDivElement>, el: HTMLDivElement): number {
+    const bounds = el.getBoundingClientRect();
+    return createTimeScale(model.durationSeconds, Math.max(1, bounds.width)).pixelsToSeconds(event.clientX - bounds.left);
+  }
+
+  function handleTrackMouseDown(event: MouseEvent<HTMLDivElement>) {
+    if (!onSelectRange) return;
+    const el = event.currentTarget;
+    dragRef.current = { startTime: timeAt(event, el), startX: event.clientX, moved: false };
+  }
+
+  function handleTrackMouseMove(event: MouseEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    if (Math.abs(event.clientX - drag.startX) > DRAG_THRESHOLD_PX) drag.moved = true;
+    if (drag.moved) {
+      const t = timeAt(event, event.currentTarget);
+      setLiveRange({ start: Math.min(drag.startTime, t), end: Math.max(drag.startTime, t) });
+    }
+  }
+
+  function handleTrackMouseUp(event: MouseEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    setLiveRange(null);
+    if (!drag || !drag.moved) return;
+    const end = timeAt(event, event.currentTarget);
+    suppressClickRef.current = true;
+    onSelectRange?.({ start: Math.min(drag.startTime, end), end: Math.max(drag.startTime, end) });
+  }
+
   function handleTrackClick(event: MouseEvent<HTMLDivElement>) {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
     if (!onSeek) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const time = createTimeScale(model.durationSeconds, Math.max(1, bounds.width)).pixelsToSeconds(
-      event.clientX - bounds.left,
-    );
-    onSeek(time);
+    onSeek(timeAt(event, event.currentTarget));
   }
 
   function handleClipClick(event: MouseEvent<HTMLDivElement>, clip: CompositionClip) {
@@ -88,6 +133,9 @@ export function CompositionTimeline({ model, currentTime, selectedClipId, onSeek
       data-testid="composition-timeline"
       aria-label="Composition timeline"
       style={trackStyle}
+      onMouseDown={handleTrackMouseDown}
+      onMouseMove={handleTrackMouseMove}
+      onMouseUp={handleTrackMouseUp}
       onClick={handleTrackClick}
     >
       {model.clips.map((clip) => {
@@ -100,6 +148,7 @@ export function CompositionTimeline({ model, currentTime, selectedClipId, onSeek
             data-testid={`composition-clip-${clip.id}`}
             data-selected={selected ? "true" : "false"}
             style={{ ...clipStyle, ...(selected && selectedClipStyle), left: `${left}%`, width: `${width}%` }}
+            onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => handleClipClick(event, clip)}
           >
             {clip.label ?? clip.id}
@@ -115,6 +164,22 @@ export function CompositionTimeline({ model, currentTime, selectedClipId, onSeek
           {label.name}
         </div>
       ))}
+      {(liveRange ?? selection) ? (
+        <div
+          data-testid="composition-selection-band"
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: `${scale.secondsToPixels((liveRange ?? selection)!.start)}%`,
+            width: `${scale.secondsToPixels((liveRange ?? selection)!.end) - scale.secondsToPixels((liveRange ?? selection)!.start)}%`,
+            background: "var(--tk-accent-soft, rgba(108,140,255,0.22))",
+            border: "1px solid var(--tk-accent, #6C8CFF)",
+            borderRadius: 4,
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
       <div data-testid="composition-playhead" style={{ ...playheadStyle, left: `${scale.secondsToPixels(currentTime)}%` }} />
     </div>
   );
