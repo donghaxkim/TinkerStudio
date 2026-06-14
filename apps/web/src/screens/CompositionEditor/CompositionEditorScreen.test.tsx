@@ -53,4 +53,39 @@ describe("CompositionEditorScreen", () => {
     expect(screen.getByTestId("composition-clip-feature")).toHaveAttribute("data-selected", "true");
     expect(screen.getByTestId("composition-playhead")).toHaveStyle({ left: "40%" }); // currentTime 4 / duration 10
   });
+
+  it("renders the porcelain shell: app bar + playback bar + chat panel", async () => {
+    const handle = fakeHandle(() => undefined);
+    render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Playback controls")).toBeInTheDocument();
+    expect(screen.getByLabelText("Chat")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add selection to chat" })).toBeDisabled();
+  });
+
+  it("adds a clip selection to chat as a chip", async () => {
+    const handle = fakeHandle(() => undefined);
+    render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-clip-feature")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("composition-clip-feature")); // selects clip "feature" (4–10)
+    fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
+    // Assert via the chip's remove button — "feature" text also appears on the timeline clip,
+    // so getByText("feature") would match two nodes.
+    expect(screen.getByRole("button", { name: "Remove feature from chat" })).toBeInTheDocument();
+  });
 });
