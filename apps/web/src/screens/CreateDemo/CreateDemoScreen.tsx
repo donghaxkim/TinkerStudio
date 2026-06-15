@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DemoProject } from "@tinker/project-schema";
-import { ManualFixtureCreateDemoRequestSchema } from "@tinker/generation-contract";
-import type { GenerationClient } from "../../lib/generationClient.js";
+import { AiUrlPlanningCreateDemoRequestSchema } from "@tinker/generation-contract";
+import type { ApiArtifact } from "@tinker/generation-contract";
+import type { GenerationClient, GenerationClientJob } from "../../lib/generationClient.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -132,9 +133,19 @@ type AiMessage = {
   role: "ai";
   text: string;
   storyboard?: { scenes: SceneRow[]; project: DemoProject };
+  backendOutput?: { jobId: string; outputVideo: ApiArtifact; artifacts: ApiArtifact[] };
   error?: string;
 };
 type ThreadMessage = UserMessage | AiMessage;
+
+function getBackendArtifacts(job: GenerationClientJob): ApiArtifact[] | null {
+  const result = job.result as { artifacts?: unknown } | undefined;
+  return Array.isArray(result?.artifacts) ? (result.artifacts as ApiArtifact[]) : null;
+}
+
+function getGeneratedVideoArtifact(artifacts: ApiArtifact[]) {
+  return artifacts.find((artifact) => artifact.kind === "output-video" || artifact.kind === "playwright-video");
+}
 
 // ─── props ────────────────────────────────────────────────────────────────────
 
@@ -240,15 +251,18 @@ export function CreateDemoScreen({
       setBusy(true);
 
       // Build and validate the request
+      const repoUrl = `https://github.com/${verified}`;
       const requestInput = {
-        mode: "manual-fixture" as const,
-        repoUrl: `https://github.com/${verified}`,
+        mode: "ai-url-planning" as const,
+        repoUrl,
+        productUrl: repoUrl,
         prompt: t,
         durationCapSeconds: 60,
         aspectRatio: "16:9" as const,
+        renderer: "playwright" as const,
       };
 
-      const parsed = ManualFixtureCreateDemoRequestSchema.safeParse(requestInput);
+      const parsed = AiUrlPlanningCreateDemoRequestSchema.safeParse(requestInput);
       if (!parsed.success) {
         const msg = parsed.error.issues.map((i) => i.message).join("; ");
         if (cancelledRef.current) return;
@@ -278,6 +292,22 @@ export function CreateDemoScreen({
             },
           ]);
           // Don't auto-navigate; let user click "Record & open in editor"
+        } else if (job.status === "completed") {
+          const artifacts = getBackendArtifacts(job);
+          const outputVideo = artifacts ? getGeneratedVideoArtifact(artifacts) : undefined;
+          if (artifacts && outputVideo) {
+            setMessages((m) => [
+              ...m,
+              {
+                role: "ai",
+                text: `Backend generated your demo video for ${verified}.`,
+                backendOutput: { jobId: job.id, outputVideo, artifacts },
+              },
+            ]);
+          } else {
+            setDraft(submittedPrompt);
+            setMessages((m) => [...m, { role: "ai", text: "", error: "Generation completed without an output video." }]);
+          }
         } else {
           const errorMsg = job.status === "failed" && job.error ? job.error.message : "Generation failed.";
           setDraft(submittedPrompt);
@@ -511,6 +541,56 @@ export function CreateDemoScreen({
                                 <path d="M2 7h10 M7.8 2.8 12 7l-4.2 4.2" />
                               </svg>
                             </button>
+                          </div>
+                        </div>
+                      )}
+                      {m.backendOutput && (
+                        <div
+                          style={{
+                            background: "var(--tk-card)",
+                            border: "1px solid var(--tk-border)",
+                            borderRadius: "var(--tk-radius-md)",
+                            boxShadow: "var(--tk-shadow-sm)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              padding: "14px",
+                              fontSize: 13,
+                              lineHeight: 1.5,
+                              color: "var(--tk-text-sec)",
+                            }}
+                          >
+                            Output video ready from backend job {m.backendOutput.jobId}.
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 12,
+                              padding: "9px 14px",
+                              borderTop: "1px solid var(--tk-border-soft)",
+                              background: "var(--tk-raised)",
+                            }}
+                          >
+                            <span style={{ fontSize: 12, color: "var(--tk-text-sec)" }}>
+                              {m.backendOutput.artifacts.length} artifact{m.backendOutput.artifacts.length !== 1 ? "s" : ""}
+                            </span>
+                            <a
+                              href={m.backendOutput.outputVideo.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 600,
+                                color: "var(--tk-accent)",
+                                textDecoration: "none",
+                              }}
+                            >
+                              Open generated video
+                            </a>
                           </div>
                         </div>
                       )}

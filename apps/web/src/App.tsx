@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { DemoProject } from "@tinker/project-schema";
-import { createMockGenerationClient } from "./lib/mockGenerationClient.js";
+import { createGenerationClientForEnv } from "./lib/generationClientFactory.js";
 import { createMockCompositionGenerationClient } from "./lib/mockCompositionGenerationClient.js";
 import { createMockCompositionEditClient } from "./lib/mockCompositionEditClient.js";
 import { loadSampleProject } from "./fixtures/loadSampleProject.js";
@@ -20,7 +20,7 @@ type AppState = {
   preSettingsRoute: PreSettingsRoute;
 };
 
-const generationClient = createMockGenerationClient();
+const generationClient = createGenerationClientForEnv();
 const compositionClient = createMockCompositionGenerationClient();
 const compositionEditClient = createMockCompositionEditClient();
 

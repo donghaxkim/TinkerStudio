@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ApiGenerationJob } from "@tinker/generation-contract";
+import type { GenerationClient } from "../../lib/generationClient.js";
 import { createMockGenerationClient } from "../../lib/mockGenerationClient.js";
 import { CreateDemoScreen } from "./CreateDemoScreen.js";
 
@@ -19,6 +21,49 @@ async function flushAsync() {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+function completedApiJob(): ApiGenerationJob {
+  return {
+    id: "job-test",
+    status: "completed",
+    request: {
+      id: "job-test",
+      mode: "ai-url-planning",
+      repoUrl: "https://github.com/example/product",
+      productUrl: "https://github.com/example/product",
+      prompt: "Show the analytics workflow",
+      durationCapSeconds: 60,
+      aspectRatio: "16:9",
+      renderer: "playwright",
+    },
+    createdAt: "2026-06-14T00:00:00.000Z",
+    updatedAt: "2026-06-14T00:00:02.000Z",
+    progressEvents: [
+      {
+        jobId: "job-test",
+        status: "running",
+        message: "AI URL analysis started",
+        time: "2026-06-14T00:00:01.000Z",
+      },
+    ],
+    result: {
+      artifacts: [
+        {
+          kind: "playwright-video",
+          relativePath: "playwright/capture/videos/demo.webm",
+          url: "/api/jobs/job-test/artifacts/playwright/capture/videos/demo.webm",
+          mediaType: "video/webm",
+        },
+        {
+          kind: "composition-index",
+          relativePath: "hyperframes/index.html",
+          url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+          mediaType: "text/html",
+        },
+      ],
+    },
+  };
 }
 
 describe("CreateDemoScreen — Porcelain chat composer", () => {
@@ -209,6 +254,40 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
     expect(screen.getByText("Show the analytics workflow")).toBeInTheDocument();
     expect(screen.getByText(/here's the cut I'd make/i)).toBeInTheDocument();
     expect(screen.getByText("Record & open in editor")).toBeInTheDocument();
+  });
+
+  it("submits an ai-url-planning request and renders completed backend artifacts", async () => {
+    const createDemo = vi.fn(async () => completedApiJob());
+    const client: GenerationClient = {
+      createDemo,
+      getJob: vi.fn(async () => completedApiJob()),
+      subscribeToProgress: vi.fn(() => () => undefined),
+    };
+
+    render(<CreateDemoScreen generationClient={client} onProjectGenerated={() => undefined} />);
+
+    await enterAndVerifyRepo();
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "Show the analytics workflow" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await flushAsync();
+
+    expect(createDemo).toHaveBeenCalledWith({
+      mode: "ai-url-planning",
+      repoUrl: "https://github.com/example/product",
+      productUrl: "https://github.com/example/product",
+      prompt: "Show the analytics workflow",
+      durationCapSeconds: 60,
+      aspectRatio: "16:9",
+      renderer: "playwright",
+    });
+    expect(screen.getByText(/Backend generated your demo video/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open generated video" })).toHaveAttribute(
+      "href",
+      "/api/jobs/job-test/artifacts/playwright/capture/videos/demo.webm",
+    );
   });
 
   it("clicking 'Record & open in editor' calls onProjectGenerated", async () => {
