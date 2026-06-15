@@ -6,14 +6,27 @@ import type { GenerationClient } from "../../lib/generationClient.js";
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function cd2ParseRepo(raw: string): string | null {
-  const t = raw
-    .trim()
-    .replace(/^https?:\/\//, "")
-    .replace(/^(www\.)?github\.com\//, "")
-    .replace(/\.git$/, "")
-    .replace(/\/+$/, "");
-  const m = t.match(/^([\w.-]+)\/([\w.-]+)$/);
-  return m ? `${m[1]}/${m[2]}` : null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  let path = trimmed;
+  if (/^https?:\/\//i.test(trimmed) || /^(www\.)?github\.com\//i.test(trimmed)) {
+    try {
+      const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+      if (url.hostname !== "github.com" && url.hostname !== "www.github.com") return null;
+      path = url.pathname;
+    } catch {
+      return null;
+    }
+  }
+
+  const [owner, repoWithGit] = path
+    .replace(/^\/+/, "")
+    .split("/")
+    .filter(Boolean);
+  const repo = repoWithGit?.replace(/\.git$/, "");
+
+  return owner && repo && /^[\w.-]+$/.test(owner) && /^[\w.-]+$/.test(repo) ? `${owner}/${repo}` : null;
 }
 
 function cd2Fmt(s: number): string {

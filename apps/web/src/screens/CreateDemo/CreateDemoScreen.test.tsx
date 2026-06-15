@@ -109,6 +109,23 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
     expect(screen.getByTitle("Repository verified")).toBeInTheDocument();
   });
 
+  it("verifies a pasted GitHub URL even when it includes a branch path", async () => {
+    render(
+      <CreateDemoScreen
+        generationClient={createMockGenerationClient()}
+        onProjectGenerated={() => undefined}
+      />,
+    );
+
+    await enterAndVerifyRepo("https://github.com/example/product/tree/main");
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "Show the analytics workflow" },
+    });
+
+    expect(screen.getByTitle("Repository verified")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled();
+  });
+
   it("clearing the repo input removes verification", async () => {
     render(
       <CreateDemoScreen
