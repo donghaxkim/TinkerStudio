@@ -113,6 +113,12 @@ export const ApiGenerationJobSchema = z
     if (job.status === "completed") {
       if (job.result === undefined) {
         ctx.addIssue({ code: "custom", path: ["result"], message: "completed jobs require a result" });
+      } else if (job.result.method !== job.request.renderer) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["result", "method"],
+          message: "result method must match request renderer",
+        });
       }
     } else if (job.result !== undefined) {
       ctx.addIssue({ code: "custom", path: ["result"], message: "result is only allowed for completed jobs" });

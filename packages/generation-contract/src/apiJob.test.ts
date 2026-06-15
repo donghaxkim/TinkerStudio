@@ -226,6 +226,28 @@ describe("API generation job contract", () => {
     ).toBe(false);
   });
 
+  it("rejects completed API jobs when request renderer and result method disagree", () => {
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-test",
+        status: "completed",
+        request: { ...request, renderer: "playwright" },
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:02.000Z",
+        progressEvents: [progressEvent],
+        result: {
+          method: "hyperframes",
+          composition: {
+            indexArtifact: compositionIndexArtifact,
+            outputVideoArtifact,
+          },
+          artifacts: [compositionIndexArtifact, outputVideoArtifact],
+          warnings: [],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("requires AI URL planning requests and explicit progress events", () => {
     expect(
       safeParseApiGenerationJob({
