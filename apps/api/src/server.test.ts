@@ -740,6 +740,70 @@ describe("job routes", () => {
       await server.close();
     }
   });
+
+  it("POST /api/jobs/:id/edits enqueues an edit and appends a revision", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-edit-"));
+    const outputRoot = join(repoRoot, "generated", "local-job", "id-1");
+    const completed = deferred<void>();
+    let idCount = 0;
+    const runEdit = async () => ({ artifacts: [{ kind: "composition-index" as const, relativePath: "revisions/rev/hyperframes/index.html", url: "/api/jobs/x/artifacts/revisions/rev/hyperframes/index.html", mediaType: "text/html" }] });
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => `id-${++idCount}`,
+      runEdit,
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(join(outputRoot, "hyperframes", "index.html"), "<html>composition</html>");
+        completed.resolve();
+        return {
+          jobId: "id-1",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [join(outputRoot, "hyperframes", "index.html")],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const created = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(created.statusCode).toBe(202);
+      const jobId = created.json().id as string;
+      await completed.promise;
+      await waitForJobStatus(server, jobId, "completed");
+
+      const edit = await server.inject({ method: "POST", url: `/api/jobs/${jobId}/edits`, payload: { instruction: "punch in", context: [] } });
+      expect(edit.statusCode).toBe(202);
+      await waitForRevision(server, jobId);
+      const got = await server.inject({ method: "GET", url: `/api/jobs/${jobId}` });
+      expect(got.json().status).toBe("completed");
+      expect(got.json().revisions?.[0]?.status).toBe("completed");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("POST /edits → 404 for unknown job, 422 for bad body", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-edit-"));
+    const server = await buildServer({ config: testConfig(repoRoot), runEdit: async () => ({ artifacts: [] }) });
+    try {
+      expect((await server.inject({ method: "POST", url: "/api/jobs/nope/edits", payload: { instruction: "x", context: [] } })).statusCode).toBe(404);
+      const created = await server.inject({ method: "POST", url: "/api/jobs", payload: { mode: "ai-url-planning", repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9" } });
+      expect(created.statusCode).toBe(202);
+      expect((await server.inject({ method: "POST", url: `/api/jobs/${created.json().id}/edits`, payload: { instruction: "", context: [] } })).statusCode).toBe(422);
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 describe("artifact indexing", () => {
@@ -1039,6 +1103,17 @@ async function waitForJobStatus(
   }
 
   throw new Error(`Timed out waiting for ${id} to become ${status}`);
+}
+
+async function waitForRevision(server: Awaited<ReturnType<typeof buildServer>>, id: string) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const response = await server.inject({ method: "GET", url: `/api/jobs/${id}` });
+    const snapshot = JSON.parse(response.body) as { revisions?: Array<{ id?: string }> };
+    if (snapshot.revisions?.[0] !== undefined) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  throw new Error(`Timed out waiting for ${id} to record a revision`);
 }
 
 describe("job queue", () => {

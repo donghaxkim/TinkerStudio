@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import {
   AiUrlPlanningCreateDemoRequestSchema,
   AiUrlRendererSchema,
+  EditCompositionRequestBodySchema,
   GenerationErrorSchema,
   type AiUrlPlanningCreateDemoRequest,
 } from "@tinker/generation-contract";
@@ -86,5 +87,25 @@ export function registerJobsRoutes(server: FastifyInstance, options: JobsRoutesO
     }
 
     return snapshot;
+  });
+
+  server.post<{ Params: { id: string } }>("/api/jobs/:id/edits", async (request, reply) => {
+    const job = options.store.getRecord(request.params.id);
+    if (job === undefined) {
+      return reply.status(404).send({ message: "Job not found" });
+    }
+    const parsed = EditCompositionRequestBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(422).send(validationError(formatZodIssues(parsed.error.issues)));
+    }
+    if (!options.queue.hasCapacity()) {
+      return reply.status(429).send({ message: "Generation queue is full" });
+    }
+    const revId = options.idGenerator();
+    options.store.setPendingEdit(request.params.id, { revId, instruction: parsed.data.instruction, context: parsed.data.context });
+    if (!options.queue.enqueue(request.params.id)) {
+      return reply.status(429).send({ message: "Generation queue is full" });
+    }
+    return reply.status(202).send(options.store.getSnapshot(request.params.id));
   });
 }
