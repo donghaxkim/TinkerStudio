@@ -79,11 +79,14 @@ function isRightEdgeTarget(target: ZoomKeyframe["target"], frame: FrameSize | un
 }
 
 function terminalRightEdgeOutroTarget(frame: FrameSize): ZoomKeyframe["target"] {
+  const width = cleanNumber(frame.width * RIGHT_EDGE_OUTRO_TARGET_RATIO);
+  const height = cleanNumber(frame.height * RIGHT_EDGE_OUTRO_TARGET_RATIO);
+
   return {
     x: 0,
-    y: 0,
-    width: cleanNumber(frame.width * RIGHT_EDGE_OUTRO_TARGET_RATIO),
-    height: cleanNumber(frame.height * RIGHT_EDGE_OUTRO_TARGET_RATIO),
+    y: cleanNumber((frame.height - height) / 2),
+    width,
+    height,
   };
 }
 

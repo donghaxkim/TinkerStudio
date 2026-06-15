@@ -169,7 +169,7 @@ assert.deepEqual(terminalRightEdgeOutroZoom, {
   id: "zoom-0-outro",
   start: 9.614,
   end: 10.514,
-  target: { x: 0, y: 0, width: 1280, height: 720 },
+  target: { x: 0, y: 180, width: 1280, height: 720 },
   easing: "easeOut",
 });
 
