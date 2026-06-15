@@ -9,6 +9,9 @@ import {
 import type { CaptureAsset, CaptureEvent } from "@tinker/browser-capture";
 import type { CompileProjectInput } from "./types.js";
 
+const ZOOM_TARGET_HOLD_SECONDS = 2.5;
+const ZOOM_MERGE_EPSILON_SECONDS = 0.001;
+
 function toProjectAsset(asset: CaptureAsset): Asset {
   return {
     id: asset.id,
@@ -47,26 +50,51 @@ function toCursorEvent(event: CaptureEvent): CursorEvent | undefined {
   return undefined;
 }
 
-function toZoomKeyframe(event: CaptureEvent, index: number, duration: number): ZoomKeyframe[] {
-  if (event.type !== "zoomTarget") {
-    return [];
-  }
+function mergeRects(left: ZoomKeyframe["target"], right: ZoomKeyframe["target"]): ZoomKeyframe["target"] {
+  const x = Math.min(left.x, right.x);
+  const y = Math.min(left.y, right.y);
+  const maxX = Math.max(left.x + left.width, right.x + right.width);
+  const maxY = Math.max(left.y + left.height, right.y + right.height);
 
-  const end = Math.min(event.time + 2.5, duration);
+  return { x, y, width: maxX - x, height: maxY - y };
+}
 
-  if (end <= event.time) {
-    return [];
-  }
+function toZoomKeyframes(events: readonly CaptureEvent[], duration: number): ZoomKeyframe[] {
+  const zooms: ZoomKeyframe[] = [];
+  const zoomTargets = events
+    .map((event, index) => ({ event, index }))
+    .filter(
+      (entry): entry is { event: Extract<CaptureEvent, { type: "zoomTarget" }>; index: number } =>
+        entry.event.type === "zoomTarget",
+    )
+    .sort((left, right) => left.event.time - right.event.time || left.index - right.index);
 
-  return [
-    {
+  zoomTargets.forEach(({ event, index }) => {
+    const end = Math.min(event.time + ZOOM_TARGET_HOLD_SECONDS, duration);
+
+    if (end <= event.time) {
+      return;
+    }
+
+    const target = { x: event.x, y: event.y, width: event.width, height: event.height };
+    const previous = zooms.at(-1);
+
+    if (previous && event.time <= previous.end + ZOOM_MERGE_EPSILON_SECONDS) {
+      previous.end = Math.max(previous.end, end);
+      previous.target = mergeRects(previous.target, target);
+      return;
+    }
+
+    zooms.push({
       id: `zoom-${index}`,
       start: event.time,
       end,
-      target: { x: event.x, y: event.y, width: event.width, height: event.height },
+      target,
       easing: "easeInOut",
-    },
-  ];
+    });
+  });
+
+  return zooms;
 }
 
 function captureFrameRate(asset: CaptureAsset) {
@@ -95,9 +123,7 @@ export function compileProject(input: CompileProjectInput): DemoProject {
 
     return cursorEvent && cursorEvent.time <= duration ? [cursorEvent] : [];
   });
-  const zooms: ZoomKeyframe[] = input.captureResult.events.flatMap((event, index) =>
-    toZoomKeyframe(event, index, duration),
-  );
+  const zooms = toZoomKeyframes(input.captureResult.events, duration);
   const project: DemoProject = {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     id: input.projectId,
@@ -133,6 +159,7 @@ export function compileProject(input: CompileProjectInput): DemoProject {
     ],
     zooms,
     cursorEvents,
+    cursor: { clickEffect: "none" },
     aiEditHistory: [],
     metadata: {
       ...(input.sourceRepoUrl ? { sourceRepoUrl: input.sourceRepoUrl } : {}),
