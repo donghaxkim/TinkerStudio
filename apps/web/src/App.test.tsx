@@ -179,15 +179,15 @@ describe("App shell state machine", () => {
 describe("App composition route", () => {
   it("opens the composition demo from the create screen entry", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Composition demo (beta)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Composition demo" }));
     expect(screen.getByRole("button", { name: "Generate" })).toBeInTheDocument();
   });
 
   it("returns to the create screen via the composition Back button", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Composition demo (beta)" }));
-    expect(screen.queryByRole("button", { name: "Composition demo (beta)" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Composition demo" }));
+    expect(screen.queryByRole("button", { name: "Composition demo" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(screen.getByRole("button", { name: "Composition demo (beta)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Composition demo" })).toBeInTheDocument();
   });
 });

@@ -6,6 +6,9 @@ import { createComposeRunEdit } from "./composeRunEdit.js";
 import { createJobStore } from "../jobs/jobStore.js";
 
 const HTML = `<html><body><div data-composition-id="demo"></div><script>window.__timelines={demo:1};\nconst D=1.0;</script></body></html>`;
+const indexArtifact = { kind: "composition-index" as const, relativePath: "hyperframes/index.html", url: "/api/jobs/j/artifacts/hyperframes/index.html", mediaType: "text/html" };
+const outputVideoArtifact = { kind: "output-video" as const, relativePath: "hyperframes/output.mp4", url: "/api/jobs/j/artifacts/hyperframes/output.mp4", mediaType: "video/mp4" };
+const completedResult = { method: "hyperframes" as const, composition: { indexArtifact, outputVideoArtifact }, artifacts: [indexArtifact, outputVideoArtifact], warnings: [] };
 
 async function seededRecord() {
   const outputRoot = await mkdtemp(join(tmpdir(), "tinker-edit-"));
@@ -13,7 +16,7 @@ async function seededRecord() {
   await writeFile(join(outputRoot, "hyperframes", "index.html"), HTML, "utf8");
   const store = createJobStore();
   store.create({ id: "j", request: { mode: "ai-url-planning", repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9", renderer: "hyperframes" }, outputRoot, now: "2026-06-14T00:00:00.000Z" });
-  store.complete("j", { artifacts: [] }, "2026-06-14T00:00:00.000Z");
+  store.complete("j", completedResult, "2026-06-14T00:00:00.000Z");
   return { store, outputRoot };
 }
 
@@ -28,6 +31,18 @@ describe("createComposeRunEdit", () => {
     const written = await readFile(join(store.getRecord("j")!.outputRoot, "revisions/rev-1/hyperframes/index.html"), "utf8");
     expect(written).toContain("const D=2.0;");
   });
+
+  it("omits copied render outputs from edit-only revision results", async () => {
+    const { store, outputRoot } = await seededRecord();
+    await writeFile(join(outputRoot, "hyperframes", "output.mp4"), "old video", "utf8");
+    const runEdit = createComposeRunEdit({ runAgent: async () => "<<<<<<< SEARCH\nconst D=1.0;\n=======\nconst D=2.0;\n>>>>>>> REPLACE" });
+
+    const result = await runEdit(store.getRecord("j")!, { revId: "rev-1", instruction: "slower", context: [] });
+
+    expect(result.composition.outputVideoArtifact).toBeUndefined();
+    expect(result.artifacts.some((artifact) => artifact.kind === "output-video")).toBe(false);
+  });
+
   it("throws when the agent edit does not apply", async () => {
     const { store } = await seededRecord();
     const runEdit = createComposeRunEdit({ runAgent: async () => "<<<<<<< SEARCH\nNOPE\n=======\nX\n>>>>>>> REPLACE" });

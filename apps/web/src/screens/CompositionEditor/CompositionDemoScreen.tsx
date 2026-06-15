@@ -1,8 +1,8 @@
 import { useState, type CSSProperties, type FormEvent } from "react";
+import type { ApiGenerationJob } from "@tinker/generation-contract";
 import type { TimelineRegistryWindow } from "@tinker/editor";
 import type { CompositionEditClient } from "../../lib/compositionEditClient.js";
 import type { CompositionGenerationClient } from "../../lib/compositionGenerationClient.js";
-import { selectArtifactUrl } from "../../lib/compositionGenerationClient.js";
 import { useCompositionGenerationJob } from "../../lib/useCompositionGenerationJob.js";
 import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
 
@@ -13,12 +13,13 @@ export type CompositionDemoScreenProps = {
   onBack?: () => void;
   /** Test seam forwarded to CompositionEditorScreen. */
   resolveWindow?: (iframe: HTMLIFrameElement) => TimelineRegistryWindow | null | undefined;
+  initialCompletedJob?: ApiGenerationJob;
 };
 
 const pageStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: 12, height: "100%", minHeight: 0, padding: 24 };
 const fieldStyle: CSSProperties = { display: "grid", gap: 4 };
 
-export function CompositionDemoScreen({ client, editClient, onBack, resolveWindow }: CompositionDemoScreenProps) {
+export function CompositionDemoScreen({ client, editClient, onBack, resolveWindow, initialCompletedJob }: CompositionDemoScreenProps) {
   const job = useCompositionGenerationJob(client);
   const [repoUrl, setRepoUrl] = useState("");
   const [productUrl, setProductUrl] = useState("");
@@ -30,16 +31,18 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
     </button>
   ) : null;
 
-  if (job.phase === "completed" && job.job) {
-    const compositionIndexUrl = selectArtifactUrl(job.job, "composition-index");
-    if (compositionIndexUrl) {
+  const completedJob = initialCompletedJob ?? (job.phase === "completed" ? job.job : undefined);
+
+  if (completedJob) {
+    if (completedJob.result?.method === "hyperframes") {
+      const { composition } = completedJob.result;
       // Full-bleed: the editor carries its own porcelain app bar (with a Back
       // affordance), so it is not wrapped in the request-form page chrome.
       return (
         <CompositionEditorScreen
-          compositionIndexUrl={compositionIndexUrl}
-          outputVideoUrl={selectArtifactUrl(job.job, "output-video")}
-          jobId={job.job.id}
+          compositionIndexUrl={composition.indexArtifact.url}
+          outputVideoUrl={composition.outputVideoArtifact.url}
+          jobId={completedJob.id}
           {...(editClient ? { editClient } : {})}
           onBack={onBack}
           resolveWindow={resolveWindow}

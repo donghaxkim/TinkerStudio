@@ -1,5 +1,5 @@
 import { isAbsolute, relative, sep } from "node:path";
-import type { ApiArtifact, ApiArtifactKind } from "@tinker/generation-contract";
+import type { ApiArtifact, ApiArtifactKind, ApiRevisionResult } from "@tinker/generation-contract";
 
 export type IndexArtifactsInput = {
   jobId: string;
@@ -72,4 +72,34 @@ export function indexArtifacts(input: IndexArtifactsInput): ApiArtifact[] {
       },
     ];
   });
+}
+
+function requireArtifact(artifacts: ApiArtifact[], kind: ApiArtifactKind) {
+  const artifact = artifacts.find((candidate) => candidate.kind === kind);
+  if (artifact === undefined) {
+    throw new Error(`Revision is missing required ${kind} artifact`);
+  }
+  return artifact;
+}
+
+function optionalArtifact(artifacts: ApiArtifact[], kind: ApiArtifactKind) {
+  return artifacts.find((candidate) => candidate.kind === kind);
+}
+
+export function buildHyperframesRevisionResult(artifacts: ApiArtifact[]): ApiRevisionResult {
+  const outputVideoArtifact = optionalArtifact(artifacts, "output-video");
+  const generationManifestArtifact = optionalArtifact(artifacts, "generation-manifest");
+  const assetManifestArtifact = optionalArtifact(artifacts, "asset-manifest");
+
+  return {
+    method: "hyperframes",
+    composition: {
+      indexArtifact: requireArtifact(artifacts, "composition-index"),
+      ...(outputVideoArtifact === undefined ? {} : { outputVideoArtifact }),
+      ...(generationManifestArtifact === undefined ? {} : { generationManifestArtifact }),
+      ...(assetManifestArtifact === undefined ? {} : { assetManifestArtifact }),
+    },
+    artifacts,
+    warnings: [],
+  };
 }

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { readdir } from "node:fs/promises";
 import { runHyperframesRender } from "@tinker/demo-assembly";
-import { indexArtifacts } from "../jobs/artifactIndex.js";
+import { buildHyperframesRevisionResult, indexArtifacts } from "../jobs/artifactIndex.js";
 import type { RunRender } from "../workers/renderWorker.js";
 
 export function createDefaultRunRender(): RunRender {
@@ -9,7 +9,8 @@ export function createDefaultRunRender(): RunRender {
     const revDir = join(record.outputRoot, "revisions", render.revId, "hyperframes");
     await runHyperframesRender({ hyperframesDir: revDir, outputVideoPath: join(revDir, "output.mp4") });
     const files = await listFiles(revDir);
-    return { artifacts: indexArtifacts({ jobId: record.id, outputRoot: record.outputRoot, artifactPaths: files }) };
+    const artifacts = indexArtifacts({ jobId: record.id, outputRoot: record.outputRoot, artifactPaths: files });
+    return buildHyperframesRevisionResult(artifacts);
   };
 }
 

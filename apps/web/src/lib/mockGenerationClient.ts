@@ -1,6 +1,7 @@
 import type { DemoProject } from "@tinker/project-schema";
 import { DemoProjectSchema } from "@tinker/project-schema";
 import {
+  type ApiGenerationJob,
   type CreateDemoRequest,
   type GenerationJob,
   type GenerationPhase,
@@ -47,15 +48,59 @@ function buildProgressEvents(jobId: string): GenerationProgressEvent[] {
   }));
 }
 
+function buildMockHyperframesJob(jobId: string, request: CreateDemoRequest): ApiGenerationJob {
+  const compositionIndex = {
+    kind: "composition-index" as const,
+    relativePath: "hyperframes/index.html",
+    url: `/api/jobs/${jobId}/artifacts/hyperframes/index.html`,
+    mediaType: "text/html; charset=utf-8",
+  };
+  const outputVideo = {
+    kind: "output-video" as const,
+    relativePath: "hyperframes/output.mp4",
+    url: `/api/jobs/${jobId}/artifacts/hyperframes/output.mp4`,
+    mediaType: "video/mp4",
+  };
+
+  if (!("mode" in request) || request.mode !== "ai-url-planning") {
+    throw new Error("Mock HyperFrames generation requires ai-url-planning request");
+  }
+
+  return {
+    id: jobId,
+    request: { ...request, id: jobId, renderer: "hyperframes" },
+    status: "completed",
+    createdAt: now(),
+    updatedAt: now(),
+    progressEvents: [],
+    result: {
+      method: "hyperframes",
+      composition: {
+        indexArtifact: compositionIndex,
+        outputVideoArtifact: outputVideo,
+      },
+      artifacts: [compositionIndex, outputVideo],
+      warnings: [],
+    },
+  };
+}
+
 export function createMockGenerationClient(options: MockGenerationClientOptions = {}): GenerationClient {
   const mode = options.mode ?? "succeeded";
-  const jobs = new Map<string, GenerationJob>();
+  const jobs = new Map<string, GenerationJob | ApiGenerationJob>();
 
   return {
     kind: "mock",
 
     async createDemo(request: CreateDemoRequest) {
       const jobId = `job_${Date.now()}`;
+
+      if (mode === "succeeded" && "mode" in request && request.mode === "ai-url-planning" && request.renderer === "hyperframes") {
+        const job = buildMockHyperframesJob(jobId, request);
+        jobs.set(jobId, job);
+        return job;
+      }
+
       const progressEvents = buildProgressEvents(jobId);
       const base = {
         id: jobId,

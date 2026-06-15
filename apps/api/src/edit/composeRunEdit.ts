@@ -1,7 +1,6 @@
-import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ApiGenerationResult } from "@tinker/generation-contract";
-import { indexArtifacts } from "../jobs/artifactIndex.js";
+import { buildHyperframesRevisionResult, indexArtifacts } from "../jobs/artifactIndex.js";
 import type { RunEdit } from "../workers/editWorker.js";
 import { applySearchReplace, parseSearchReplaceBlocks } from "./searchReplace.js";
 import { lintComposition } from "./compositionLint.js";
@@ -23,13 +22,14 @@ async function listFiles(dir: string, root = dir): Promise<string[]> {
 }
 
 export function createComposeRunEdit(deps: { runAgent: RunAgent }): RunEdit {
-  return async (record, edit): Promise<ApiGenerationResult> => {
+  return async (record, edit) => {
     const currentDir = record.currentRevisionId
       ? join(record.outputRoot, "revisions", record.currentRevisionId, "hyperframes")
       : join(record.outputRoot, "hyperframes");
     const revDir = join(record.outputRoot, "revisions", edit.revId, "hyperframes");
     await mkdir(revDir, { recursive: true });
     await cp(currentDir, revDir, { recursive: true });
+    await rm(join(revDir, "output.mp4"), { force: true });
 
     const indexPath = join(revDir, "index.html");
     const indexHtml = await readFile(indexPath, "utf8");
@@ -57,6 +57,7 @@ export function createComposeRunEdit(deps: { runAgent: RunAgent }): RunEdit {
 
     await writeFile(indexPath, outcome.result, "utf8");
     const files = await listFiles(revDir);
-    return { artifacts: indexArtifacts({ jobId: record.id, outputRoot: record.outputRoot, artifactPaths: files }) };
+    const artifacts = indexArtifacts({ jobId: record.id, outputRoot: record.outputRoot, artifactPaths: files });
+    return buildHyperframesRevisionResult(artifacts);
   };
 }

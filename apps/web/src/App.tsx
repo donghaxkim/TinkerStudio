@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ApiGenerationJob } from "@tinker/generation-contract";
 import type { DemoProject } from "@tinker/project-schema";
 import { createGenerationClientForEnv } from "./lib/generationClientFactory.js";
 import { createHttpCompositionGenerationClient } from "./lib/httpCompositionGenerationClient.js";
@@ -16,6 +17,7 @@ type Route = "create" | "editor" | "settings" | "composition";
 type AppState = {
   route: Route;
   project: DemoProject | undefined;
+  compositionJob: ApiGenerationJob | undefined;
   projectOrigin: ProjectOrigin;
   preSettingsRoute: PreSettingsRoute;
 };
@@ -30,12 +32,17 @@ export function App() {
   const [state, setState] = useState<AppState>({
     route: "create",
     project: undefined,
+    compositionJob: undefined,
     projectOrigin: "generated",
     preSettingsRoute: "create",
   });
 
   function handleProjectGenerated(project: DemoProject) {
     setState((prev) => ({ ...prev, route: "editor", project, projectOrigin: "generated" }));
+  }
+
+  function handleCompositionGenerated(job: ApiGenerationJob) {
+    setState((prev) => ({ ...prev, route: "composition", compositionJob: job }));
   }
 
   function handleUseSampleProject() {
@@ -88,7 +95,8 @@ export function App() {
       <CompositionDemoScreen
         client={compositionClient}
         editClient={compositionEditClient}
-        onBack={() => setState((prev) => ({ ...prev, route: "create" }))}
+        initialCompletedJob={state.compositionJob}
+        onBack={() => setState((prev) => ({ ...prev, route: "create", compositionJob: undefined }))}
       />
     );
   }
@@ -99,6 +107,7 @@ export function App() {
       <CreateDemoScreen
         generationClient={generationClient}
         onProjectGenerated={handleProjectGenerated}
+        onCompositionGenerated={handleCompositionGenerated}
         onUseSampleProject={handleUseSampleProject}
         onReturnToEditor={handleReturnToEditor}
         hasInProgressProject={state.project !== undefined}
@@ -107,9 +116,9 @@ export function App() {
         type="button"
         className="tk-btn"
         style={{ position: "fixed", right: 16, bottom: 16, zIndex: 10 }}
-        onClick={() => setState((prev) => ({ ...prev, route: "composition" }))}
+        onClick={() => setState((prev) => ({ ...prev, route: "composition", compositionJob: undefined }))}
       >
-        Composition demo (beta)
+        Composition demo
       </button>
     </>
   );

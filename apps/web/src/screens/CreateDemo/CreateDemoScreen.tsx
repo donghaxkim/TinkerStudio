@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DemoProject } from "@tinker/project-schema";
 import { AiUrlPlanningCreateDemoRequestSchema } from "@tinker/generation-contract";
-import type { ApiArtifact } from "@tinker/generation-contract";
+import type { ApiArtifact, ApiGenerationJob } from "@tinker/generation-contract";
 import type { GenerationClient, GenerationClientJob } from "../../lib/generationClient.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -127,6 +127,7 @@ function CD2Ghost({ active, color }: { active: boolean; color: string }) {
 // ─── thread message types ─────────────────────────────────────────────────────
 
 type SceneRow = { name: string; start: number };
+type GenerationMethod = "playwright" | "hyperframes";
 
 type UserMessage = { role: "user"; text: string };
 type AiMessage = {
@@ -138,13 +139,10 @@ type AiMessage = {
 };
 type ThreadMessage = UserMessage | AiMessage;
 
-function getBackendArtifacts(job: GenerationClientJob): ApiArtifact[] | null {
-  const result = job.result as { artifacts?: unknown } | undefined;
-  return Array.isArray(result?.artifacts) ? (result.artifacts as ApiArtifact[]) : null;
-}
+type CompletedApiGenerationJob = ApiGenerationJob & { result: NonNullable<ApiGenerationJob["result"]> };
 
-function getGeneratedVideoArtifact(artifacts: ApiArtifact[]) {
-  return artifacts.find((artifact) => artifact.kind === "output-video" || artifact.kind === "playwright-video");
+function isCompletedApiGenerationJob(job: GenerationClientJob): job is CompletedApiGenerationJob {
+  return job.status === "completed" && job.result !== undefined && "method" in job.result;
 }
 
 // ─── props ────────────────────────────────────────────────────────────────────
@@ -152,6 +150,7 @@ function getGeneratedVideoArtifact(artifacts: ApiArtifact[]) {
 type CreateDemoScreenProps = {
   generationClient: GenerationClient;
   onProjectGenerated: (project: DemoProject) => void;
+  onCompositionGenerated: (job: ApiGenerationJob) => void;
   onUseSampleProject?: () => void;
   onReturnToEditor?: () => void;
   hasInProgressProject?: boolean;
@@ -162,6 +161,7 @@ type CreateDemoScreenProps = {
 export function CreateDemoScreen({
   generationClient,
   onProjectGenerated,
+  onCompositionGenerated,
   onUseSampleProject,
   onReturnToEditor,
   hasInProgressProject = false,
@@ -175,6 +175,8 @@ export function CreateDemoScreen({
   const [taFocus, setTaFocus] = useState(false);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [busy, setBusy] = useState(false);
+  const [generationMethod, setGenerationMethod] = useState<GenerationMethod>("playwright");
+  const [focusedGenerationMethod, setFocusedGenerationMethod] = useState<GenerationMethod | undefined>(undefined);
 
   const repoInputRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -259,7 +261,7 @@ export function CreateDemoScreen({
         prompt: t,
         durationCapSeconds: 60,
         aspectRatio: "16:9" as const,
-        renderer: "playwright" as const,
+        renderer: generationMethod,
       };
 
       const parsed = AiUrlPlanningCreateDemoRequestSchema.safeParse(requestInput);
@@ -292,22 +294,22 @@ export function CreateDemoScreen({
             },
           ]);
           // Don't auto-navigate; let user click "Record & open in editor"
+        } else if (isCompletedApiGenerationJob(job) && job.result.method === "playwright") {
+          const project = job.result.project;
+          const scenes = deriveSceneRows(project);
+          setMessages((m) => [
+            ...m,
+            {
+              role: "ai",
+              text: `Read through ${verified} — here's the cut I'd make. ${scenes.length} scene${scenes.length !== 1 ? "s" : ""}, about a minute.`,
+              storyboard: { scenes, project },
+            },
+          ]);
+        } else if (isCompletedApiGenerationJob(job) && job.result.method === "hyperframes") {
+          onCompositionGenerated(job);
         } else if (job.status === "completed") {
-          const artifacts = getBackendArtifacts(job);
-          const outputVideo = artifacts ? getGeneratedVideoArtifact(artifacts) : undefined;
-          if (artifacts && outputVideo) {
-            setMessages((m) => [
-              ...m,
-              {
-                role: "ai",
-                text: `Backend generated your demo video for ${verified}.`,
-                backendOutput: { jobId: job.id, outputVideo, artifacts },
-              },
-            ]);
-          } else {
-            setDraft(submittedPrompt);
-            setMessages((m) => [...m, { role: "ai", text: "", error: "Generation completed without an output video." }]);
-          }
+          setDraft(submittedPrompt);
+          setMessages((m) => [...m, { role: "ai", text: "", error: "Generation completed without a native editable result." }]);
         } else {
           const errorMsg = job.status === "failed" && job.error ? job.error.message : "Generation failed.";
           setDraft(submittedPrompt);
@@ -327,7 +329,7 @@ export function CreateDemoScreen({
         ]);
       }
     },
-    [busy, verified, draft, generationClient, requireRepo],
+    [busy, verified, draft, generationClient, generationMethod, onCompositionGenerated, requireRepo],
   );
 
   const empty = messages.length === 0;
@@ -792,6 +794,49 @@ export function CreateDemoScreen({
                   active={!taFocus && !draft && empty}
                   color="var(--tk-text-ter)"
                 />
+              </div>
+
+              <div
+                role="radiogroup"
+                aria-label="Generation method"
+                style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: "6px 4px 4px" }}
+              >
+                {([
+                  ["playwright", "Playwright recording", "Real browser capture, editable timeline project"],
+                  ["hyperframes", "HyperFrames composition", "Generated motion composition with revisions"],
+                ] as const).map(([method, label, description]) => (
+                  <label
+                    key={method}
+                    style={{
+                      position: "relative",
+                      display: "block",
+                      textAlign: "left",
+                      border: `1px solid ${generationMethod === method ? "var(--tk-accent-line)" : "var(--tk-border-soft)"}`,
+                      background: generationMethod === method ? "var(--tk-accent-soft)" : "var(--tk-raised)",
+                      color: "var(--tk-text)",
+                      borderRadius: 8,
+                      padding: "7px 9px",
+                      fontFamily: "inherit",
+                      cursor: "pointer",
+                      boxShadow: focusedGenerationMethod === method ? "0 0 0 2px var(--tk-accent-line)" : "none",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="generation-method"
+                      value={method}
+                      checked={generationMethod === method}
+                      onChange={() => setGenerationMethod(method)}
+                      onFocus={() => setFocusedGenerationMethod(method)}
+                      onBlur={() => setFocusedGenerationMethod(undefined)}
+                      style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", margin: 0 }}
+                    />
+                    <span style={{ display: "block", fontSize: 12, fontWeight: 650 }}>{label}</span>
+                    <span style={{ display: "block", marginTop: 2, fontSize: 11, color: "var(--tk-text-sec)", lineHeight: 1.35 }}>
+                      {description}
+                    </span>
+                  </label>
+                ))}
               </div>
 
               {/* Send row */}

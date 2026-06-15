@@ -15,6 +15,7 @@
     "@fastify/cors": "^11.2.0",
     "@tinker/demo-assembly": "workspace:*",
     "@tinker/generation-contract": "workspace:*",
+    "@tinker/project-schema": "workspace:*",
     "fastify": "^5.8.5"
   },
   "devDependencies": {

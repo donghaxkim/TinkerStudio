@@ -37,10 +37,9 @@ export function createHttpCompositionEditClient(options: HttpCompositionEditClie
         if (revisions.length > prevCount) {
           const rev = revisions[revisions.length - 1]!;
           if (rev.status === "failed") throw new Error(rev.error?.message ?? "Edit failed");
-          const arts = rev.result?.artifacts ?? [];
-          const compositionIndexUrl = arts.find((a) => a.kind === "composition-index")?.url;
-          if (compositionIndexUrl === undefined) throw new Error("Edit completed but produced no composition");
-          const outputVideoUrl = arts.find((a) => a.kind === "output-video")?.url;
+          if (rev.result?.method !== "hyperframes") throw new Error("Edit completed but produced no composition");
+          const compositionIndexUrl = rev.result.composition.indexArtifact.url;
+          const outputVideoUrl = rev.result.composition.outputVideoArtifact?.url;
           return { id: rev.id, compositionIndexUrl, ...(outputVideoUrl === undefined ? {} : { outputVideoUrl }) };
         }
         await delay(intervalMs, opts?.signal);

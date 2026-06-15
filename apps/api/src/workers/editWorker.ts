@@ -1,8 +1,8 @@
-import type { ApiGenerationResult } from "@tinker/generation-contract";
+import type { ApiRevisionResult } from "@tinker/generation-contract";
 import type { JobRecord, JobStore, PendingEdit } from "../jobs/jobStore.js";
 
 /** Produce the new revision's result (artifacts) for a pending edit. Real impl (3b-4) runs the agent. */
-export type RunEdit = (record: JobRecord, edit: PendingEdit) => Promise<ApiGenerationResult>;
+export type RunEdit = (record: JobRecord, edit: PendingEdit) => Promise<ApiRevisionResult>;
 
 export type EditWorkerOptions = { store: JobStore; runEdit: RunEdit; now?: () => string };
 

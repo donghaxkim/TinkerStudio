@@ -1,8 +1,8 @@
-import type { ApiGenerationResult } from "@tinker/generation-contract";
+import type { ApiRevisionResult } from "@tinker/generation-contract";
 import type { JobRecord, JobStore, PendingRender } from "../jobs/jobStore.js";
 
 /** Render a revision's composition to mp4 and return its re-indexed artifacts (incl. output-video). */
-export type RunRender = (record: JobRecord, render: PendingRender) => Promise<ApiGenerationResult>;
+export type RunRender = (record: JobRecord, render: PendingRender) => Promise<ApiRevisionResult>;
 
 export type RenderWorkerOptions = { store: JobStore; runRender: RunRender; now?: () => string };
 

@@ -116,9 +116,9 @@ gracefully, so this is not a blocker for shipping Phases 0–2.
 
 - The `revisions` / `currentRevisionId` addition to the job shape is a **schema
   change** — small isolated PR, reviewed by both per the repo workflow.
-- `docs/architecture.md` still describes the retired `DemoProject`-operations
-  editing model. Revising it to the composition-source model is a **joint** change,
-  tracked separately (not part of Person B's slice).
+- `docs/architecture.md` documents dual generation methods. HyperFrames composition
+  source is the canonical editable state for HyperFrames jobs. `DemoProject` remains
+  the canonical editable state for Playwright jobs.
 
 ## Review checklist (for Person A)
 

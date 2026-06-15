@@ -1,9 +1,14 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiGenerationJob } from "@tinker/generation-contract";
+import { DemoProjectSchema } from "@tinker/project-schema";
 import type { GenerationClient } from "../../lib/generationClient.js";
 import { createMockGenerationClient } from "../../lib/mockGenerationClient.js";
 import { CreateDemoScreen } from "./CreateDemoScreen.js";
+import goldenProjectInput from "../../../../../packages/project-schema/fixtures/person-a-generated-project.sample.json" with { type: "json" };
+
+const goldenProject = DemoProjectSchema.parse(goldenProjectInput);
+const noopCompositionGenerated = () => undefined;
 
 // Helper: enter a repo URL and advance timers past the 1100ms verification delay
 async function enterAndVerifyRepo(repoValue = "github.com/example/product") {
@@ -48,20 +53,17 @@ function completedApiJob(): ApiGenerationJob {
       },
     ],
     result: {
+      method: "playwright",
+      project: goldenProject,
       artifacts: [
         {
-          kind: "playwright-video",
-          relativePath: "playwright/capture/videos/demo.webm",
-          url: "/api/jobs/job-test/artifacts/playwright/capture/videos/demo.webm",
-          mediaType: "video/webm",
-        },
-        {
-          kind: "composition-index",
-          relativePath: "hyperframes/index.html",
-          url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
-          mediaType: "text/html",
+          kind: "playwright-demo-project",
+          relativePath: "playwright/demo-project.json",
+          url: "/api/jobs/job-test/artifacts/playwright/demo-project.json",
+          mediaType: "application/json; charset=utf-8",
         },
       ],
+      warnings: [],
     },
   };
 }
@@ -82,6 +84,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -94,6 +97,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -106,6 +110,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -118,6 +123,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -135,6 +141,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -159,6 +166,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -176,6 +184,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -196,6 +205,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -217,6 +227,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -234,6 +245,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -256,7 +268,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
     expect(screen.getByText("Record & open in editor")).toBeInTheDocument();
   });
 
-  it("submits an ai-url-planning request and renders completed backend artifacts", async () => {
+  it("submits Playwright requests and renders the DemoProject storyboard", async () => {
     const createDemo = vi.fn(async () => completedApiJob());
     const client: GenerationClient = {
       createDemo,
@@ -264,7 +276,13 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       subscribeToProgress: vi.fn(() => () => undefined),
     };
 
-    render(<CreateDemoScreen generationClient={client} onProjectGenerated={() => undefined} />);
+    render(
+      <CreateDemoScreen
+        generationClient={client}
+        onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
+      />,
+    );
 
     await enterAndVerifyRepo();
     fireEvent.change(screen.getByLabelText("Demo prompt"), {
@@ -283,11 +301,84 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       aspectRatio: "16:9",
       renderer: "playwright",
     });
-    expect(screen.getByText(/Backend generated your demo video/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open generated video" })).toHaveAttribute(
-      "href",
-      "/api/jobs/job-test/artifacts/playwright/capture/videos/demo.webm",
+    expect(screen.getByText(/here's the cut I'd make/i)).toBeInTheDocument();
+    expect(screen.getByText("Record & open in editor")).toBeInTheDocument();
+  });
+
+  it("uses native generation method radios and routes HyperFrames jobs to composition", async () => {
+    const compositionJobs: string[] = [];
+    const createDemo = vi.fn(async () => ({
+      ...completedApiJob(),
+      request: { ...completedApiJob().request, renderer: "hyperframes" as const },
+      result: {
+        method: "hyperframes" as const,
+        composition: {
+          indexArtifact: {
+            kind: "composition-index" as const,
+            relativePath: "hyperframes/index.html",
+            url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+            mediaType: "text/html; charset=utf-8",
+          },
+          outputVideoArtifact: {
+            kind: "output-video" as const,
+            relativePath: "hyperframes/output.mp4",
+            url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
+            mediaType: "video/mp4",
+          },
+        },
+        artifacts: [
+          {
+            kind: "composition-index" as const,
+            relativePath: "hyperframes/index.html",
+            url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+            mediaType: "text/html; charset=utf-8",
+          },
+          {
+            kind: "output-video" as const,
+            relativePath: "hyperframes/output.mp4",
+            url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
+            mediaType: "video/mp4",
+          },
+        ],
+        warnings: [],
+      },
+    }));
+    const client: GenerationClient = {
+      createDemo,
+      getJob: vi.fn(async () => completedApiJob()),
+      subscribeToProgress: vi.fn(() => () => undefined),
+    };
+
+    render(
+      <CreateDemoScreen
+        generationClient={client}
+        onProjectGenerated={() => undefined}
+        onCompositionGenerated={(job) => compositionJobs.push(job.id)}
+      />,
     );
+
+    const methodGroup = screen.getByRole("radiogroup", { name: "Generation method" });
+    const playwrightRadio = within(methodGroup).getByRole("radio", { name: /Playwright recording/i });
+    const hyperframesRadio = within(methodGroup).getByRole("radio", { name: /HyperFrames composition/i });
+    expect(playwrightRadio).toBeInstanceOf(HTMLInputElement);
+    expect(playwrightRadio).toHaveAttribute("type", "radio");
+    expect(playwrightRadio).toBeChecked();
+    expect(hyperframesRadio).toBeInstanceOf(HTMLInputElement);
+    expect(hyperframesRadio).toHaveAttribute("type", "radio");
+    expect(hyperframesRadio).not.toBeChecked();
+
+    await enterAndVerifyRepo();
+    fireEvent.click(hyperframesRadio);
+    expect(hyperframesRadio).toBeChecked();
+    fireEvent.change(screen.getByLabelText("Demo prompt"), {
+      target: { value: "Show the analytics workflow" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await flushAsync();
+
+    expect(createDemo).toHaveBeenCalledWith(expect.objectContaining({ renderer: "hyperframes" }));
+    expect(compositionJobs).toEqual(["job-test"]);
   });
 
   it("clicking 'Record & open in editor' calls onProjectGenerated", async () => {
@@ -296,6 +387,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={(project) => generated.push(project.id)}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -321,6 +413,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient({ mode: "failed" })}
         onProjectGenerated={(project) => generated.push(project.id)}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -350,6 +443,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient({ mode: "failed" })}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -388,6 +482,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={slowClient as ReturnType<typeof createMockGenerationClient>}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -413,6 +508,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
         onUseSampleProject={handler}
       />,
     );
@@ -428,6 +524,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
       />,
     );
 
@@ -440,6 +537,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
         onReturnToEditor={handler}
         hasInProgressProject={true}
         onUseSampleProject={() => undefined}
@@ -457,6 +555,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       <CreateDemoScreen
         generationClient={createMockGenerationClient()}
         onProjectGenerated={() => undefined}
+        onCompositionGenerated={noopCompositionGenerated}
         onReturnToEditor={() => undefined}
         hasInProgressProject={false}
         onUseSampleProject={() => undefined}

@@ -22,6 +22,17 @@ describe("MockCompositionGenerationClient", () => {
     expect(selectArtifactUrl(done, "output-video")).toContain("output.mp4");
   });
 
+  it("keeps completed request renderer consistent with the Hyperframes result", async () => {
+    const client = createMockCompositionGenerationClient();
+    const created = await client.createJob({ ...request, renderer: "playwright" });
+
+    const done = await client.waitForJob(created.id, { intervalMs: 0 });
+
+    expect(done.status).toBe("completed");
+    expect(done.request.renderer).toBe("hyperframes");
+    expect(done.result?.method).toBe("hyperframes");
+  });
+
   it("getJob throws for an unknown id", async () => {
     const client = createMockCompositionGenerationClient();
     await expect(client.getJob("nope")).rejects.toThrow("Unknown mock composition job 'nope'");

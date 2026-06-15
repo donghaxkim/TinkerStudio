@@ -9,13 +9,15 @@ This spec describes the editor-side experience for editing an AI-generated demo
 composition itself, range/clip selection that attaches scoped context to a chat
 panel, and an AI edit loop that rewrites the composition and re-renders.
 
-It supersedes the `DemoProject`-operations editing model for this product
-direction. See **Product Decision Recorded** below.
+HyperFrames composition source is the canonical editable state for HyperFrames
+jobs. `DemoProject` remains the canonical editable state for Playwright jobs.
+See **Product Decision Recorded** below.
 
 ## Background
 
-Person A's generation pipeline (`apps/api` + `@tinker/demo-assembly`) produces a
-**Hyperframes composition**, not a `DemoProject` timeline. A completed job emits:
+For HyperFrames jobs, Person A's generation pipeline (`apps/api` +
+`@tinker/demo-assembly`) produces a **Hyperframes composition**, not a
+`DemoProject` timeline. A completed job emits:
 
 - `hyperframes/index.html` — the editable GSAP composition source (`composition-index` artifact)
 - `hyperframes/output.mp4` — the rendered video (`output-video` artifact)
@@ -34,20 +36,18 @@ live, introspectable GSAP timeline.**
 
 ## Product Decision Recorded
 
-The earlier `docs/architecture.md` model treated the editable artifact as a
-`DemoProject` timeline edited via structured operations (`add_zoom`, …). That
-model is **retired for this product**:
+Dual-method routing means the editable artifact depends on the generation method:
 
-- **Editable artifact = the composition source (`index.html`).** The
-  `DemoProject` JSON remains only as a temporary placeholder/fixture and is not
-  the source of truth.
-- **AI editing is conversational.** The user prompts an agent that rewrites the
-  composition source and re-renders. There are no structured timeline operations.
-- **Every video output is HTML-rendered** (Hyperframes). The Playwright/real-video
-  capture path stays internal/CLI-only and is not part of this product surface.
+- HyperFrames composition source is the canonical editable state for HyperFrames
+  jobs. `DemoProject` remains the canonical editable state for Playwright jobs.
+- **AI editing for HyperFrames jobs is conversational.** The user prompts an agent
+  that rewrites the composition source and re-renders. There are no structured
+  timeline operations.
+- **HyperFrames job output is HTML-rendered.** Playwright recording continues to
+  produce `DemoProject` output and opens the existing project editor/export loop.
 
-`docs/architecture.md` should be revised to reflect this; that revision is a
-separate, joint Person A + Person B change and is not part of this slice.
+`docs/architecture.md` documents both routes; this spec focuses on HyperFrames
+composition editing.
 
 ## Goal
 
@@ -63,7 +63,8 @@ Let a single local user, after generation:
 
 ## Non-Goals
 
-- No `DemoProject`-operations editing (`add_zoom`, `remove_entity`, …). Retired.
+- No `DemoProject`-operations editing (`add_zoom`, `remove_entity`, …) for
+  HyperFrames jobs.
 - No multi-user, accounts, cloud storage, or collaboration.
 - No captions/callouts/voiceover/audio mixing (still out of MVP scope).
 - No new generation modes; generation already exists in `apps/api`.

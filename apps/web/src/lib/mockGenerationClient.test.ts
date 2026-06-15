@@ -11,7 +11,7 @@ const request: AiUrlPlanningCreateDemoRequest = {
   prompt: "Show the driftboard onboarding flow.",
   durationCapSeconds: 60,
   aspectRatio: "16:9",
-  renderer: "hyperframes",
+  renderer: "playwright",
 };
 
 describe("mockGenerationClient (PB-002 seam)", () => {
