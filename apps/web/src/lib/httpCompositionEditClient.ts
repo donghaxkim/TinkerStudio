@@ -1,5 +1,5 @@
 import { safeParseApiGenerationJob, type ApiGenerationJob } from "@tinker/generation-contract";
-import type { CompositionEditClient, CompositionEditRequest, CompositionRevision, EditComposeOptions } from "./compositionEditClient.js";
+import type { CompositionEditClient, CompositionEditRequest, CompositionRevision, EditComposeOptions, RenderRevisionRequest } from "./compositionEditClient.js";
 
 export type HttpCompositionEditClientOptions = { baseUrl?: string; fetchFn?: typeof fetch; intervalMs?: number };
 
@@ -42,6 +42,26 @@ export function createHttpCompositionEditClient(options: HttpCompositionEditClie
           if (compositionIndexUrl === undefined) throw new Error("Edit completed but produced no composition");
           const outputVideoUrl = arts.find((a) => a.kind === "output-video")?.url;
           return { id: rev.id, compositionIndexUrl, ...(outputVideoUrl === undefined ? {} : { outputVideoUrl }) };
+        }
+        await delay(intervalMs, opts?.signal);
+      }
+    },
+
+    async renderRevision(request: RenderRevisionRequest, opts?: EditComposeOptions): Promise<string> {
+      opts?.signal?.throwIfAborted();
+      await readJob(await fetchFn(`${baseUrl}/api/jobs/${request.jobId}/revisions/${request.revId}/render`, {
+        method: "POST", signal: opts?.signal,
+      }));
+      opts?.onUpdate?.("running");
+
+      for (;;) {
+        opts?.signal?.throwIfAborted();
+        const job = await readJob(await fetchFn(`${baseUrl}/api/jobs/${request.jobId}`, { signal: opts?.signal }));
+        const rev = (job.revisions ?? []).find((r) => r.id === request.revId);
+        if (rev !== undefined) {
+          if (rev.renderError !== undefined) throw new Error(rev.renderError.message ?? "Render failed");
+          const videoUrl = rev.result?.artifacts.find((a) => a.kind === "output-video")?.url;
+          if (videoUrl !== undefined) return videoUrl;
         }
         await delay(intervalMs, opts?.signal);
       }

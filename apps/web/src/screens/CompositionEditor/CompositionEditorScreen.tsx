@@ -80,10 +80,25 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
     () => ({ id: "rev-0", compositionIndexUrl, ...(outputVideoUrl === undefined ? {} : { outputVideoUrl }) }),
     [compositionIndexUrl, outputVideoUrl],
   );
-  const noopClient = useMemo<CompositionEditClient>(() => ({ editComposition: async () => baseRevision }), [baseRevision]);
+  const noopClient = useMemo<CompositionEditClient>(
+    () => ({ editComposition: async () => baseRevision, renderRevision: async () => baseRevision.outputVideoUrl ?? "" }),
+    [baseRevision],
+  );
   const edit = useCompositionEditFlow({ jobId: jobId ?? "", client: editClient ?? noopClient, baseRevision });
   const editEnabled = jobId !== undefined && editClient !== undefined;
-  const exportVideoUrl = edit.currentVideoUrl ?? outputVideoUrl;
+  // The video for the CURRENT revision only — no fallback to the base video. An edited revision
+  // that has not been rendered yet has none, so Export renders it on demand (below) instead of
+  // silently downloading the un-edited base.
+  const exportVideoUrl = edit.currentVideoUrl;
+  const exporting = edit.exportStatus === "rendering";
+
+  function handleExport() {
+    // Direct download when the current revision already has a rendered video (base or a
+    // previously-exported edit); otherwise render it on demand. After a render completes, the
+    // button re-enables and a second click downloads the freshly rendered edit.
+    if (exportVideoUrl !== undefined) { window.open(exportVideoUrl, "_blank"); return; }
+    void edit.requestExport();
+  }
 
   function handleSend() {
     const refs = contextRefs;
@@ -126,11 +141,11 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
             type="button"
             className="tk-btn tk-btn-accent"
             aria-label="Export"
-            title={exportVideoUrl === undefined ? "Render the edit to export" : "Export"}
-            disabled={exportVideoUrl === undefined}
-            onClick={() => { if (exportVideoUrl) window.open(exportVideoUrl, "_blank"); }}
+            title={edit.exportError ?? (exportVideoUrl !== undefined ? "Export" : editEnabled ? "Render & export this edit" : "Render the edit to export")}
+            disabled={exporting || (exportVideoUrl === undefined && !editEnabled)}
+            onClick={handleExport}
           >
-            Export
+            {exporting ? "Rendering…" : "Export"}
           </button>
         </div>
       </header>

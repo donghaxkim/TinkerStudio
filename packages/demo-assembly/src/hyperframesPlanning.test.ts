@@ -94,13 +94,20 @@ assert.match(calls[0]?.prompt ?? "", /outputVideoPath/);
 const generatePrompt = JSON.parse(calls[0]?.prompt ?? "{}");
 assert.equal(generatePrompt.requiredGenerationManifest.schema.renderer, "hyperframes");
 assert.deepEqual(generatePrompt.requiredGenerationManifest.schema.sourceGrounding, ["repo", "website-analysis"]);
-assert.deepEqual(generatePrompt.requiredHyperframesComposition.rootAttributes, {
-  "data-composition-id": "stable composition id used by window.__timelines",
-  "data-width": "numeric pixel width matching aspectRatio",
-  "data-height": "numeric pixel height matching aspectRatio",
-  "data-start": "0",
-});
-assert.equal(generatePrompt.requiredHyperframesComposition.timelineRegistry, "window.__timelines[compositionId]");
+const generateComposition = generatePrompt.requiredHyperframesComposition;
+assert.deepEqual(
+  Object.keys(generateComposition.rootAttributes).sort(),
+  ["data-composition-id", "data-height", "data-start", "data-width"],
+);
+assert.match(generateComposition.clips, /class="clip"/);
+assert.match(generateComposition.clips, /data-track-index/);
+assert.match(generateComposition.clips, /data-duration/);
+assert.match(generateComposition.timeline.register, /window\.__timelines/);
+assert.match(generateComposition.timeline.create, /paused/i);
+assert.match(generateComposition.timeline.forbidden, /requestAnimationFrame/);
+assert.match(generateComposition.minimalExampleVerified, /class="clip"/);
+assert.match(calls[0]?.prompt ?? "", /gsap\.timeline/i);
+assert.match(calls[0]?.prompt ?? "", /data-track-index/);
 assert.ok(Array.isArray(generatePrompt.requiredAssetManifest.schema.assets));
 assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.id, "string");
 assert.equal(generatePrompt.requiredAssetManifest.schema.assets[0]?.type, "string");
@@ -160,13 +167,14 @@ assert.doesNotMatch(repairCalls[0]?.prompt ?? "", /OpenCode working directory/);
 assert.match(repairCalls[0]?.prompt ?? "", /failureStage/);
 assert.match(repairCalls[0]?.prompt ?? "", /line 1/);
 const repairPrompt = JSON.parse(repairCalls[0]?.prompt ?? "{}");
-assert.deepEqual(repairPrompt.requiredHyperframesComposition.rootAttributes, {
-  "data-composition-id": "stable composition id used by window.__timelines",
-  "data-width": "numeric pixel width matching aspectRatio",
-  "data-height": "numeric pixel height matching aspectRatio",
-  "data-start": "0",
-});
-assert.equal(repairPrompt.requiredHyperframesComposition.timelineRegistry, "window.__timelines[compositionId]");
+assert.deepEqual(
+  Object.keys(repairPrompt.requiredHyperframesComposition.rootAttributes).sort(),
+  ["data-composition-id", "data-height", "data-start", "data-width"],
+);
+assert.match(repairPrompt.requiredHyperframesComposition.timeline.register, /window\.__timelines/);
+assert.match(repairPrompt.requiredHyperframesComposition.timeline.forbidden, /requestAnimationFrame/);
+assert.match(repairPrompt.requiredHyperframesComposition.clips, /class="clip"/);
+assert.match(repairCalls[0]?.prompt ?? "", /data-track-index/);
 
 const repairCleanupRoot = await mkdtemp(join(tmpdir(), "tinker-hyperframes-repair-cleanup-"));
 const repairCleanupRepo = join(repairCleanupRoot, "repo");
@@ -483,8 +491,8 @@ assert.equal(
 const claudeArgs = JSON.parse(await readFile(join(claudeHyperframesDir, "claude-args.json"), "utf8"));
 assert.equal(claudeArgs[0], "-p");
 assert.match(claudeArgs[1] ?? "", /Create a Hyperframes project/);
-assert.deepEqual(claudeArgs.slice(2), ["--output-format", "text", "--model", "claude-fable-5", "--effort", "max"]);
-assert.equal(claudeArgs.includes("--permission-mode"), false);
+assert.deepEqual(claudeArgs.slice(2), ["--output-format", "text", "--model", "claude-opus-4-8", "--effort", "high", "--permission-mode", "acceptEdits"]);
+assert.equal(claudeArgs[claudeArgs.indexOf("--permission-mode") + 1], "acceptEdits"); // headless writes need this
 assert.equal(claudeArgs.includes("--dangerously-skip-permissions"), false);
 assert.equal(claudeArgs.includes("--allow-dangerously-skip-permissions"), false);
 const claudeEnv = JSON.parse(await readFile(join(claudeHyperframesDir, "claude-env.json"), "utf8"));

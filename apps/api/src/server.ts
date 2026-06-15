@@ -5,7 +5,7 @@ import type { ApiConfig } from "./config.js";
 import { createJobQueue } from "./jobs/jobQueue.js";
 import { createJobStore } from "./jobs/jobStore.js";
 import { registerArtifactsRoutes } from "./routes/artifacts.js";
-import { registerJobsRoutes } from "./routes/jobs.js";
+import { registerJobsRoutes, type ProductUrlResolver } from "./routes/jobs.js";
 import { createEditWorker, type RunEdit } from "./workers/editWorker.js";
 import { createGenerationWorker, type GenerationRunner } from "./workers/generationWorker.js";
 import { createRenderWorker, type RunRender } from "./workers/renderWorker.js";
@@ -20,6 +20,7 @@ export type BuildServerOptions = {
   now?: () => string;
   idGenerator?: () => string;
   maxPendingJobs?: number;
+  productUrlResolver?: ProductUrlResolver;
 };
 
 function defaultIdGenerator() {
@@ -63,6 +64,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     repoRoot: options.config.repoRoot,
     now,
     idGenerator,
+    productUrlResolver: options.productUrlResolver,
   });
   registerArtifactsRoutes(server, { store });
 

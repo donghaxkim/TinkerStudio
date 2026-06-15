@@ -22,6 +22,18 @@ describe("jobStore revisions", () => {
     expect("pendingEdit" in (snap as object)).toBe(false);
   });
 
+  it("failRevisionRender records a renderError but keeps the revision completed + clears pendingRender", () => {
+    const store = createJobStore();
+    completed(store);
+    store.appendRevision("j", { id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:02.000Z", result: { artifacts: [] } }, "2026-01-01T00:00:02.000Z");
+    store.setPendingRender("j", { revId: "rev-1" });
+    store.failRevisionRender("j", "rev-1", { status: "failed", stage: "assembly", message: "render boom" }, "2026-01-01T00:00:04.000Z");
+    const snap = store.getSnapshot("j")!;
+    expect(snap.revisions?.[0]).toMatchObject({ id: "rev-1", status: "completed" });
+    expect(snap.revisions?.[0]?.renderError?.message).toBe("render boom");
+    expect(store.getRecord("j")?.pendingRender).toBeUndefined();
+  });
+
   it("failRevision records a failed revision without flipping the parent status", () => {
     const store = createJobStore();
     completed(store);

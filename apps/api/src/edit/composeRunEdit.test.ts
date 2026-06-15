@@ -28,6 +28,19 @@ describe("createComposeRunEdit", () => {
     const written = await readFile(join(store.getRecord("j")!.outputRoot, "revisions/rev-1/hyperframes/index.html"), "utf8");
     expect(written).toContain("const D=2.0;");
   });
+  it("does not carry a stale output-video (or render logs) from the base into the revision", async () => {
+    const { store } = await seededRecord();
+    // Base composition already has a rendered video + render logs from generation.
+    const base = join(store.getRecord("j")!.outputRoot, "hyperframes");
+    await writeFile(join(base, "output.mp4"), "STALE-BASE-VIDEO", "utf8");
+    await writeFile(join(base, "render.log"), "old render", "utf8");
+    await writeFile(join(base, "lint.log"), "old lint", "utf8");
+    const runAgent = async () => "<<<<<<< SEARCH\nconst D=1.0;\n=======\nconst D=2.0;\n>>>>>>> REPLACE";
+    const result = await createComposeRunEdit({ runAgent })(store.getRecord("j")!, { revId: "rev-1", instruction: "x", context: [] });
+    // The revision must advertise composition source but NO stale rendered video — Export renders fresh.
+    expect(result.artifacts.some((a) => a.kind === "composition-index")).toBe(true);
+    expect(result.artifacts.some((a) => a.kind === "output-video")).toBe(false);
+  });
   it("throws when the agent edit does not apply", async () => {
     const { store } = await seededRecord();
     const runEdit = createComposeRunEdit({ runAgent: async () => "<<<<<<< SEARCH\nNOPE\n=======\nX\n>>>>>>> REPLACE" });

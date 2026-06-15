@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolve } from "node:path";
-import { describe, expect, it, test } from "vitest";
+import { afterEach, describe, expect, it, test, vi } from "vitest";
 import type {
   AiUrlPlanningCreateDemoRequest,
   GenerationError,
@@ -15,6 +15,7 @@ import { createComposeRunEdit } from "./edit/composeRunEdit.js";
 import { indexArtifacts } from "./jobs/artifactIndex.js";
 import { createJobQueue } from "./jobs/jobQueue.js";
 import { createJobStore } from "./jobs/jobStore.js";
+import { resolveProductUrlFromGithubRepo } from "./routes/jobs.js";
 import { buildServer } from "./server.js";
 import { createGenerationWorker, type GenerationRunner } from "./workers/generationWorker.js";
 
@@ -126,6 +127,32 @@ describe("buildServer", () => {
   });
 });
 
+describe("resolveProductUrlFromGithubRepo", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the GitHub repository homepage metadata when present", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ homepage: "https://product.example.com" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(resolveProductUrlFromGithubRepo("https://github.com/example/product")).resolves.toBe("https://product.example.com");
+    expect(fetch).toHaveBeenCalledWith("https://api.github.com/repos/example/product", expect.any(Object));
+  });
+
+  it("falls back to package.json homepage from the GitHub contents API", async () => {
+    const encodedPackageJson = Buffer.from(JSON.stringify({ homepage: "https://package-home.example.com" })).toString("base64");
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ homepage: "" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ content: encodedPackageJson }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(resolveProductUrlFromGithubRepo("https://github.com/example/product")).resolves.toBe("https://package-home.example.com");
+    expect(fetch).toHaveBeenLastCalledWith("https://api.github.com/repos/example/product/contents/package.json", expect.any(Object));
+  });
+});
+
 describe("job routes", () => {
   const validBody = {
     mode: "ai-url-planning",
@@ -208,6 +235,117 @@ describe("job routes", () => {
           ],
         },
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("derives productUrl from the repo when the create-job body omits it", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-derived-url-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const completed = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-test",
+      productUrlResolver: async (repoUrl) => {
+        expect(repoUrl).toBe("https://github.com/example/product");
+        return "https://product.example.com";
+      },
+      runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
+        expect(rawRequest).toEqual({
+          id: "job-test",
+          mode: "ai-url-planning",
+          repoUrl: "https://github.com/example/product",
+          productUrl: "https://product.example.com",
+          prompt: "Make a short demo.",
+          durationCapSeconds: 12,
+          aspectRatio: "16:9",
+          renderer: "hyperframes",
+        });
+        completed.resolve();
+        return {
+          jobId: "job-test",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: {
+          mode: "ai-url-planning",
+          repoUrl: "https://github.com/example/product",
+          prompt: "Make a short demo.",
+          durationCapSeconds: 12,
+          aspectRatio: "16:9",
+          renderer: "hyperframes",
+        },
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(JSON.parse(response.body)).toMatchObject({
+        id: "job-test",
+        status: "queued",
+        request: {
+          id: "job-test",
+          repoUrl: "https://github.com/example/product",
+          productUrl: "https://product.example.com",
+          renderer: "hyperframes",
+        },
+      });
+      await completed.promise;
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects repo-only create-job requests when no productUrl can be derived", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-missing-derived-url-${randomUUID()}-`));
+    let runnerCalled = false;
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      productUrlResolver: async () => undefined,
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        runnerCalled = true;
+        throw new Error("runner should not be called");
+      },
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: {
+          mode: "ai-url-planning",
+          repoUrl: "https://github.com/example/product",
+          prompt: "Make a short demo.",
+          durationCapSeconds: 12,
+          aspectRatio: "16:9",
+        },
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body)).toMatchObject({
+        status: "failed",
+        stage: "validation",
+        message: expect.stringContaining("Could not derive a product URL"),
+      });
+      expect(runnerCalled).toBe(false);
     } finally {
       await server.close();
     }

@@ -38,4 +38,28 @@ describe("createHttpCompositionEditClient", () => {
     const client = createHttpCompositionEditClient({ fetchFn: fetchFn as unknown as typeof fetch, intervalMs: 0 });
     await expect(client.editComposition({ jobId: "job-1", instruction: "x", context: [] })).rejects.toThrow(/agent boom/);
   });
+
+  it("renderRevision POSTs /render then polls until the output-video artifact appears", async () => {
+    const indexArt = { kind: "composition-index" as const, relativePath: "revisions/rev-1/hyperframes/index.html", url: "/i", mediaType: "text/html" };
+    const before = job({ revisions: [{ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:01.000Z", result: { artifacts: [indexArt] } }] });
+    const after = job({ revisions: [{ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:01.000Z", result: { artifacts: [
+      indexArt,
+      { kind: "output-video", relativePath: "revisions/rev-1/hyperframes/output.mp4", url: "/api/jobs/job-1/artifacts/revisions/rev-1/hyperframes/output.mp4", mediaType: "video/mp4" },
+    ] } }] });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(res(before, 202)) // POST /render
+      .mockResolvedValueOnce(res(after));       // GET poll
+    const client = createHttpCompositionEditClient({ fetchFn: fetchFn as unknown as typeof fetch, intervalMs: 0 });
+    const url = await client.renderRevision({ jobId: "job-1", revId: "rev-1" });
+    expect(url).toBe("/api/jobs/job-1/artifacts/revisions/rev-1/hyperframes/output.mp4");
+    expect(fetchFn).toHaveBeenNthCalledWith(1, expect.stringContaining("/api/jobs/job-1/revisions/rev-1/render"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("renderRevision throws when the revision records a renderError", async () => {
+    const before = job({ revisions: [{ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:01.000Z", result: { artifacts: [] } }] });
+    const after = job({ revisions: [{ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:01.000Z", result: { artifacts: [] }, renderError: { status: "failed", stage: "assembly", message: "render boom" } }] });
+    const fetchFn = vi.fn().mockResolvedValueOnce(res(before, 202)).mockResolvedValueOnce(res(after));
+    const client = createHttpCompositionEditClient({ fetchFn: fetchFn as unknown as typeof fetch, intervalMs: 0 });
+    await expect(client.renderRevision({ jobId: "job-1", revId: "rev-1" })).rejects.toThrow(/render boom/);
+  });
 });

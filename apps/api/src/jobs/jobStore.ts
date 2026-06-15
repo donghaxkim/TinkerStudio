@@ -142,6 +142,19 @@ export function createJobStore() {
       delete record.pendingRender;
     },
 
+    /**
+     * Record a render-on-demand failure on a revision. The revision keeps its `completed`
+     * status (the edit succeeded; only the MP4 render failed) so it can be re-rendered, and
+     * the export poll can detect the failure via `renderError`.
+     */
+    failRevisionRender(id: string, revId: string, error: GenerationError, now: string) {
+      const record = records.get(id);
+      if (record === undefined) return;
+      record.revisions = (record.revisions ?? []).map((r) => (r.id === revId ? { ...r, renderError: error } : r));
+      delete record.pendingRender;
+      record.updatedAt = now;
+    },
+
     appendRevision(id: string, revision: ApiRevision, now: string) {
       const record = records.get(id);
       if (record === undefined) return;

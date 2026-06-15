@@ -27,6 +27,18 @@ describe("renderWorker", () => {
     expect(store.getRecord("j")?.pendingRender).toBeUndefined();
     expect(runRender).toHaveBeenCalledOnce();
   });
+  it("records a renderError on the revision when the render fails (no throw; clears pendingRender)", async () => {
+    const store = seeded();
+    const runRender: RunRender = vi.fn(async () => { throw new Error("hyperframes render failed; see render.log"); });
+    await createRenderWorker({ store, runRender, now: () => "2026-06-14T00:00:02.000Z" })("j");
+    const rev = store.getSnapshot("j")!.revisions!.find((r) => r.id === "rev-1")!;
+    // The edit succeeded — only the MP4 render failed — so the revision stays completed (re-renderable).
+    expect(rev.status).toBe("completed");
+    expect(rev.result!.artifacts.some((a) => a.kind === "output-video")).toBe(false);
+    expect(rev.renderError?.message).toContain("hyperframes render failed");
+    expect(store.getRecord("j")?.pendingRender).toBeUndefined();
+  });
+
   it("is a no-op without pendingRender", async () => {
     const store = createJobStore();
     store.create({ id: "j", request: REQ, outputRoot: "/tmp/j", now: "2026-06-14T00:00:00.000Z" });

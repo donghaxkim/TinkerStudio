@@ -9,7 +9,7 @@ import type {
 export type CreateCompositionJobRequest = {
   mode: "ai-url-planning";
   repoUrl: string;
-  productUrl: string;
+  productUrl?: string;
   durationCapSeconds: number;
   aspectRatio: "16:9" | "9:16" | "1:1";
   prompt?: string;

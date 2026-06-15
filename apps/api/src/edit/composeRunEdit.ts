@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ApiGenerationResult } from "@tinker/generation-contract";
 import { indexArtifacts } from "../jobs/artifactIndex.js";
@@ -30,6 +30,14 @@ export function createComposeRunEdit(deps: { runAgent: RunAgent }): RunEdit {
     const revDir = join(record.outputRoot, "revisions", edit.revId, "hyperframes");
     await mkdir(revDir, { recursive: true });
     await cp(currentDir, revDir, { recursive: true });
+
+    // The copied composition carries the base/previous render OUTPUTS (output.mp4 + render/lint logs).
+    // Drop them so this revision has NO stale output-video: the edit only changes the composition
+    // source, so Export must render the EDITED composition fresh on demand rather than download the
+    // un-edited video. A real render-on-demand later regenerates these files.
+    await Promise.all(
+      ["output.mp4", "render.log", "lint.log"].map((name) => rm(join(revDir, name), { force: true })),
+    );
 
     const indexPath = join(revDir, "index.html");
     const indexHtml = await readFile(indexPath, "utf8");

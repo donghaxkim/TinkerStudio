@@ -65,6 +65,13 @@ export const ApiRevisionSchema = z
     createdAt: z.string().datetime(),
     result: ApiGenerationResultSchema.optional(),
     error: GenerationErrorSchema.optional(),
+    /**
+     * Render-on-demand failure for this revision. Optional + backward-compatible: a revision
+     * whose edit succeeded stays `status: "completed"` even if a later MP4 render fails; this
+     * field lets the export poll detect failure instead of waiting forever. Cleared on a
+     * subsequent successful render.
+     */
+    renderError: GenerationErrorSchema.optional(),
   })
   .strict()
   .superRefine((rev, ctx) => {

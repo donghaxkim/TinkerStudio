@@ -1,7 +1,6 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { selectArtifactUrl, type CompositionGenerationClient } from "./compositionGenerationClient.js";
-import { createMockCompositionGenerationClient } from "./mockCompositionGenerationClient.js";
 import { useCompositionGenerationJob } from "./useCompositionGenerationJob.js";
 
 const REQUEST = {
@@ -14,7 +13,36 @@ const REQUEST = {
 
 describe("useCompositionGenerationJob", () => {
   it("starts idle, runs, then completes with the job artifacts", async () => {
-    const client = createMockCompositionGenerationClient();
+    const client = {
+      createJob: async () => ({ id: "j" }),
+      getJob: async () => ({ id: "j" }),
+      waitForJob: async () => ({
+        id: "j",
+        status: "completed",
+        request: {
+          id: "j",
+          mode: "ai-url-planning",
+          repoUrl: REQUEST.repoUrl,
+          productUrl: "https://driftboard.example.com",
+          durationCapSeconds: REQUEST.durationCapSeconds,
+          aspectRatio: REQUEST.aspectRatio,
+          renderer: "hyperframes",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        progressEvents: [],
+        result: {
+          artifacts: [
+            {
+              kind: "composition-index",
+              relativePath: "hyperframes/index.html",
+              url: "/api/jobs/j/artifacts/hyperframes/index.html",
+              mediaType: "text/html",
+            },
+          ],
+        },
+      }),
+    } as unknown as CompositionGenerationClient;
     const { result } = renderHook(() => useCompositionGenerationJob(client));
     expect(result.current.phase).toBe("idle");
 

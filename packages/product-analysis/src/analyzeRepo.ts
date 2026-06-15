@@ -1,9 +1,9 @@
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix, win32 } from "node:path";
 import { promisify } from "node:util";
-import type { AnalyzeRepoOpencodeRun, AnalyzeRepoOptions, RepoAnalysis } from "./types.js";
+import type { AnalyzeRepoOpencodeRun, AnalyzeRepoOptions, RepoAnalysis, RepoAnalysisSourceHint } from "./types.js";
 
 type RepoAnalysisArrayField = "features" | "likelyRoutes" | "demoIdeas" | "importantTerms" | "setupNotes";
 
@@ -618,12 +618,150 @@ async function analyzeRepoWithOpencode(repoUrl: string, commit: string | undefin
   return parseOpencodeRepoAnalysis(output, repoUrl, commit);
 }
 
+// --- Deterministic, dependency-free repo analysis ------------------------------------------------
+// Reads only the cloned README + package.json (never .env/secrets) and grounds the demo without an
+// external agent CLI. Used by default so generation works without `opencode`; the agentic path is
+// still reachable by injecting `runOpencode` (tests) or setting TINKER_REPO_ANALYSIS_AGENT=opencode.
+
+const README_CANDIDATES = ["README.md", "README.MD", "Readme.md", "readme.md", "README", "README.txt", "README.rst"];
+
+async function readMaybe(filePath: string, maxBytes = 64 * 1024): Promise<string | undefined> {
+  try {
+    const content = await readFile(filePath, "utf8");
+    return content.length > maxBytes ? content.slice(0, maxBytes) : content;
+  } catch {
+    return undefined;
+  }
+}
+
+function repoNameFromUrl(repoUrl: string): string {
+  try {
+    const segments = new URL(repoUrl).pathname.split("/").filter((s) => s.length > 0);
+    const last = segments[segments.length - 1] ?? "project";
+    return last.endsWith(".git") ? last.slice(0, -4) : last;
+  } catch {
+    return "project";
+  }
+}
+
+async function readReadme(checkoutDirectory: string): Promise<{ path: string; headings: string[]; firstParagraph: string } | undefined> {
+  for (const name of README_CANDIDATES) {
+    const content = await readMaybe(join(checkoutDirectory, name));
+    if (content === undefined) continue;
+    const lines = content.split(/\r?\n/);
+    const headings: string[] = [];
+    for (const line of lines) {
+      const match = /^#{1,3}\s+(.+?)\s*#*$/.exec(line.trim());
+      if (match?.[1]) headings.push(match[1]);
+    }
+    let firstParagraph = "";
+    let block: string[] = [];
+    const flush = (): boolean => {
+      const text = block.join(" ").trim();
+      block = [];
+      if (text === "") return false;
+      // Skip headings, HTML, badges/images, and tables when choosing the summary paragraph.
+      if (/^(#|<|!\[|\[!\[|\|)/.test(text)) return false;
+      firstParagraph = text;
+      return true;
+    };
+    for (const line of lines) {
+      if (line.trim() === "") { if (flush()) break; } else { block.push(line.trim()); }
+    }
+    if (firstParagraph === "" && block.length > 0) flush();
+    return { path: name, headings, firstParagraph };
+  }
+  return undefined;
+}
+
+async function readPackageJson(checkoutDirectory: string): Promise<Record<string, unknown> | undefined> {
+  const content = await readMaybe(join(checkoutDirectory, "package.json"));
+  if (content === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(content);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function cleanNonEmptyArray(values: string[], field: RepoAnalysisArrayField): string[] {
+  const limit = arrayLimits[field];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const cleaned = cleanText(value, limit.maxLength);
+    if (cleaned === "" || seen.has(cleaned)) continue;
+    seen.add(cleaned);
+    out.push(cleaned);
+    if (out.length >= limit.maxEntries) break;
+  }
+  return out;
+}
+
+const SKIPPED_README_HEADINGS = /^(table of contents|contents|license|installation|install|getting started|contributing|acknowledg(e?)ments|changelog)$/i;
+
+async function analyzeRepoDeterministic(repoUrl: string, commit: string | undefined, checkoutDirectory: string): Promise<RepoAnalysis> {
+  const pkg = await readPackageJson(checkoutDirectory);
+  const readme = await readReadme(checkoutDirectory);
+
+  const rawName = typeof pkg?.name === "string" && pkg.name.trim() !== "" ? pkg.name : repoNameFromUrl(repoUrl);
+  const productName = cleanText(rawName, 120) || repoNameFromUrl(repoUrl);
+
+  const pkgDescription = typeof pkg?.description === "string" ? pkg.description : "";
+  const summarySeed =
+    [pkgDescription, readme?.firstParagraph ?? "", `${productName} is the product in the repository at ${repoUrl}.`]
+      .map((seed) => seed.trim())
+      .find((seed) => cleanText(seed, 1_200) !== "") ?? `${productName} product demo.`;
+  const summary = cleanText(summarySeed, 1_200) || `${productName} product demo.`;
+
+  const features = cleanNonEmptyArray((readme?.headings ?? []).filter((heading) => !SKIPPED_README_HEADINGS.test(heading.trim())), "features");
+  const keywords = Array.isArray(pkg?.keywords) ? (pkg.keywords as unknown[]).filter((keyword): keyword is string => typeof keyword === "string") : [];
+  const importantTerms = cleanNonEmptyArray([productName, ...keywords], "importantTerms");
+
+  const scripts = isRecord(pkg?.scripts) ? (pkg.scripts as Record<string, unknown>) : {};
+  const setupNotes = cleanNonEmptyArray(
+    ["dev", "start", "build", "preview"].filter((key) => typeof scripts[key] === "string").map((key) => `Has an npm "${key}" script.`),
+    "setupNotes",
+  );
+
+  const demoIdeas = cleanNonEmptyArray(
+    [features.length > 0 ? `Walk through ${productName}, highlighting ${features[0]}.` : `Walk through the core flow of ${productName}.`],
+    "demoIdeas",
+  );
+
+  const sourceHints: RepoAnalysisSourceHint[] = [];
+  if (readme?.path !== undefined) sourceHints.push({ path: readme.path, reason: cleanText("Product overview and feature headings.", 180) });
+  if (pkg !== undefined) sourceHints.push({ path: "package.json", reason: cleanText("Package name, description, keywords, and scripts.", 180) });
+
+  return {
+    repoUrl,
+    ...(commit ? { commit } : {}),
+    productName,
+    summary,
+    features,
+    likelyRoutes: ["/"],
+    demoIdeas,
+    importantTerms,
+    setupNotes,
+    sourceHints,
+  };
+}
+
 export async function analyzeRepo(repoUrl: string, options: AnalyzeRepoOptions): Promise<RepoAnalysis> {
   const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
   const fetchRepo = options.fetchRepo ?? defaultFetchRepo;
-  const runOpencode = options.runOpencode ?? defaultRunOpencode;
 
   const fetchResult = await fetchRepo(normalizedRepoUrl, options.checkoutDirectory);
   assertSupportedRepoShape(options.checkoutDirectory);
-  return analyzeRepoWithOpencode(normalizedRepoUrl, fetchResult.commit, options.checkoutDirectory, runOpencode);
+
+  // Use the agentic OpenCode analysis when a runner is injected (tests) or explicitly opted in via
+  // env. Otherwise default to the deterministic analysis so generation works without `opencode`.
+  const useOpencode = options.runOpencode !== undefined || process.env.TINKER_REPO_ANALYSIS_AGENT === "opencode";
+  if (useOpencode) {
+    const runOpencode = options.runOpencode ?? defaultRunOpencode;
+    return analyzeRepoWithOpencode(normalizedRepoUrl, fetchResult.commit, options.checkoutDirectory, runOpencode);
+  }
+
+  return analyzeRepoDeterministic(normalizedRepoUrl, fetchResult.commit, options.checkoutDirectory);
 }

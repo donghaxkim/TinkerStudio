@@ -29,13 +29,12 @@ function job(overrides: Partial<ApiGenerationJob> = {}): ApiGenerationJob {
 const validRequest = {
   mode: "ai-url-planning",
   repoUrl: "https://github.com/acme/driftboard",
-  productUrl: "https://driftboard.example.com",
   durationCapSeconds: 60,
   aspectRatio: "16:9",
 } as const;
 
 describe("HttpCompositionGenerationClient", () => {
-  it("POSTs ai-url-planning to /api/jobs and forces renderer=hyperframes", async () => {
+  it("POSTs repo-only ai-url-planning to /api/jobs and forces renderer=hyperframes", async () => {
     const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(202, job()));
     const client = createHttpCompositionGenerationClient({ fetchFn });
     const created = await client.createJob(validRequest);
@@ -46,6 +45,7 @@ describe("HttpCompositionGenerationClient", () => {
     const sent = JSON.parse((init?.body as string) ?? "{}");
     expect(sent.renderer).toBe("hyperframes");
     expect(sent.mode).toBe("ai-url-planning");
+    expect(sent.productUrl).toBeUndefined();
   });
 
   it("throws the server message on a 422 validation error", async () => {

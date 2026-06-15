@@ -101,7 +101,7 @@ describe("CompositionEditorScreen", () => {
         compositionIndexUrl={INDEX}
         outputVideoUrl={VIDEO}
         jobId="job-1"
-        editClient={{ editComposition }}
+        editClient={{ editComposition, renderRevision: async () => "/rendered.mp4" }}
         resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
       />,
     );
@@ -117,7 +117,7 @@ describe("CompositionEditorScreen", () => {
   it("after an edit previews, the chips stay (Reprompt scope) and Accept is offered", async () => {
     const handle = fakeHandle(() => undefined);
     const editComposition = vi.fn(async () => ({ id: "rev-1", compositionIndexUrl: "/rev1/index.html?rev=1" }));
-    render(<CompositionEditorScreen compositionIndexUrl={INDEX} outputVideoUrl={VIDEO} jobId="job-1" editClient={{ editComposition }} resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })} />);
+    render(<CompositionEditorScreen compositionIndexUrl={INDEX} outputVideoUrl={VIDEO} jobId="job-1" editClient={{ editComposition, renderRevision: async () => "/rendered.mp4" }} resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })} />);
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(screen.getByTestId("composition-clip-feature")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("composition-clip-feature"));
@@ -139,6 +139,40 @@ describe("CompositionEditorScreen", () => {
     expect(exportBtn).not.toBeDisabled();
     fireEvent.click(exportBtn);
     expect(open).toHaveBeenCalledWith(VIDEO, "_blank");
+    open.mockRestore();
+  });
+
+  it("Export renders an edited revision on demand, then downloads the rendered (edited) video — not the base", async () => {
+    const handle = fakeHandle(() => undefined);
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const RENDERED = "/api/jobs/job-1/artifacts/revisions/rev-1/hyperframes/output.mp4";
+    const editComposition = vi.fn(async () => ({ id: "rev-1", compositionIndexUrl: "/rev1/index.html?rev=1" })); // no rendered video yet
+    const renderRevision = vi.fn(async (req: { jobId: string; revId: string }) => {
+      expect(req).toEqual({ jobId: "job-1", revId: "rev-1" });
+      return RENDERED;
+    });
+    render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        jobId="job-1"
+        editClient={{ editComposition, renderRevision }}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Edit instruction"), { target: { value: "punch in" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept edit" })).toBeInTheDocument());
+    // The edited revision has no rendered video → first Export click renders it on demand.
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(renderRevision).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Export" })).not.toBeDisabled());
+    // Second click downloads the freshly rendered EDIT — never the base video.
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    expect(open).toHaveBeenCalledWith(RENDERED, "_blank");
+    expect(open).not.toHaveBeenCalledWith(VIDEO, "_blank");
     open.mockRestore();
   });
 });

@@ -1,8 +1,8 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { TimelineRegistryWindow, CompositionTimelineHandle } from "@tinker/editor";
-import type { CompositionGenerationClient } from "../../lib/compositionGenerationClient.js";
-import { createMockCompositionGenerationClient } from "../../lib/mockCompositionGenerationClient.js";
+import type { ApiGenerationJob } from "@tinker/generation-contract";
+import type { CompositionGenerationClient, CreateCompositionJobRequest } from "../../lib/compositionGenerationClient.js";
 import { CompositionDemoScreen } from "./CompositionDemoScreen.js";
 
 function fakeHandle(): CompositionTimelineHandle {
@@ -18,7 +18,59 @@ function fakeHandle(): CompositionTimelineHandle {
 
 describe("CompositionDemoScreen", () => {
   it("generates a composition and opens it in the editor", async () => {
-    const client = createMockCompositionGenerationClient();
+    const client = {
+      createJob: vi.fn(async (_request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => ({
+        id: "job-1",
+        status: "queued",
+        request: {
+          id: "job-1",
+          mode: "ai-url-planning",
+          repoUrl: "https://github.com/acme/driftboard",
+          productUrl: "https://driftboard.example.com",
+          durationCapSeconds: 60,
+          aspectRatio: "16:9",
+          renderer: "hyperframes",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        progressEvents: [],
+      })),
+      getJob: async () => {
+        throw new Error("not used");
+      },
+      waitForJob: async (): Promise<ApiGenerationJob> => ({
+        id: "job-1",
+        status: "completed",
+        request: {
+          id: "job-1",
+          mode: "ai-url-planning",
+          repoUrl: "https://github.com/acme/driftboard",
+          productUrl: "https://driftboard.example.com",
+          durationCapSeconds: 60,
+          aspectRatio: "16:9",
+          renderer: "hyperframes",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        progressEvents: [],
+        result: {
+          artifacts: [
+            {
+              kind: "composition-index",
+              relativePath: "hyperframes/index.html",
+              url: "/api/jobs/job-1/artifacts/hyperframes/index.html",
+              mediaType: "text/html",
+            },
+            {
+              kind: "output-video",
+              relativePath: "hyperframes/output.mp4",
+              url: "/api/jobs/job-1/artifacts/hyperframes/output.mp4",
+              mediaType: "video/mp4",
+            },
+          ],
+        },
+      }),
+    } satisfies CompositionGenerationClient;
     render(
       <CompositionDemoScreen
         client={client}
@@ -26,10 +78,22 @@ describe("CompositionDemoScreen", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    expect(screen.getByRole("heading", { name: /Tinker Studio/i })).toBeInTheDocument();
+    expect(screen.getByText("github.com/owner/repo")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.change(screen.getByLabelText("Demo description"), { target: { value: "Show the launch flow" } });
+    expect(screen.queryByLabelText("Product URL")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
+    await waitFor(() =>
+      expect(client.createJob).toHaveBeenCalledWith({
+        mode: "ai-url-planning",
+        repoUrl: "https://github.com/acme/driftboard",
+        durationCapSeconds: 60,
+        aspectRatio: "16:9",
+        prompt: "Show the launch flow",
+      }),
+    );
     await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
@@ -42,8 +106,8 @@ describe("CompositionDemoScreen", () => {
       waitForJob: async () => ({ id: "j", status: "failed", error: { message: "Server error" } }),
     } as unknown as CompositionGenerationClient;
     render(<CompositionDemoScreen client={client} />);
-    fireEvent.change(screen.getByLabelText("Repo URL"), { target: { value: "https://github.com/x/y" } });
-    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://x.example.com" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
+    fireEvent.change(screen.getByLabelText("Demo description"), { target: { value: "Show the main flow" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Server error"));
   });
@@ -58,7 +122,8 @@ describe("CompositionDemoScreen", () => {
         }),
     } as unknown as CompositionGenerationClient;
     render(<CompositionDemoScreen client={client} />);
-    fireEvent.change(screen.getByLabelText("Repo URL"), { target: { value: "https://github.com/x/y" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
+    fireEvent.change(screen.getByLabelText("Demo description"), { target: { value: "Show the main flow" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
     await screen.findByTestId("composition-generating");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
