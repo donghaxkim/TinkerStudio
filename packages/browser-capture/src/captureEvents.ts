@@ -17,7 +17,7 @@ export function createCursorEvent(input: EventTiming & { x: number; y: number })
 }
 
 const DEFAULT_CURSOR_PATH_DURATION_MS = 450;
-const DEFAULT_CURSOR_PATH_STEP_MS = 50;
+const DEFAULT_CURSOR_PATH_STEP_MS = 1_000 / 30;
 
 function easeInOutProgress(t: number) {
   return t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
@@ -49,7 +49,7 @@ export function createCursorPathEvents(input: {
   }
 
   const startMs = nowMs - durationMs;
-  const steps = Math.round(durationMs / stepMs);
+  const steps = Math.ceil(durationMs / stepMs);
   const events: CaptureEvent[] = [];
 
   for (let index = 0; index <= steps; index += 1) {

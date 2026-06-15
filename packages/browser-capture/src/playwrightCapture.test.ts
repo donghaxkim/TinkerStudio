@@ -80,6 +80,7 @@ try {
 
     assert.equal(result.clips[0]?.id, "capture-video-main");
     assert.equal(result.clips[0]?.uri, "videos/main.webm");
+    assert.deepEqual(result.clips[0]?.metadata, { recorder: "playwright", frameRate: 25 });
     await access(mainVideoPath);
 
     const staleVideo = Buffer.from("stale-video");

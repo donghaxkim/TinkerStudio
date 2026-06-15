@@ -69,6 +69,12 @@ function toZoomKeyframe(event: CaptureEvent, index: number, duration: number): Z
   ];
 }
 
+function captureFrameRate(asset: CaptureAsset) {
+  const frameRate = asset.metadata?.frameRate;
+
+  return typeof frameRate === "number" && Number.isFinite(frameRate) && frameRate > 0 ? frameRate : undefined;
+}
+
 export function compileProject(input: CompileProjectInput): DemoProject {
   const videoAsset = input.captureResult.clips.find((asset) => asset.type === "video");
 
@@ -97,7 +103,7 @@ export function compileProject(input: CompileProjectInput): DemoProject {
     id: input.projectId,
     title: input.storyboard.title,
     duration,
-    fps: 30,
+    fps: captureFrameRate(videoAsset) ?? 30,
     aspectRatio: input.storyboard.aspectRatio,
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
