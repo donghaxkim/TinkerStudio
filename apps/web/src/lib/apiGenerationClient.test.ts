@@ -45,19 +45,30 @@ describe("createApiGenerationClient", () => {
         },
       ],
     });
+    const outputVideoArtifact = {
+      kind: "output-video",
+      relativePath: "hyperframes/output.mp4",
+      url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
+      mediaType: "video/mp4",
+    } as const;
+    const compositionIndexArtifact = {
+      kind: "composition-index",
+      relativePath: "hyperframes/index.html",
+      url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+      mediaType: "text/html",
+    } as const;
     const completed = job({
       status: "completed",
       updatedAt: "2026-06-14T00:00:02.000Z",
       progressEvents: running.progressEvents,
       result: {
-        artifacts: [
-          {
-            kind: "output-video",
-            relativePath: "hyperframes/output.mp4",
-            url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
-            mediaType: "video/mp4",
-          },
-        ],
+        method: "hyperframes",
+        composition: {
+          indexArtifact: compositionIndexArtifact,
+          outputVideoArtifact,
+        },
+        artifacts: [outputVideoArtifact, compositionIndexArtifact],
+        warnings: [],
       },
     });
     const fetch = vi

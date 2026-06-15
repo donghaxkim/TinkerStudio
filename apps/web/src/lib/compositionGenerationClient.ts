@@ -13,12 +13,8 @@ export type CreateCompositionJobRequest = {
   durationCapSeconds: number;
   aspectRatio: "16:9" | "9:16" | "1:1";
   prompt?: string;
-  /**
-   * Renderer to use. The API route defaults an omitted renderer to "playwright"
-   * (it strips the schema's "hyperframes" default), so the HTTP client defaults
-   * this to "hyperframes" for composition output. Callers may still override it.
-   */
-  renderer?: "hyperframes" | "playwright" | "both";
+  /** Renderer to use. Composition generation defaults this to "hyperframes". */
+  renderer?: "hyperframes" | "playwright";
 };
 
 export type WaitForJobOptions = {

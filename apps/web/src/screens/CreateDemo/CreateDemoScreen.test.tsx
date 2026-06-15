@@ -1,9 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiGenerationJob } from "@tinker/generation-contract";
+import { DemoProjectSchema } from "@tinker/project-schema";
 import type { GenerationClient } from "../../lib/generationClient.js";
 import { createMockGenerationClient } from "../../lib/mockGenerationClient.js";
 import { CreateDemoScreen } from "./CreateDemoScreen.js";
+import goldenProjectInput from "../../../../../packages/project-schema/fixtures/person-a-generated-project.sample.json";
+
+const goldenProject = DemoProjectSchema.parse(goldenProjectInput);
 
 // Helper: enter a repo URL and advance timers past the 1100ms verification delay
 async function enterAndVerifyRepo(repoValue = "github.com/example/product") {
@@ -48,6 +52,8 @@ function completedApiJob(): ApiGenerationJob {
       },
     ],
     result: {
+      method: "playwright",
+      project: goldenProject,
       artifacts: [
         {
           kind: "playwright-video",
@@ -62,6 +68,7 @@ function completedApiJob(): ApiGenerationJob {
           mediaType: "text/html",
         },
       ],
+      warnings: [],
     },
   };
 }

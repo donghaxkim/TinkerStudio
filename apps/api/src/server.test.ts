@@ -368,30 +368,32 @@ describe("job routes", () => {
     }
   });
 
-  it("accepts explicit Playwright renderer", async () => {
-    const renderer = "playwright";
-    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-${renderer}-${randomUUID()}-`));
-    const outputRoot = join(repoRoot, "generated", "local-job", `job-${renderer}`);
-    const completed = deferred<void>();
+  it("accepts explicit Playwright jobs and rejects renderer both", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-playwright-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-playwright");
     const server = await buildServer({
       config: testConfig(repoRoot),
-      idGenerator: () => `job-${renderer}`,
+      idGenerator: () => "job-playwright",
       runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
-        expect(rawRequest).toMatchObject({ id: `job-${renderer}`, mode: "ai-url-planning", renderer });
-        const playwright = await writePlaywrightArtifacts(outputRoot);
-        completed.resolve();
+        expect(rawRequest).toMatchObject({ id: "job-playwright", mode: "ai-url-planning", renderer: "playwright" });
+        await mkdir(join(outputRoot, "playwright"), { recursive: true });
+        await writeFile(join(outputRoot, "playwright", "demo-project.json"), `${JSON.stringify(goldenProject, null, 2)}\n`);
+        await writeFile(join(outputRoot, "playwright", "capture-result.json"), "{}");
         return {
-          jobId: `job-${renderer}`,
+          jobId: "job-playwright",
           status: "completed",
-          projectPath: playwright.projectPath,
-          captureResultPath: playwright.captureResultPath,
+          projectPath: join(outputRoot, "playwright", "demo-project.json"),
+          captureResultPath: join(outputRoot, "playwright", "capture-result.json"),
           outputDirectory: outputRoot,
-          artifactPaths: playwright.artifactPaths,
-          renderer,
+          artifactPaths: [
+            join(outputRoot, "playwright", "demo-project.json"),
+            join(outputRoot, "playwright", "capture-result.json"),
+          ],
+          renderer: "playwright",
           rendererResults: {
             playwright: {
-              projectPath: playwright.projectPath,
-              captureResultPath: playwright.captureResultPath,
+              projectPath: join(outputRoot, "playwright", "demo-project.json"),
+              captureResultPath: join(outputRoot, "playwright", "capture-result.json"),
             },
           },
         };
@@ -400,15 +402,25 @@ describe("job routes", () => {
     });
 
     try {
-      const response = await server.inject({ method: "POST", url: "/api/jobs", payload: { ...validBody, renderer } });
-
-      expect(response.statusCode).toBe(202);
-      expect(JSON.parse(response.body)).toMatchObject({
-        id: `job-${renderer}`,
-        status: "queued",
-        request: { id: `job-${renderer}`, renderer },
+      const playwrightResponse = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: { ...validBody, renderer: "playwright" },
       });
-      await completed.promise;
+
+      expect(playwrightResponse.statusCode).toBe(202);
+      expect(JSON.parse(playwrightResponse.body)).toMatchObject({
+        id: "job-playwright",
+        request: { id: "job-playwright", renderer: "playwright" },
+      });
+
+      const bothResponse = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: { ...validBody, renderer: "both" },
+      });
+      expect(bothResponse.statusCode).toBe(422);
+      expect(JSON.parse(bothResponse.body).message).toContain("renderer");
     } finally {
       await server.close();
     }
@@ -950,6 +962,13 @@ describe("job store", () => {
 
       expect(snapshot.request.renderer).toBe(renderer);
     }
+
+    expect(() => store.create({
+      id: "job-both",
+      request: { ...request, id: "job-both", renderer: "both" },
+      outputRoot: "/tmp/job-both",
+      now: "2026-06-11T00:00:00.000Z",
+    })).toThrow();
 
     expect(() => store.create({
       id: "job-output-directory",

@@ -8,6 +8,19 @@ import {
 const FIXED_TIME = "2026-01-01T00:00:00.000Z";
 
 function completedJob(id: string, request: CreateCompositionJobRequest): ApiGenerationJob {
+  const indexArtifact = {
+    kind: "composition-index",
+    relativePath: "hyperframes/index.html",
+    url: `/api/jobs/${id}/artifacts/hyperframes/index.html`,
+    mediaType: "text/html",
+  } as const;
+  const outputVideoArtifact = {
+    kind: "output-video",
+    relativePath: "hyperframes/output.mp4",
+    url: `/api/jobs/${id}/artifacts/hyperframes/output.mp4`,
+    mediaType: "video/mp4",
+  } as const;
+
   return {
     id,
     status: "completed",
@@ -25,12 +38,15 @@ function completedJob(id: string, request: CreateCompositionJobRequest): ApiGene
     updatedAt: FIXED_TIME,
     progressEvents: [],
     result: {
-      artifacts: [
-        { kind: "composition-index", relativePath: "hyperframes/index.html", url: `/api/jobs/${id}/artifacts/hyperframes/index.html`, mediaType: "text/html" },
-        { kind: "output-video", relativePath: "hyperframes/output.mp4", url: `/api/jobs/${id}/artifacts/hyperframes/output.mp4`, mediaType: "video/mp4" },
-      ],
+      method: "hyperframes",
+      composition: {
+        indexArtifact,
+        outputVideoArtifact,
+      },
+      artifacts: [indexArtifact, outputVideoArtifact],
+      warnings: [],
     },
-  } as ApiGenerationJob;
+  };
 }
 
 /** A non-terminal snapshot derived from a completed job (single home for the result-clearing cast). */

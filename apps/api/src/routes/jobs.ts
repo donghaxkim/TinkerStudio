@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import type { FastifyInstance } from "fastify";
 import {
   AiUrlPlanningCreateDemoRequestSchema,
-  AiUrlRendererSchema,
+  ApiGenerationMethodSchema,
   GenerationErrorSchema,
   type AiUrlPlanningCreateDemoRequest,
 } from "@tinker/generation-contract";
@@ -42,7 +42,7 @@ const ApiJobCreateRequestBodySchema = AiUrlPlanningCreateDemoRequestSchema.omit(
   renderer: true,
 })
   .extend({
-    renderer: AiUrlRendererSchema.optional(),
+    renderer: ApiGenerationMethodSchema.optional(),
   })
   .strict();
 
