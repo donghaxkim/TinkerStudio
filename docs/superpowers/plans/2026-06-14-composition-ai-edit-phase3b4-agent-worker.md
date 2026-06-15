@@ -79,17 +79,29 @@ git commit -m "feat(api): classifyArtifact recognizes revisions/<id>/hyperframes
 
 **Files:** `apps/api/src/routes/artifacts.ts`; extend `apps/api/src/server.test.ts` (or `artifacts`-focused test).
 
-- [ ] **Step 1: Failing test** — append to `server.test.ts`: a completed job whose revision artifact file exists on disk + is registered on `revisions[].result.artifacts` is served (200); an unregistered path is 404. Reuse the file's real helpers; write a real file under `<outputRoot>/revisions/rev-1/hyperframes/index.html` and register a revision via the store. Skeleton:
+- [ ] **Step 1: Failing test** — append to `server.test.ts`. `buildServer`'s store is internal (not exposed), so DON'T try to call the store directly. Instead inject a `runEdit` whose fake **writes a real file and returns the revision artifact** — i.e. use the **real `createComposeRunEdit` with a fake `runAgent`** (it writes `<outputRoot>/revisions/<revId>/hyperframes/index.html` and indexes it). Mirror the existing edit-flow test (`server.test.ts` ~lines 744-793) and `waitForRevision` (~line 1108). Concretely:
 ```ts
   it("serves a revision artifact when the parent job is completed", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-rev-"));
-    // drive a job to completed (existing pattern), get its outputRoot via the store, then:
-    // mkdir <outputRoot>/revisions/rev-1/hyperframes, write index.html, and appendRevision with an artifact
-    // whose relativePath = "revisions/rev-1/hyperframes/index.html" and url = the /artifacts/... path.
-    // GET that url → 200 + text/html.
+    let n = 0;
+    const runEdit = createComposeRunEdit({
+      runAgent: async () => "<<<<<<< SEARCH\nconst D=1.0;\n=======\nconst D=2.0;\n>>>>>>> REPLACE",
+    });
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      runner: <inline completed runner that writes a valid hyperframes/index.html containing "const D=1.0;" + window.__timelines + data-composition-id under outputRoot, resolves a deferred>,
+      runEdit,
+      idGenerator: () => `id-${++n}`,
+    });
+    // create + wait for completion (existing pattern), POST /edits, await waitForRevision(server, jobId),
+    // then GET the revision's composition-index url from the job snapshot's revisions[0].result.artifacts
+    const rev = got.json().revisions[0].result.artifacts.find((a) => a.kind === "composition-index");
+    const res = await server.inject({ method: "GET", url: rev.url });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
   });
 ```
-> The implementer must wire this against the real `buildServer`/store. The KEY assertion: the gate now passes for a path registered on a revision while the parent stays `completed`.
+> KEY assertion: the gate now passes for a path registered on `revisions[].result.artifacts` while the parent stays `completed`. (Import `createComposeRunEdit` from `./edit/composeRunEdit.js` — created in Task 4; if executing Task 2 before Task 4, do Task 4's `composeRunEdit` first, or use a hand-written `runEdit` fake that writes the file + returns the artifact.)
 - [ ] **Step 2: Run → FAIL** (route only checks `record.result.artifacts`).
 - [ ] **Step 3: Implement** — in `routes/artifacts.ts`, replace the gate (lines ~74-79):
 ```ts
@@ -202,8 +214,8 @@ async function seededRecord() {
   await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
   await writeFile(join(outputRoot, "hyperframes", "index.html"), HTML, "utf8");
   const store = createJobStore();
-  store.create({ id: "j", request: { mode: "ai-url-planning", repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9", renderer: "hyperframes" }, outputRoot, now: "t" });
-  store.complete("j", { artifacts: [] }, "t");
+  store.create({ id: "j", request: { mode: "ai-url-planning", repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9", renderer: "hyperframes" }, outputRoot, now: "2026-06-14T00:00:00.000Z" });
+  store.complete("j", { artifacts: [] }, "2026-06-14T00:00:00.000Z");
   return { store, outputRoot };
 }
 
@@ -248,6 +260,7 @@ async function listFiles(dir: string, root = dir): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
   const out: string[] = [];
   for (const e of entries) {
+    if (e.name.startsWith(".")) continue; // skip agent log dotfiles (.tinker-opencode-*) so they aren't indexed as artifacts
     const full = join(dir, e.name);
     if (e.isDirectory()) out.push(...(await listFiles(full, root)));
     else out.push(full);
