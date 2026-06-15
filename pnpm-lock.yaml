@@ -23,6 +23,9 @@ importers:
       '@tinker/generation-contract':
         specifier: workspace:*
         version: link:../../packages/generation-contract
+      '@tinker/project-schema':
+        specifier: workspace:*
+        version: link:../../packages/project-schema
       fastify:
         specifier: ^5.8.5
         version: 5.8.5

@@ -5,8 +5,8 @@ import {
   type ManualFixtureGenerationResult,
 } from "@tinker/generation-contract";
 import { LocalGenerationJobError, runLocalGenerationJob, type RunLocalGenerationJobOptions } from "@tinker/demo-assembly";
-import { indexArtifacts } from "../jobs/artifactIndex.js";
 import type { JobStore } from "../jobs/jobStore.js";
+import { buildApiGenerationResult } from "./apiGenerationResult.js";
 
 export type GenerationRunner = (
   rawRequest: unknown,
@@ -51,9 +51,11 @@ export function createGenerationWorker(options: GenerationWorkerOptions) {
       record.outputRoot = outputRoot;
       options.store.complete(
         id,
-        {
-          artifacts: indexArtifacts({ jobId: id, outputRoot, artifactPaths: result.artifactPaths }),
-        },
+        await buildApiGenerationResult({
+          jobId: id,
+          outputRoot,
+          generationResult: result,
+        }),
         now(),
       );
     } catch (error) {
