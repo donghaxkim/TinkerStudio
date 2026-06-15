@@ -22,3 +22,6 @@ docs/plans/
 
 # Stray Playwright/audit screenshots at repo root (scratch)
 /*.png
+
+# local code-graph tool cache (not part of the project)
+.codegraph/
