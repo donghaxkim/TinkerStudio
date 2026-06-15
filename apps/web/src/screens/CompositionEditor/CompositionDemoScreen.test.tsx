@@ -5,6 +5,57 @@ import type { ApiGenerationJob } from "@tinker/generation-contract";
 import type { CompositionGenerationClient, CreateCompositionJobRequest } from "../../lib/compositionGenerationClient.js";
 import { CompositionDemoScreen } from "./CompositionDemoScreen.js";
 
+function completedCompositionJob(): ApiGenerationJob {
+  return {
+    id: "mock-job-1",
+    status: "completed",
+    request: {
+      id: "mock-job-1",
+      mode: "ai-url-planning",
+      repoUrl: "https://github.com/acme/driftboard",
+      productUrl: "https://driftboard.example.com",
+      durationCapSeconds: 60,
+      aspectRatio: "16:9",
+      renderer: "hyperframes",
+    },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    progressEvents: [],
+    result: {
+      method: "hyperframes",
+      composition: {
+        indexArtifact: {
+          kind: "composition-index",
+          relativePath: "hyperframes/index.html",
+          url: "/api/jobs/mock-job-1/artifacts/hyperframes/index.html",
+          mediaType: "text/html",
+        },
+        outputVideoArtifact: {
+          kind: "output-video",
+          relativePath: "hyperframes/output.mp4",
+          url: "/api/jobs/mock-job-1/artifacts/hyperframes/output.mp4",
+          mediaType: "video/mp4",
+        },
+      },
+      artifacts: [
+        {
+          kind: "composition-index",
+          relativePath: "hyperframes/index.html",
+          url: "/api/jobs/mock-job-1/artifacts/hyperframes/index.html",
+          mediaType: "text/html",
+        },
+        {
+          kind: "output-video",
+          relativePath: "hyperframes/output.mp4",
+          url: "/api/jobs/mock-job-1/artifacts/hyperframes/output.mp4",
+          mediaType: "video/mp4",
+        },
+      ],
+      warnings: [],
+    },
+  };
+}
+
 function fakeHandle(): CompositionTimelineHandle {
   return {
     totalDuration: () => 10,
@@ -16,7 +67,56 @@ function fakeHandle(): CompositionTimelineHandle {
   } as unknown as CompositionTimelineHandle;
 }
 
+function createLocalCompositionGenerationClient(): CompositionGenerationClient {
+  return {
+    createJob: async () => completedCompositionJob(),
+    getJob: async () => completedCompositionJob(),
+    waitForJob: async () => completedCompositionJob(),
+  };
+}
+
 describe("CompositionDemoScreen", () => {
+  it("opens a preloaded completed HyperFrames job in the editor", async () => {
+    const client = createLocalCompositionGenerationClient();
+    render(
+      <CompositionDemoScreen
+        client={client}
+        initialCompletedJob={completedCompositionJob()}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
+  });
+
+  it("opens HyperFrames jobs with the canonical composition result URL", () => {
+    const client = createLocalCompositionGenerationClient();
+    const completedJob = completedCompositionJob();
+    if (completedJob.result?.method !== "hyperframes") throw new Error("Expected HyperFrames result");
+    completedJob.result.artifacts = [
+      {
+        kind: "composition-index",
+        relativePath: "decoy/index.html",
+        url: "/api/jobs/mock-job-1/artifacts/decoy/index.html",
+        mediaType: "text/html",
+      },
+      ...completedJob.result.artifacts,
+    ];
+
+    render(
+      <CompositionDemoScreen
+        client={client}
+        initialCompletedJob={completedJob}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
+      />,
+    );
+
+    expect(screen.getByTestId("composition-frame")).toHaveAttribute(
+      "src",
+      completedJob.result.composition.indexArtifact.url,
+    );
+  });
+
   it("generates a composition and opens it in the editor", async () => {
     const client = {
       createJob: vi.fn(async (_request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => ({
@@ -54,6 +154,21 @@ describe("CompositionDemoScreen", () => {
         updatedAt: "2026-01-01T00:00:00.000Z",
         progressEvents: [],
         result: {
+          method: "hyperframes",
+          composition: {
+            indexArtifact: {
+              kind: "composition-index",
+              relativePath: "hyperframes/index.html",
+              url: "/api/jobs/job-1/artifacts/hyperframes/index.html",
+              mediaType: "text/html",
+            },
+            outputVideoArtifact: {
+              kind: "output-video",
+              relativePath: "hyperframes/output.mp4",
+              url: "/api/jobs/job-1/artifacts/hyperframes/output.mp4",
+              mediaType: "video/mp4",
+            },
+          },
           artifacts: [
             {
               kind: "composition-index",
@@ -68,6 +183,7 @@ describe("CompositionDemoScreen", () => {
               mediaType: "video/mp4",
             },
           ],
+          warnings: [],
         },
       }),
     } satisfies CompositionGenerationClient;

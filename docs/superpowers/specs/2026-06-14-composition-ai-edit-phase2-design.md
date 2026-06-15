@@ -15,7 +15,7 @@ editor in the proven porcelain shell and adding the conversational edit loop on 
 
 Two editors exist in the app and share **no layout code**:
 
-- **Legacy `EditorScreen`** (`apps/web/src/screens/Editor/EditorScreen.tsx`, ~1,140
+- **Existing `EditorScreen`** (`apps/web/src/screens/Editor/EditorScreen.tsx`, ~1,140
   lines) — the fully-designed porcelain editor that matches the `videoeditor.png` /
   `design/porcelainnew.html` reference: top app bar, floating tool-rail, dark
   preview stage, playback bar, right-side tabbed panel (Chat/Zoom/Cursor/Frame),
@@ -27,7 +27,7 @@ Two editors exist in the app and share **no layout code**:
   bar.
 
 The composition editor inherited the porcelain **design tokens** but **not the
-layout shell**, because that shell was welded to the retired `DemoProject` model.
+layout shell**, because that shell was built around the existing `DemoProject` model.
 Phase 1 intentionally built only the new, risky mechanics (reading a live GSAP
 timeline out of a sandboxed iframe and scrubbing it). Phase 2 fills the rest.
 
@@ -36,7 +36,7 @@ timeline out of a sandboxed iframe and scrubbing it). Phase 2 fills the rest.
 Make the composition editor look like the `videoeditor.png` reference **and** carry
 the AI chat-edit loop:
 
-1. Rebuild `CompositionEditorScreen` inside the legacy porcelain shell — app bar,
+1. Rebuild `CompositionEditorScreen` inside the existing porcelain shell — app bar,
    preview stage, working playback bar, bottom timeline, right-side panel.
 2. The right panel is the **AI chat only**: composer ("Ask Tinker to edit the
    demo…") + context chips + Accept/Reject/Undo.
@@ -46,16 +46,16 @@ the AI chat-edit loop:
 
 ## Non-Goals
 
-- **No Zoom/Cursor/Frame tabs, no tool-rail.** The composition model retired
+- **No Zoom/Cursor/Frame tabs, no tool-rail.** The composition model does not use
   structured per-entity editing; the right panel is Chat-only. (Decision: "Chat-only
   panel".)
-- **No deletion of the legacy editor.** `EditorScreen`, `@tinker/ai-edit-ui`,
-  `DemoProject`, and `@tinker/demo-assembly` stay untouched — the legacy editor is
-  our visual reference, and ~75 files (incl. Person A's `demo-assembly`) depend on
-  `DemoProject`. Retiring it is a later, joint effort.
-- **No routing change yet.** "Generate" still routes to the legacy editor; the
-  composition editor stays on its own ("beta") route. Promoting composition to the
-  primary flow is a tiny follow-up after Phase 2 reaches parity.
+- **No deletion of the existing editor.** `EditorScreen`, `@tinker/ai-edit-ui`,
+  `DemoProject`, and `@tinker/demo-assembly` stay untouched — the existing editor is
+  our visual reference, and Playwright jobs still use `DemoProject` as their
+  canonical editable state.
+- **No dual-method routing change in this slice.** Playwright jobs continue to route
+  to the existing `DemoProject` editor, and HyperFrames jobs route to the
+  composition editor.
 - **No real edit endpoint.** Phase 2 runs on `MockCompositionEditClient`. The real
   `POST /api/jobs/:id/edits` (composing Person A's exports) is Phase 3.
 - **No thumbnails on chips** (text-only chips for now); **no Export wiring** (the
@@ -65,10 +65,10 @@ the AI chat-edit loop:
 
 ## Approach — reuse the shell, refill the slots
 
-The legacy shell's **layout is model-agnostic** (`grid: 52px / [1fr 284px]`, with the
+The existing shell's **layout is model-agnostic** (`grid: 52px / [1fr 284px]`, with the
 left column split stage / playback / timeline). Only the *panels inside it* were
 `DemoProject`-bound. Phase 2 lifts the porcelain chrome and re-fills the slots with
-composition-aware components. The legacy `EditorScreen` is copied from, never
+composition-aware components. The existing `EditorScreen` is copied from, never
 imported or mutated.
 
 ## Slicing — 2a then 2b (each independently demoable)
@@ -82,7 +82,7 @@ Rebuild `CompositionEditorScreen` in the porcelain shell, **no AI yet**:
 - **Playback bar** — play/pause + scrub via a `requestAnimationFrame` loop that
   advances `currentTime` **state**, which `CompositionPreview` seeks to (declarative,
   via its existing `currentTime`-keyed effect — there is no imperative `preview.seek`
-  drive path; identical to the legacy `Preview`). prev/next jump between
+  drive path; identical to the existing `Preview`). prev/next jump between
   `model.clips` boundaries; **for a flat composition (zero clips) prev/next disable
   or fall back to 0 / duration**. Timecode `m:ss.s / m:ss.s`. Reuse `formatTimecode`
   by **extracting it to a shared util** (e.g. `packages/editor/src/timeline/`) rather
@@ -144,7 +144,7 @@ stage chips in the composer.
 
 > **Note (resolves a parent-spec divergence):** the parent design placed
 > `ChatContextRef` / `useCompositionEditFlow` in `packages/ai-edit-ui`. This slice
-> deliberately does **not** touch `@tinker/ai-edit-ui` (it is legacy,
+> deliberately does **not** touch `@tinker/ai-edit-ui` (it remains
 > `DemoProject`-bound). The composition-edit types and hook live in
 > `apps/web/src/lib/` instead, with `Selection` in `packages/editor`.
 
@@ -170,7 +170,7 @@ stage chips in the composer.
   new screen components are imported directly (no `CompositionEditor/` barrel, as
   today).
 - **`@tinker/ai-edit-ui`, `EditorScreen`, `DemoProject`, `@tinker/demo-assembly` are
-  not imported, edited, or deleted.** Legacy tests stay green untouched.
+  not imported, edited, or deleted.** Existing tests stay green untouched.
 
 ## Error handling
 
@@ -192,7 +192,7 @@ stage chips in the composer.
   prev/next snap to clip boundaries; cleanup on unmount.
 - **Mock edit flow** — revision applied; Accept keeps; Reject reverts; Undo pops;
   abort/cancel mid-draft.
-- **Non-destructive** — legacy `EditorScreen` / `ai-edit-ui` tests unchanged and
+- **Non-destructive** — existing `EditorScreen` / `ai-edit-ui` tests unchanged and
   green.
 
 ## Seam-readiness
@@ -207,4 +207,4 @@ change** — the editor talks only to the client interface + the flow hook.
   (app bar, preview stage, playback bar, timeline, right Chat panel).
 - Play/scrub the live composition; select a range or clip; add it to chat as a chip.
 - Ask for an edit, preview the (mock) rewritten composition, Accept / Reject / Undo.
-- The legacy editor and all `DemoProject` code remain untouched and green.
+- The existing editor and all `DemoProject` code remain untouched and green.

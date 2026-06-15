@@ -63,9 +63,29 @@ describe("HttpCompositionGenerationClient", () => {
   });
 
   it("waitForJob polls until terminal and reports each update", async () => {
+    const outputVideoArtifact = {
+      kind: "output-video",
+      relativePath: "hyperframes/output.mp4",
+      url: "/api/jobs/job-1/artifacts/hyperframes/output.mp4",
+      mediaType: "video/mp4",
+    } as const;
+    const compositionIndexArtifact = {
+      kind: "composition-index",
+      relativePath: "hyperframes/index.html",
+      url: "/api/jobs/job-1/artifacts/hyperframes/index.html",
+      mediaType: "text/html",
+    } as const;
     const completed = job({
       status: "completed",
-      result: { artifacts: [{ kind: "output-video", relativePath: "hyperframes/output.mp4", url: "/api/jobs/job-1/artifacts/hyperframes/output.mp4", mediaType: "video/mp4" }] },
+      result: {
+        method: "hyperframes",
+        composition: {
+          indexArtifact: compositionIndexArtifact,
+          outputVideoArtifact,
+        },
+        artifacts: [outputVideoArtifact, compositionIndexArtifact],
+        warnings: [],
+      },
     });
     const responses = [jsonResponse(200, job({ status: "running" })), jsonResponse(200, completed)];
     const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => responses.shift()!);
@@ -77,13 +97,13 @@ describe("HttpCompositionGenerationClient", () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
-  it("lets the caller override the renderer", async () => {
+  it("lets the caller override the renderer to Playwright", async () => {
     const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(202, job()));
     const client = createHttpCompositionGenerationClient({ fetchFn });
-    await client.createJob({ ...validRequest, renderer: "both" });
+    await client.createJob({ ...validRequest, renderer: "playwright" });
     const [, init] = fetchFn.mock.calls[0]!;
     const sent = JSON.parse((init?.body as string) ?? "{}");
-    expect(sent.renderer).toBe("both");
+    expect(sent.renderer).toBe("playwright");
   });
 
   it("waitForJob rejects once the signal is aborted", async () => {

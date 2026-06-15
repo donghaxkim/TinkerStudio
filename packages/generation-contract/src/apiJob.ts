@@ -1,7 +1,10 @@
 import { z } from "zod";
-import { AiUrlPlanningCreateDemoRequestSchema, AiUrlRendererSchema } from "./createDemoRequest.js";
+import { DemoProjectSchema } from "@tinker/project-schema";
+import { AiUrlPlanningCreateDemoRequestSchema } from "./createDemoRequest.js";
 import { GenerationErrorSchema } from "./errors.js";
 import { ManualFixtureProgressEventSchema } from "./progress.js";
+
+export const ApiGenerationMethodSchema = z.enum(["playwright", "hyperframes"]);
 
 const ApiCreateDemoRequestSchema = AiUrlPlanningCreateDemoRequestSchema.omit({
   outputDirectory: true,
@@ -9,7 +12,7 @@ const ApiCreateDemoRequestSchema = AiUrlPlanningCreateDemoRequestSchema.omit({
 })
   .extend({
     id: z.string().min(1),
-    renderer: AiUrlRendererSchema,
+    renderer: ApiGenerationMethodSchema,
   })
   .strict();
 
@@ -43,11 +46,65 @@ export const ApiArtifactSchema = z
   })
   .strict();
 
-export const ApiGenerationResultSchema = z
+function artifactOfKind(kind: z.infer<typeof ApiArtifactKindSchema>) {
+  return ApiArtifactSchema.superRefine((artifact, ctx) => {
+    if (artifact.kind !== kind) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["kind"],
+        message: `artifact kind must be ${kind}`,
+      });
+    }
+  });
+}
+
+const PlaywrightGenerationResultSchema = z
   .object({
+    method: z.literal("playwright"),
+    project: DemoProjectSchema,
     artifacts: z.array(ApiArtifactSchema),
+    warnings: z.array(z.string()),
   })
   .strict();
+
+const HyperframesGenerationResultSchema = z
+  .object({
+    method: z.literal("hyperframes"),
+    composition: z
+      .object({
+        indexArtifact: artifactOfKind("composition-index"),
+        outputVideoArtifact: artifactOfKind("output-video"),
+        generationManifestArtifact: artifactOfKind("generation-manifest").optional(),
+        assetManifestArtifact: artifactOfKind("asset-manifest").optional(),
+      })
+      .strict(),
+    artifacts: z.array(ApiArtifactSchema),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+
+const HyperframesRevisionResultSchema = z
+  .object({
+    method: z.literal("hyperframes"),
+    composition: z
+      .object({
+        indexArtifact: artifactOfKind("composition-index"),
+        outputVideoArtifact: artifactOfKind("output-video").optional(),
+        generationManifestArtifact: artifactOfKind("generation-manifest").optional(),
+        assetManifestArtifact: artifactOfKind("asset-manifest").optional(),
+      })
+      .strict(),
+    artifacts: z.array(ApiArtifactSchema),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+
+export const ApiGenerationResultSchema = z.discriminatedUnion("method", [
+  PlaywrightGenerationResultSchema,
+  HyperframesGenerationResultSchema,
+]);
+
+export const ApiRevisionResultSchema = HyperframesRevisionResultSchema;
 
 export const ApiGenerationJobStatusSchema = z.enum([
   "queued",
@@ -63,7 +120,7 @@ export const ApiRevisionSchema = z
     id: z.string().min(1),
     status: ApiGenerationJobStatusSchema,
     createdAt: z.string().datetime(),
-    result: ApiGenerationResultSchema.optional(),
+    result: ApiRevisionResultSchema.optional(),
     error: GenerationErrorSchema.optional(),
     /**
      * Render-on-demand failure for this revision. Optional + backward-compatible: a revision
@@ -103,6 +160,12 @@ export const ApiGenerationJobSchema = z
     if (job.status === "completed") {
       if (job.result === undefined) {
         ctx.addIssue({ code: "custom", path: ["result"], message: "completed jobs require a result" });
+      } else if (job.result.method !== job.request.renderer) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["result", "method"],
+          message: "result method must match request renderer",
+        });
       }
     } else if (job.result !== undefined) {
       ctx.addIssue({ code: "custom", path: ["result"], message: "result is only allowed for completed jobs" });
@@ -119,7 +182,9 @@ export const ApiGenerationJobSchema = z
 
 export type ApiArtifactKind = z.infer<typeof ApiArtifactKindSchema>;
 export type ApiArtifact = z.infer<typeof ApiArtifactSchema>;
+export type ApiGenerationMethod = z.infer<typeof ApiGenerationMethodSchema>;
 export type ApiGenerationResult = z.infer<typeof ApiGenerationResultSchema>;
+export type ApiRevisionResult = z.infer<typeof ApiRevisionResultSchema>;
 export type ApiGenerationJobStatus = z.infer<typeof ApiGenerationJobStatusSchema>;
 export type ApiGenerationJob = z.infer<typeof ApiGenerationJobSchema>;
 

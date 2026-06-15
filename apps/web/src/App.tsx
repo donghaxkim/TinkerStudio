@@ -3,7 +3,7 @@ import { createHttpCompositionEditClient } from "./lib/httpCompositionEditClient
 import { CompositionDemoScreen } from "./screens/CompositionEditor/CompositionDemoScreen.js";
 
 // The composition flow runs against the real generation API (same-origin via the Vite
-// /api proxy → :4500). Phase 3b-5: edits POST /edits + poll.
+// /api proxy -> :4500). Edits POST /edits + poll.
 const compositionClient = createHttpCompositionGenerationClient();
 const compositionEditClient = createHttpCompositionEditClient();
 

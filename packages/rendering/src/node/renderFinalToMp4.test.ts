@@ -156,6 +156,26 @@ async function createSolidFixture(path: string, color: string, duration = 2) {
   ]);
 }
 
+async function createSolidWebmFixture(path: string, color: string, duration = 2) {
+  await runFfmpeg([
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `color=c=${color}:s=320x180:r=25:d=${duration}`,
+    "-an",
+    "-c:v",
+    "libvpx",
+    "-deadline",
+    "realtime",
+    "-pix_fmt",
+    "yuv420p",
+    "-f",
+    "webm",
+    path,
+  ]);
+}
+
 async function withRealProjectRoot<T>(
   createFixture: (assetPath: string) => Promise<void>,
   run: (projectRoot: string) => Promise<T>,
@@ -232,6 +252,43 @@ async function sampleAverageRgb(path: string, options: { time: number; x: number
     g: total.g / pixels,
     b: total.b / pixels,
   };
+}
+
+async function blackFrameLines(path: string, options: { start: number; duration: number }) {
+  const args = [
+    "-v",
+    "info",
+    "-ss",
+    options.start.toFixed(3),
+    "-t",
+    options.duration.toFixed(3),
+    "-i",
+    path,
+    "-vf",
+    "blackframe=amount=80:threshold=32",
+    "-an",
+    "-f",
+    "null",
+    "-",
+  ];
+
+  return new Promise<string[]>((resolve, reject) => {
+    const child = spawn("ffmpeg", args);
+    let stderr = "";
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(stderr.split("\n").filter((line) => line.includes("Parsed_blackframe")));
+        return;
+      }
+
+      reject(new Error(`ffmpeg blackframe exited with ${code ?? "unknown code"}: ${stderr.trim()}`));
+    });
+  });
 }
 
 async function probeDuration(path: string) {
@@ -716,6 +773,41 @@ describe("renderFinalToMp4", () => {
       expect(beforeZoom.g).toBeGreaterThan(180);
       expect(beforeZoom.b).toBeGreaterThan(180);
       expectDominant(duringZoom, "r");
+    });
+  });
+
+  it("does not emit black dropout frames during animated zoom export", async () => {
+    await withRealProjectRoot((assetPath) => createSolidWebmFixture(assetPath, "white"), async (projectRoot) => {
+      const outputPath = join(projectRoot, "zoom-no-dropout.mp4");
+
+      await renderFinalToMp4(
+        {
+          ...shortProject(),
+          fps: 25,
+          assets: shortProject().assets.map((asset) => ({
+            ...asset,
+            width: 320,
+            height: 180,
+            duration: 2,
+          })),
+          zooms: [
+            {
+              id: "zoom_ramp_no_dropout",
+              start: 0.25,
+              end: 1.75,
+              target: { x: 80, y: 45, width: 160, height: 90 },
+              easing: "easeInOut",
+            },
+          ],
+        },
+        {
+          projectRoot,
+          allowedOutputRoots: [projectRoot],
+          outputPath,
+        },
+      );
+
+      await expect(blackFrameLines(outputPath, { start: 0.2, duration: 1.6 })).resolves.toEqual([]);
     });
   });
 

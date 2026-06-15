@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import type { ApiGenerationJob } from "@tinker/generation-contract";
 import { isTerminalStatus, selectArtifact, selectArtifactUrl } from "./compositionGenerationClient.js";
 
+const compositionIndexArtifact = {
+  kind: "composition-index",
+  relativePath: "hyperframes/index.html",
+  url: "/api/jobs/job-1/artifacts/hyperframes/index.html",
+  mediaType: "text/html",
+} as const;
+
+const outputVideoArtifact = {
+  kind: "output-video",
+  relativePath: "hyperframes/output.mp4",
+  url: "/api/jobs/job-1/artifacts/hyperframes/output.mp4",
+  mediaType: "video/mp4",
+} as const;
+
 const completed = {
   id: "job-1",
   status: "completed",
@@ -18,12 +32,15 @@ const completed = {
   updatedAt: "2026-01-01T00:00:00.000Z",
   progressEvents: [],
   result: {
-    artifacts: [
-      { kind: "composition-index", relativePath: "hyperframes/index.html", url: "/api/jobs/job-1/artifacts/hyperframes/index.html", mediaType: "text/html" },
-      { kind: "output-video", relativePath: "hyperframes/output.mp4", url: "/api/jobs/job-1/artifacts/hyperframes/output.mp4", mediaType: "video/mp4" },
-    ],
+    method: "hyperframes",
+    composition: {
+      indexArtifact: compositionIndexArtifact,
+      outputVideoArtifact,
+    },
+    artifacts: [compositionIndexArtifact, outputVideoArtifact],
+    warnings: [],
   },
-} as ApiGenerationJob;
+} satisfies ApiGenerationJob;
 
 describe("composition client helpers", () => {
   it("isTerminalStatus is true only for completed/failed", () => {

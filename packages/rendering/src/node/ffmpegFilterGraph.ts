@@ -35,7 +35,7 @@ type SourceToOutputPlacement = {
 };
 
 const MIN_INTERVAL_SECONDS = 0.000001;
-const FRAME_BOUNDARY_EPSILON = 0.00001;
+const FRAME_TIME_QUANTIZATION_SECONDS = 0.000001;
 
 export function buildRealMediaFilterGraph(
   project: DemoProject,
@@ -168,40 +168,49 @@ function appendCameraFilters(
   }
 
   const outputLabel = "camera0";
-  const baseLabel = "camera_base";
   const fpsLabel = "camera_fps";
   const splitLabels = intervals.map((_, index) => `camera_src${index}`);
   const segmentLabels = intervals.map((_, index) => `camera_seg${index}`);
 
-  filters.push(`color=c=#000000:s=${plan.output.width}x${plan.output.height}:r=${ffmpegNumber(plan.timeline.fps)}:d=${ffmpegNumber(plan.timeline.duration)}[${baseLabel}]`);
   filters.push(`[${inputLabel}]fps=${ffmpegNumber(plan.timeline.fps)}[${fpsLabel}]`);
   filters.push(`[${fpsLabel}]split=${intervals.length}${splitLabels.map((label) => `[${label}]`).join("")}`);
-  let currentLabel = baseLabel;
 
   intervals.forEach((interval, index) => {
     const { startFrame, endFrame } = intervalToFrameRange(interval, plan.timeline.fps);
-    const nextLabel = index === intervals.length - 1 ? outputLabel : `camera_overlay${index}`;
 
     filters.push(
       [
         `[${splitLabels[index]}]trim=start_frame=${startFrame}:end_frame=${endFrame}`,
-        `setpts=PTS-STARTPTS+${ffmpegNumber(interval.start)}/TB`,
+        "setpts=PTS-STARTPTS",
         `${staticCameraFilter(interval.transform, plan)}[${segmentLabels[index]}]`,
       ].join(","),
     );
-    filters.push(`[${currentLabel}][${segmentLabels[index]}]overlay=0:0:eof_action=pass:repeatlast=0[${nextLabel}]`);
-    currentLabel = nextLabel;
   });
+  filters.push(
+    `${segmentLabels.map((label) => `[${label}]`).join("")}concat=n=${intervals.length}:v=1:a=0,setpts=N/${ffmpegNumber(plan.timeline.fps)}/TB[${outputLabel}]`,
+  );
 
   return outputLabel;
 }
 
 function intervalToFrameRange(interval: CameraInterval, fps: number) {
   const safeFps = Number.isFinite(fps) && fps > 0 ? fps : 30;
-  const startFrame = Math.max(0, Math.floor(interval.start * safeFps + FRAME_BOUNDARY_EPSILON));
-  const endFrame = Math.max(startFrame + 1, Math.ceil(interval.end * safeFps - FRAME_BOUNDARY_EPSILON));
+  const startFrame = Math.max(0, timeToFrameIndex(interval.start, safeFps, "start"));
+  const endFrame = Math.max(startFrame + 1, timeToFrameIndex(interval.end, safeFps, "end"));
 
   return { startFrame, endFrame };
+}
+
+function timeToFrameIndex(time: number, fps: number, mode: "start" | "end") {
+  const frameFloat = time * fps;
+  const nearestFrame = Math.round(frameFloat);
+  const tolerance = fps * FRAME_TIME_QUANTIZATION_SECONDS;
+
+  if (Math.abs(frameFloat - nearestFrame) <= tolerance) {
+    return nearestFrame;
+  }
+
+  return mode === "start" ? Math.floor(frameFloat) : Math.ceil(frameFloat);
 }
 
 export function buildCameraIntervalsForExport(project: DemoProject, plan: FinalRenderPlan): CameraInterval[] {

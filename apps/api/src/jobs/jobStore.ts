@@ -5,6 +5,7 @@ import {
   type ApiGenerationJobStatus,
   type ApiGenerationResult,
   type ApiRevision,
+  type ApiRevisionResult,
   type EditContextRef,
   type GenerationError,
   type ManualFixtureProgressEvent,
@@ -128,7 +129,7 @@ export function createJobStore() {
       record.pendingRender = render;
     },
 
-    setRevisionResult(id: string, revId: string, result: ApiGenerationResult, now: string) {
+    setRevisionResult(id: string, revId: string, result: ApiRevisionResult, now: string) {
       const record = records.get(id);
       if (record === undefined) return;
       record.revisions = (record.revisions ?? []).map((r) => (r.id === revId ? { id: r.id, status: "completed", createdAt: r.createdAt, result } : r));

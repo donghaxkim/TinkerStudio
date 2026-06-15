@@ -262,6 +262,28 @@ describe("camera transform", () => {
     expect(full.scale).toBe(2.4);
   });
 
+  it("holds a terminal zoom at full strength through maxTime", () => {
+    const regions = normalizeZoomRegions([zoom({ start: 7.537, end: 10.626, easing: "easeInOut" })], frame);
+
+    const nearEnd = resolveDeterministicCameraTransform(regions, [], 10.4, {
+      maxTime: 10.626,
+      transitionSeconds: 0.2,
+    });
+
+    expect(nearEnd.activeZoomId).toBe("zoom_001");
+    expect(nearEnd.strength).toBe(1);
+    expect(nearEnd.scale).toBe(2.4);
+  });
+
+  it("holds a short terminal zoom at full strength through maxTime", () => {
+    const regions = normalizeZoomRegions([zoom({ start: 1, end: 1.3, easing: "easeInOut" })], frame);
+
+    const atMaxTime = resolveDeterministicCameraTransform(regions, [], 1.3, { maxTime: 1.3 });
+
+    expect(atMaxTime.activeZoomId).toBe("zoom_001");
+    expect(atMaxTime.strength).toBe(1);
+  });
+
   it("matches stateful playback for short zooms whose transition is clamped to half duration", () => {
     const regions = normalizeZoomRegions(
       [zoom({ start: 1, end: 1.3, target: { x: 0, y: 0, width: 250, height: 125 } })],

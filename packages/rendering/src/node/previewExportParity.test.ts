@@ -182,6 +182,12 @@ function cameraFrameTrimsFor(project: DemoProject) {
   }));
 }
 
+function expectAdjacentFrameTrims(trims: Array<{ start: number; end: number }>) {
+  for (let index = 1; index < trims.length; index += 1) {
+    expect(trims[index]?.start).toBe(trims[index - 1]?.end);
+  }
+}
+
 describe("preview/export camera parity", () => {
   it("matches the shared camera resolver at active zoom frame timestamps", () => {
     const time = 0.7;
@@ -216,13 +222,16 @@ describe("preview/export camera parity", () => {
   });
 
   it("keeps a non-frame-aligned final camera interval non-empty", () => {
+    const duration = 2.01;
+    const fps = 30;
     const project = projectWith({
-      duration: 1.01,
+      duration,
+      fps,
       zooms: [
         {
           id: "zoom_final_partial_frame",
-          start: 0.99,
-          end: 1.01,
+          start: 0.5,
+          end: 1.5,
           target: { x: 0, y: 270, width: 960, height: 540 },
           easing: "linear",
         },
@@ -231,17 +240,60 @@ describe("preview/export camera parity", () => {
         ...track,
         clips: track.clips.map((clip) => ({
           ...clip,
-          end: 1.01,
-          sourceEnd: 1.01,
+          end: duration,
+          sourceEnd: duration,
         })),
       })),
-      assets: baseProject.assets.map((asset) => ({ ...asset, duration: 1.01 })),
+      assets: baseProject.assets.map((asset) => ({ ...asset, duration })),
     });
 
     const trims = cameraFrameTrimsFor(project);
 
-    expect(trims.at(-1)).toEqual({ start: 30, end: 31 });
+    expect(trims.length).toBeGreaterThan(1);
+    expect(trims.at(-1)?.end).toBe(Math.ceil(duration * fps));
     expect(trims.every((trim) => trim.end > trim.start)).toBe(true);
+    expectAdjacentFrameTrims(trims);
+  });
+
+  it("keeps 60fps animated camera frame trims adjacent", () => {
+    const fps = 60;
+    const duration = 1;
+    const project = projectWith({
+      duration,
+      fps,
+      zooms: [
+        {
+          id: "zoom_60fps_frame_boundaries",
+          start: 0,
+          end: duration,
+          target: { x: 0, y: 270, width: 960, height: 540 },
+          easing: "linear",
+        },
+      ],
+      tracks: baseProject.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.map((clip) => ({
+          ...clip,
+          end: duration,
+          sourceEnd: duration,
+        })),
+      })),
+      assets: baseProject.assets.map((asset) => ({ ...asset, duration })),
+    });
+
+    const trims = cameraFrameTrimsFor(project);
+
+    expect(trims.length).toBeGreaterThan(1);
+    expect(trims[0]).toEqual({ start: 0, end: 1 });
+    expect(trims.at(-1)?.end).toBe(duration * fps);
+    expectAdjacentFrameTrims(trims);
+  });
+
+  it("does not composite animated camera frame segments over a black base", () => {
+    const filter = filterComplexFor(baseProject);
+
+    expect(filter).not.toContain("camera_base");
+    expect(filter).toContain("concat=");
   });
 });
 

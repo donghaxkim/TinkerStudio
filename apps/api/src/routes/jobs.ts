@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import type { FastifyInstance } from "fastify";
 import {
   AiUrlPlanningCreateDemoRequestSchema,
-  AiUrlRendererSchema,
+  ApiGenerationMethodSchema,
   EditCompositionRequestBodySchema,
   GenerationErrorSchema,
   type AiUrlPlanningCreateDemoRequest,
@@ -48,7 +48,7 @@ const ApiJobCreateRequestBodySchema = AiUrlPlanningCreateDemoRequestSchema.omit(
 })
   .extend({
     productUrl: AiUrlPlanningCreateDemoRequestSchema.shape.productUrl.optional(),
-    renderer: AiUrlRendererSchema.optional(),
+    renderer: ApiGenerationMethodSchema.optional(),
   })
   .strict();
 

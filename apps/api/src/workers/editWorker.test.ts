@@ -3,10 +3,16 @@ import { createEditWorker, type RunEdit } from "./editWorker.js";
 import { createJobStore } from "../jobs/jobStore.js";
 
 const REQ = { mode: "ai-url-planning" as const, repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9" as const, renderer: "hyperframes" as const };
+const indexArtifact = { kind: "composition-index" as const, relativePath: "hyperframes/index.html", url: "/api/jobs/j/artifacts/hyperframes/index.html", mediaType: "text/html" };
+const outputVideoArtifact = { kind: "output-video" as const, relativePath: "hyperframes/output.mp4", url: "/api/jobs/j/artifacts/hyperframes/output.mp4", mediaType: "video/mp4" };
+const completedResult = { method: "hyperframes" as const, composition: { indexArtifact, outputVideoArtifact }, artifacts: [indexArtifact, outputVideoArtifact], warnings: [] };
+const revisionArtifact = { kind: "composition-index" as const, relativePath: "revisions/rev-1/hyperframes/index.html", url: "/api/jobs/j/artifacts/revisions/rev-1/hyperframes/index.html", mediaType: "text/html" };
+const revisionResult = { method: "hyperframes" as const, composition: { indexArtifact: revisionArtifact }, artifacts: [revisionArtifact], warnings: [] };
+
 function seeded() {
   const store = createJobStore();
   store.create({ id: "j", request: REQ, outputRoot: "/tmp/j", now: "2026-01-01T00:00:00.000Z" });
-  store.complete("j", { artifacts: [] }, "2026-01-01T00:00:01.000Z");
+  store.complete("j", completedResult, "2026-01-01T00:00:01.000Z");
   store.setPendingEdit("j", { revId: "rev-1", instruction: "x", context: [] });
   return store;
 }
@@ -14,7 +20,7 @@ function seeded() {
 describe("editWorker", () => {
   it("runs the edit and appends the revision", async () => {
     const store = seeded();
-    const runEdit: RunEdit = vi.fn(async () => ({ artifacts: [{ kind: "composition-index" as const, relativePath: "revisions/rev-1/hyperframes/index.html", url: "/api/jobs/j/artifacts/revisions/rev-1/hyperframes/index.html", mediaType: "text/html" }] }));
+    const runEdit: RunEdit = vi.fn(async () => revisionResult);
     await createEditWorker({ store, runEdit, now: () => "2026-01-01T00:00:02.000Z" })("j");
     const snap = store.getSnapshot("j")!;
     expect(snap.currentRevisionId).toBe("rev-1");

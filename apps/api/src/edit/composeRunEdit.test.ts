@@ -6,6 +6,9 @@ import { createComposeRunEdit } from "./composeRunEdit.js";
 import { createJobStore } from "../jobs/jobStore.js";
 
 const HTML = `<html><body><div data-composition-id="demo"></div><script>window.__timelines={demo:1};\nconst D=1.0;</script></body></html>`;
+const indexArtifact = { kind: "composition-index" as const, relativePath: "hyperframes/index.html", url: "/api/jobs/j/artifacts/hyperframes/index.html", mediaType: "text/html" };
+const outputVideoArtifact = { kind: "output-video" as const, relativePath: "hyperframes/output.mp4", url: "/api/jobs/j/artifacts/hyperframes/output.mp4", mediaType: "video/mp4" };
+const completedResult = { method: "hyperframes" as const, composition: { indexArtifact, outputVideoArtifact }, artifacts: [indexArtifact, outputVideoArtifact], warnings: [] };
 
 async function seededRecord() {
   const outputRoot = await mkdtemp(join(tmpdir(), "tinker-edit-"));
@@ -13,7 +16,7 @@ async function seededRecord() {
   await writeFile(join(outputRoot, "hyperframes", "index.html"), HTML, "utf8");
   const store = createJobStore();
   store.create({ id: "j", request: { mode: "ai-url-planning", repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9", renderer: "hyperframes" }, outputRoot, now: "2026-06-14T00:00:00.000Z" });
-  store.complete("j", { artifacts: [] }, "2026-06-14T00:00:00.000Z");
+  store.complete("j", completedResult, "2026-06-14T00:00:00.000Z");
   return { store, outputRoot };
 }
 
