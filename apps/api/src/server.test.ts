@@ -11,6 +11,7 @@ import type {
   ManualFixtureProgressEvent,
 } from "@tinker/generation-contract";
 import { readConfig } from "./config.js";
+import { createComposeRunEdit } from "./edit/composeRunEdit.js";
 import { indexArtifacts } from "./jobs/artifactIndex.js";
 import { createJobQueue } from "./jobs/jobQueue.js";
 import { createJobStore } from "./jobs/jobStore.js";
@@ -800,6 +801,71 @@ describe("job routes", () => {
       const created = await server.inject({ method: "POST", url: "/api/jobs", payload: { mode: "ai-url-planning", repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9" } });
       expect(created.statusCode).toBe(202);
       expect((await server.inject({ method: "POST", url: `/api/jobs/${created.json().id}/edits`, payload: { instruction: "", context: [] } })).statusCode).toBe(422);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("serves a revision artifact when the parent job is completed", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-rev-"));
+    const outputRoot = join(repoRoot, "generated", "local-job", "id-1");
+    const completed = deferred<void>();
+    let n = 0;
+    const runEdit = createComposeRunEdit({
+      runAgent: async () => "<<<<<<< SEARCH\nconst D=1.0;\n=======\nconst D=2.0;\n>>>>>>> REPLACE",
+    });
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      runEdit,
+      idGenerator: () => `id-${++n}`,
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
+        await writeFile(
+          join(outputRoot, "hyperframes", "index.html"),
+          '<div data-composition-id="demo"></div><script>window.__timelines={demo:1};\nconst D=1.0;</script>',
+        );
+        completed.resolve();
+        return {
+          jobId: "id-1",
+          status: "completed",
+          projectPath: join(outputRoot, "hyperframes", "output.mp4"),
+          captureResultPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+          outputDirectory: outputRoot,
+          artifactPaths: [join(outputRoot, "hyperframes", "index.html")],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(outputRoot, "hyperframes", "output.mp4"),
+              generationManifestPath: join(outputRoot, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(outputRoot, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+    });
+
+    try {
+      const created = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(created.statusCode).toBe(202);
+      const jobId = created.json().id as string;
+      await completed.promise;
+      await waitForJobStatus(server, jobId, "completed");
+
+      const edit = await server.inject({
+        method: "POST",
+        url: `/api/jobs/${jobId}/edits`,
+        payload: { instruction: "slower", context: [] },
+      });
+      expect(edit.statusCode).toBe(202);
+      await waitForRevision(server, jobId);
+
+      const got = await server.inject({ method: "GET", url: `/api/jobs/${jobId}` });
+      const rev = got
+        .json()
+        .revisions[0].result.artifacts.find((a: { kind: string }) => a.kind === "composition-index");
+      const res = await server.inject({ method: "GET", url: rev.url });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["content-type"]).toMatch(/text\/html/);
     } finally {
       await server.close();
     }
