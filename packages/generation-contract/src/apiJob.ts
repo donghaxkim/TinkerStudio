@@ -58,6 +58,26 @@ export const ApiGenerationJobStatusSchema = z.enum([
   "failed",
 ]);
 
+export const ApiRevisionSchema = z
+  .object({
+    id: z.string().min(1),
+    status: ApiGenerationJobStatusSchema,
+    createdAt: z.string().datetime(),
+    result: ApiGenerationResultSchema.optional(),
+    error: GenerationErrorSchema.optional(),
+  })
+  .strict()
+  .superRefine((rev, ctx) => {
+    if (rev.status === "completed" && rev.result === undefined) {
+      ctx.addIssue({ code: "custom", path: ["result"], message: "completed revisions require a result" });
+    }
+    if (rev.status === "failed" && rev.error === undefined) {
+      ctx.addIssue({ code: "custom", path: ["error"], message: "failed revisions require an error" });
+    }
+  });
+
+export type ApiRevision = z.infer<typeof ApiRevisionSchema>;
+
 export const ApiGenerationJobSchema = z
   .object({
     id: z.string().min(1),
@@ -68,6 +88,8 @@ export const ApiGenerationJobSchema = z
     progressEvents: z.array(ManualFixtureProgressEventSchema),
     result: ApiGenerationResultSchema.optional(),
     error: GenerationErrorSchema.optional(),
+    revisions: z.array(ApiRevisionSchema).optional(),
+    currentRevisionId: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((job, ctx) => {

@@ -113,4 +113,32 @@ describe("CompositionEditorScreen", () => {
     await waitFor(() => expect(screen.getByTestId("composition-frame")).toHaveAttribute("src", "/rev1/index.html?rev=1"));
     expect(screen.getByRole("button", { name: "Accept edit" })).toBeInTheDocument();
   });
+
+  it("after an edit previews, the chips stay (Reprompt scope) and Accept is offered", async () => {
+    const handle = fakeHandle(() => undefined);
+    const editComposition = vi.fn(async () => ({ id: "rev-1", compositionIndexUrl: "/rev1/index.html?rev=1" }));
+    render(<CompositionEditorScreen compositionIndexUrl={INDEX} outputVideoUrl={VIDEO} jobId="job-1" editClient={{ editComposition }} resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })} />);
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-clip-feature")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
+    fireEvent.change(screen.getByLabelText("Edit instruction"), { target: { value: "punch in" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept edit" })).toBeInTheDocument());
+    // Reprompt scope preserved: the clip chip is still present during preview
+    expect(screen.getByRole("button", { name: "Remove feature from chat" })).toBeInTheDocument();
+  });
+
+  it("Export downloads the composition's output video when available", async () => {
+    const handle = fakeHandle(() => undefined);
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    render(<CompositionEditorScreen compositionIndexUrl={INDEX} outputVideoUrl={VIDEO} resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })} />);
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+    const exportBtn = screen.getByRole("button", { name: "Export" });
+    expect(exportBtn).not.toBeDisabled();
+    fireEvent.click(exportBtn);
+    expect(open).toHaveBeenCalledWith(VIDEO, "_blank");
+    open.mockRestore();
+  });
 });

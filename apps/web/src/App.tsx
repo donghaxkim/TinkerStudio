@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { DemoProject } from "@tinker/project-schema";
 import { createGenerationClientForEnv } from "./lib/generationClientFactory.js";
-import { createMockCompositionGenerationClient } from "./lib/mockCompositionGenerationClient.js";
-import { createMockCompositionEditClient } from "./lib/mockCompositionEditClient.js";
+import { createHttpCompositionGenerationClient } from "./lib/httpCompositionGenerationClient.js";
+import { createHttpCompositionEditClient } from "./lib/httpCompositionEditClient.js";
 import { loadSampleProject } from "./fixtures/loadSampleProject.js";
 import { CreateDemoScreen } from "./screens/CreateDemo/CreateDemoScreen.js";
 import { EditorScreen, type ProjectOrigin } from "./screens/Editor/EditorScreen.js";
@@ -21,8 +21,10 @@ type AppState = {
 };
 
 const generationClient = createGenerationClientForEnv();
-const compositionClient = createMockCompositionGenerationClient();
-const compositionEditClient = createMockCompositionEditClient();
+// The composition flow runs against the real generation API (same-origin via the Vite
+// /api proxy → :4500). Phase 3b-5: edits POST /edits + poll.
+const compositionClient = createHttpCompositionGenerationClient();
+const compositionEditClient = createHttpCompositionEditClient();
 
 export function App() {
   const [state, setState] = useState<AppState>({

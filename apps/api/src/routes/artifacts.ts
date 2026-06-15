@@ -71,10 +71,10 @@ export function registerArtifactsRoutes(server: FastifyInstance, options: Artifa
     }
 
     const relativePath = relative(record.outputRoot, artifactPath).split("\\").join("/");
-    if (
-      record.status !== "completed" ||
-      record.result?.artifacts.some((artifact) => artifact.relativePath === relativePath) !== true
-    ) {
+    const inBase = record.result?.artifacts.some((artifact) => artifact.relativePath === relativePath) === true;
+    const inRevision =
+      record.revisions?.some((rev) => rev.result?.artifacts.some((artifact) => artifact.relativePath === relativePath)) === true;
+    if (record.status !== "completed" || (!inBase && !inRevision)) {
       return reply.status(404).send({ message: "Artifact not found" });
     }
 
