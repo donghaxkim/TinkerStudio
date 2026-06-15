@@ -9,33 +9,18 @@ import {
 import { parseCreateDemoRequest, safeParseCreateDemoRequest } from "./createDemoRequest.js";
 import sampleProject from "../../project-schema/fixtures/demo-project.sample.json";
 
-const validManualRequest = CreateDemoRequestSchema.parse({
-  id: "manual-fixture-job",
-  durationCapSeconds: 12,
-  aspectRatio: "16:9",
-  mode: "manual-fixture",
-  productUrl: "https://example.com/product",
-  repoUrl: "https://github.com/example/product",
-  prompt: "Show the export flow.",
-  outputDirectory: "generated/local-job/manual-fixture-job",
-});
-
-assert.equal("id" in validManualRequest ? validManualRequest.id : undefined, "manual-fixture-job");
-assert.equal(validManualRequest.durationCapSeconds, 12);
-assert.equal(validManualRequest.aspectRatio, "16:9");
-assert.equal("mode" in validManualRequest ? validManualRequest.mode : undefined, "manual-fixture");
-
-const manualRequestWithNonGithubRepo = CreateDemoRequestSchema.parse({
-  id: "manual-fixture-job-with-non-github-repo",
-  durationCapSeconds: 12,
-  aspectRatio: "16:9",
-  mode: "manual-fixture",
-  repoUrl: "https://gitlab.com/example/product",
-});
-
 assert.equal(
-  "repoUrl" in manualRequestWithNonGithubRepo ? manualRequestWithNonGithubRepo.repoUrl : undefined,
-  "https://gitlab.com/example/product",
+  CreateDemoRequestSchema.safeParse({
+    id: "manual-fixture-job",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    mode: "manual-fixture",
+    productUrl: "https://example.com/product",
+    repoUrl: "https://github.com/example/product",
+    prompt: "Show the export flow.",
+    outputDirectory: "generated/local-job/manual-fixture-job",
+  }).success,
+  false,
 );
 
 const validAiUrlRequest = CreateDemoRequestSchema.parse({
@@ -236,8 +221,8 @@ assert.equal(
 );
 
 const job = GenerationJobSchema.parse({
-  id: "manual-fixture-job",
-  request: validManualRequest,
+  id: "ai-url-job",
+  request: validAiUrlRequest,
   status: "queued",
   createdAt: "2026-06-09T00:00:00.000Z",
   updatedAt: "2026-06-09T00:00:00.000Z",
@@ -246,31 +231,31 @@ const job = GenerationJobSchema.parse({
 assert.equal(job.status, "queued");
 
 const progress = GenerationProgressEventSchema.parse({
-  jobId: "manual-fixture-job",
+  jobId: "ai-url-job",
   status: "capturing",
-  message: "Capturing manual fixture",
+  message: "Capturing AI URL demo",
   time: "2026-06-09T00:00:01.000Z",
-  artifactPath: "generated/local-job/manual-fixture-job/capture/video.webm",
+  artifactPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
 });
 
 assert.equal("status" in progress ? progress.status : undefined, "capturing");
 
 const result = GenerationResultSchema.parse({
-  jobId: "manual-fixture-job",
+  jobId: "ai-url-job",
   status: "completed",
-  projectPath: "generated/local-job/manual-fixture-job/demo-project.json",
-  outputDirectory: "generated/local-job/manual-fixture-job",
-  artifactPaths: ["generated/local-job/manual-fixture-job/capture-result.json"],
+  projectPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
+  outputDirectory: "generated/local-job/ai-url-job",
+  artifactPaths: ["generated/local-job/ai-url-job/hyperframes/output.mp4"],
 });
 
 assert.equal("status" in result ? result.status : undefined, "completed");
 assert.equal(
   GenerationResultSchema.safeParse({
-    jobId: "manual-fixture-job",
+    jobId: "ai-url-job",
     status: "completed",
-    projectPath: "generated/local-job/manual-fixture-job/demo-project.json",
-    outputDirectory: "generated/local-job/manual-fixture-job",
-    artifactPaths: ["generated/local-job/manual-fixture-job/capture-result.json"],
+    projectPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
+    outputDirectory: "generated/local-job/ai-url-job",
+    artifactPaths: ["generated/local-job/ai-url-job/hyperframes/output.mp4"],
     unexpected: "field",
   }).success,
   false,
@@ -418,7 +403,7 @@ assert.equal(
 
 for (const stage of ["validation", "analysis", "planning", "verification", "capture", "assembly", "unknown"] as const) {
   const failure = GenerationErrorSchema.parse({
-    jobId: "manual-fixture-job",
+    jobId: "ai-url-job",
     status: "failed",
     stage,
     message: `${stage} failed`,

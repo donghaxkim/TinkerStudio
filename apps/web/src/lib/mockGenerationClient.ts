@@ -52,6 +52,8 @@ export function createMockGenerationClient(options: MockGenerationClientOptions 
   const jobs = new Map<string, GenerationJob>();
 
   return {
+    kind: "mock",
+
     async createDemo(request: CreateDemoRequest) {
       const jobId = `job_${Date.now()}`;
       const progressEvents = buildProgressEvents(jobId);

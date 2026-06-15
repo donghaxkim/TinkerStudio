@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { DemoProjectSchema } from "@tinker/project-schema";
-import type { ManualFixtureCreateDemoRequest } from "@tinker/generation-contract";
+import type { AiUrlPlanningCreateDemoRequest } from "@tinker/generation-contract";
 import goldenFixture from "../../../../packages/project-schema/fixtures/person-a-generated-project.sample.json";
 import { createMockGenerationClient } from "./mockGenerationClient.js";
 
-const request: ManualFixtureCreateDemoRequest = {
-  mode: "manual-fixture",
+const request: AiUrlPlanningCreateDemoRequest = {
+  mode: "ai-url-planning",
   repoUrl: "https://github.com/example/driftboard",
+  productUrl: "https://example.com/driftboard",
   prompt: "Show the driftboard onboarding flow.",
   durationCapSeconds: 60,
   aspectRatio: "16:9",
+  renderer: "hyperframes",
 };
 
 describe("mockGenerationClient (PB-002 seam)", () => {

@@ -59,12 +59,6 @@ const BaseCreateDemoRequestSchema = z.object({
     .optional(),
 });
 
-export const ManualFixtureCreateDemoRequestSchema = BaseCreateDemoRequestSchema.extend({
-  mode: z.literal("manual-fixture"),
-  repoUrl: PublicUrlSchema.optional(),
-  productUrl: PublicUrlSchema.optional(),
-});
-
 export const AiUrlPlanningCreateDemoRequestSchema = BaseCreateDemoRequestSchema.extend({
   mode: z.literal("ai-url-planning"),
   repoUrl: PublicGithubRepoUrlSchema,
@@ -81,12 +75,10 @@ export const AssistedCreateDemoRequestSchema = z.object({
 }).strict();
 
 export const CreateDemoRequestSchema = z.union([
-  ManualFixtureCreateDemoRequestSchema,
   AiUrlPlanningCreateDemoRequestSchema,
   AssistedCreateDemoRequestSchema,
 ]);
 
-export type ManualFixtureCreateDemoRequest = z.infer<typeof ManualFixtureCreateDemoRequestSchema>;
 export type AiUrlPlanningCreateDemoRequest = z.infer<typeof AiUrlPlanningCreateDemoRequestSchema>;
 export type AssistedCreateDemoRequest = z.infer<typeof AssistedCreateDemoRequestSchema>;
 export type CreateDemoRequest = z.infer<typeof CreateDemoRequestSchema>;

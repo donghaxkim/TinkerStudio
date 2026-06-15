@@ -82,7 +82,7 @@ assert.equal(clamped.length, 3);
 assert.equal(clamped[0]?.time, 0);
 assert.deepEqual(clamped[2], { time: 0.2, type: "cursor", x: 100, y: 200 });
 
-// Defaults produce a dense path (450ms at 50ms steps).
+// Defaults produce a path dense enough for 30fps camera-follow export.
 const defaults = createCursorPathEvents({
   startedAtMs: 1_000,
   nowMs: 2_000,
@@ -90,9 +90,17 @@ const defaults = createCursorPathEvents({
   to: { x: 90, y: 0 },
 });
 
-assert.equal(defaults.length, 10);
+assert.equal(defaults.length, 15);
 assert.equal(defaults[0]?.time, 0.55);
-assert.equal(defaults[9]?.time, 1);
+assert.equal(defaults[14]?.time, 1);
+for (let index = 1; index < defaults.length; index += 1) {
+  const previous = defaults[index - 1]!;
+  const current = defaults[index]!;
+  assert.ok(
+    current.time - previous.time <= 1 / 30,
+    `cursor sample gap must stay within 30fps, got ${current.time - previous.time}`,
+  );
+}
 
 // A stationary cursor collapses to a single arrival sample.
 const stationary = createCursorPathEvents({

@@ -15,11 +15,10 @@ and export in the editor with zero further changes.**
 ## 1. Request: what the UI sends
 
 Contract source: `packages/generation-contract/src/createDemoRequest.ts`
-(`CreateDemoRequestSchema` is a union of three accepted modes).
+(`CreateDemoRequestSchema` accepts AI URL planning requests and the legacy assisted shape).
 
 | Mode | Schema | Required fields | Notes |
 | --- | --- | --- | --- |
-| `manual-fixture` | `ManualFixtureCreateDemoRequestSchema` | `mode`, `durationCapSeconds`, `aspectRatio` | `repoUrl` / `productUrl` optional (any http/https URL). This is what the web Create Demo composer sends today. |
 | `ai-url-planning` | `AiUrlPlanningCreateDemoRequestSchema` | `mode`, `durationCapSeconds`, `aspectRatio`, `repoUrl`, `productUrl` | `repoUrl` must be a public **GitHub repo root** URL; `productUrl` any http/https; `renderer` defaults to `hyperframes` (`hyperframes` \| `playwright` \| `both`). |
 | assisted | `AssistedCreateDemoRequestSchema` | `repoUrl`, `productUrl`, `prompt`, `durationCapSeconds`, `aspectRatio` | `.strict()`; `prompt` trimmed non-empty; `durationCapSeconds` integer ≤ 600. |
 
@@ -61,8 +60,8 @@ field rendered through `GENERATION_PHASE_LABELS`:
 | `validating_project` | Validating project |
 | `complete` | Complete |
 
-(There is also a `ManualFixtureProgressEventSchema` with a `status` field for the
-manual-fixture/CLI path; the assisted phases above are what the in-app progress UI renders.)
+(There is also a runner progress event schema with a `status` field for local/API jobs;
+the assisted phases above are what the legacy in-app mock flow renders.)
 
 ## 4. The exact success payload
 

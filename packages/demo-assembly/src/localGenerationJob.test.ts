@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { GenerationProgressEvent } from "@tinker/generation-contract";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
-import { LocalGenerationJobError, runLocalGenerationJob, type ManualDemoRunner } from "./localGenerationJob.js";
+import { LocalGenerationJobError, runLocalGenerationJob } from "./localGenerationJob.js";
 import { runAiUrlDemo, type RunAiUrlDemoInput, type RunAiUrlDemoResult } from "./runAiUrlDemo.js";
 
 type AiUrlDemoRunner = (input: RunAiUrlDemoInput) => Promise<RunAiUrlDemoResult>;
@@ -47,28 +47,6 @@ const times = [
 function nextTime() {
   return times.shift() ?? "2026-06-09T00:00:06.000Z";
 }
-
-const successfulManualRunner: ManualDemoRunner = async (input) => {
-  assert.equal(input.projectId, "manual-fixture-job");
-  assert.ok(input.outputRoot.endsWith("generated/local-job/manual-fixture-job"));
-  assert.equal(input.prompt, "Show the local job path.");
-
-  input.onPhase?.("capture");
-  input.onPhase?.("assembly");
-
-  return {
-    projectPath: `${input.outputRoot}/demo-project.json`,
-    captureResultPath: `${input.outputRoot}/capture-result.json`,
-    outputRoot: input.outputRoot,
-    artifactPaths: [`${input.outputRoot}/capture-result.json`, `${input.outputRoot}/capture/videos/main.webm`],
-    captureCounts: {
-      clips: 1,
-      screenshots: 0,
-      events: 2,
-      checkpoints: 1,
-    },
-  };
-};
 
 const successfulAiUrlRunner: AiUrlDemoRunner = async (input) => {
   assert.equal(input.projectId, "ai-url-job");
@@ -158,32 +136,26 @@ function manualStatuses(events: GenerationProgressEvent[]) {
   return events.map((event) => ("status" in event ? event.status : undefined));
 }
 
-const result = await runLocalGenerationJob(
-  {
-    id: "manual-fixture-job",
-    durationCapSeconds: 12,
-    aspectRatio: "16:9",
-    mode: "manual-fixture",
-    prompt: "Show the local job path.",
-    outputDirectory: "generated/local-job/manual-fixture-job",
-  },
-  {
-    now: nextTime,
-    onProgress: (event) => events.push(event),
-    runManualDemo: successfulManualRunner,
-  },
+await assert.rejects(
+  () =>
+    runLocalGenerationJob(
+      {
+        id: "manual-fixture-job",
+        durationCapSeconds: 12,
+        aspectRatio: "16:9",
+        mode: "manual-fixture",
+        prompt: "Show the local job path.",
+        outputDirectory: "generated/local-job/manual-fixture-job",
+      },
+      {
+        now: nextTime,
+        onProgress: (event) => events.push(event),
+      },
+    ),
+  LocalGenerationJobError,
 );
 
-assert.equal(result.jobId, "manual-fixture-job");
-assert.equal(result.status, "completed");
-assert.ok(result.projectPath.endsWith("generated/local-job/manual-fixture-job/demo-project.json"));
-assert.deepEqual(manualStatuses(events), [
-  "queued",
-  "running",
-  "capturing",
-  "assembling",
-  "completed",
-]);
+assert.deepEqual(manualStatuses(events), ["failed"]);
 
 const aiUrlEvents: GenerationProgressEvent[] = [];
 
@@ -201,7 +173,6 @@ const aiUrlResult = await runLocalGenerationJob(
   {
     now: nextTime,
     onProgress: (event) => aiUrlEvents.push(event),
-    runManualDemo: successfulManualRunner,
     runAiUrlDemo: successfulAiUrlRunner,
   },
 );
@@ -270,7 +241,6 @@ const playwrightAiUrlResult = await runLocalGenerationJob(
   {
     now: nextTime,
     onProgress: (event) => playwrightAiUrlEvents.push(event),
-    runManualDemo: successfulManualRunner,
     runAiUrlDemo: successfulPlaywrightAiUrlRunner,
   },
 );
@@ -304,7 +274,7 @@ assert.deepEqual(playwrightAiUrlEvents.map((event) => event.message), [
 ]);
 
 const invalidEvents: GenerationProgressEvent[] = [];
-let manualRunnerCalled = false;
+let aiRunnerCalledForInvalidDuration = false;
 
 await assert.rejects(
   () =>
@@ -313,24 +283,27 @@ await assert.rejects(
         id: "invalid-job",
         durationCapSeconds: 0,
         aspectRatio: "16:9",
-        mode: "manual-fixture",
+        mode: "ai-url-planning",
+        productUrl: "http://127.0.0.1:3000/",
+        repoUrl: "https://github.com/example/product",
       },
       {
         now: () => "2026-06-09T00:00:10.000Z",
         onProgress: (event) => invalidEvents.push(event),
-        runManualDemo: async () => {
-          manualRunnerCalled = true;
-          throw new Error("Manual runner should not run for invalid requests");
+        runAiUrlDemo: async () => {
+          aiRunnerCalledForInvalidDuration = true;
+          throw new Error("AI runner should not run for invalid requests");
         },
       },
     ),
   LocalGenerationJobError,
 );
 
-assert.equal(manualRunnerCalled, false);
+assert.equal(aiRunnerCalledForInvalidDuration, false);
 assert.deepEqual(manualStatuses(invalidEvents), ["failed"]);
 
 const unsafeEvents: GenerationProgressEvent[] = [];
+let aiRunnerCalledForUnsafeOutput = false;
 
 await assert.rejects(
   () =>
@@ -339,18 +312,24 @@ await assert.rejects(
         id: "unsafe-output-job",
         durationCapSeconds: 12,
         aspectRatio: "16:9",
-        mode: "manual-fixture",
+        mode: "ai-url-planning",
+        productUrl: "http://127.0.0.1:3000/",
+        repoUrl: "https://github.com/example/product",
         outputDirectory: "../outside-generated",
       },
       {
         now: () => "2026-06-09T00:00:11.000Z",
         onProgress: (event) => unsafeEvents.push(event),
-        runManualDemo: successfulManualRunner,
+        runAiUrlDemo: async () => {
+          aiRunnerCalledForUnsafeOutput = true;
+          throw new Error("AI runner should not run for unsafe output directories");
+        },
       },
     ),
   LocalGenerationJobError,
 );
 
+assert.equal(aiRunnerCalledForUnsafeOutput, false);
 assert.deepEqual(manualStatuses(unsafeEvents), ["failed"]);
 
 const planningFailureEvents: GenerationProgressEvent[] = [];

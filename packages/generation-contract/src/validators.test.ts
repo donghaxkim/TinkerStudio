@@ -59,19 +59,16 @@ describe("generation contract validators", () => {
     }
   });
 
-  it("accepts broad HTTP(S) repo URLs for manual fixtures", () => {
+  it("rejects manual fixture create-demo requests", () => {
     const result = safeParseCreateDemoRequest({
-      id: "manual-fixture-job-with-non-github-repo",
+      id: "removed-manual-fixture-job",
       durationCapSeconds: 10,
       aspectRatio: "16:9",
       mode: "manual-fixture",
       repoUrl: "https://gitlab.com/example/product",
     });
 
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect("repoUrl" in result.data ? result.data.repoUrl : undefined).toBe("https://gitlab.com/example/product");
-    }
+    expect(result.success).toBe(false);
   });
 
   it("rejects unsupported AI URL planning repo URLs", () => {

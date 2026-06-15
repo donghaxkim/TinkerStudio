@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { DemoProject } from "@tinker/project-schema";
-import { createMockGenerationClient } from "./lib/mockGenerationClient.js";
+import { createGenerationClientForEnv } from "./lib/generationClientFactory.js";
 import { createHttpCompositionGenerationClient } from "./lib/httpCompositionGenerationClient.js";
 import { createHttpCompositionEditClient } from "./lib/httpCompositionEditClient.js";
 import { loadSampleProject } from "./fixtures/loadSampleProject.js";
@@ -20,9 +20,9 @@ type AppState = {
   preSettingsRoute: PreSettingsRoute;
 };
 
-const generationClient = createMockGenerationClient();
-// Phase 3a: the composition flow runs against Samuel's real generation API
-// (same-origin via the Vite /api proxy → :4500). Phase 3b-5: edits POST /edits + poll.
+const generationClient = createGenerationClientForEnv();
+// The composition flow runs against the real generation API (same-origin via the Vite
+// /api proxy → :4500). Phase 3b-5: edits POST /edits + poll.
 const compositionClient = createHttpCompositionGenerationClient();
 const compositionEditClient = createHttpCompositionEditClient();
 

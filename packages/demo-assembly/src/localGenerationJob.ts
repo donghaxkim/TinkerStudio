@@ -20,16 +20,13 @@ import {
   type RunAiUrlDemoInput,
   type RunAiUrlDemoResult,
 } from "./runAiUrlDemo.js";
-import { runManualDemo, type RunManualDemoInput, type RunManualDemoResult } from "./runManualDemo.js";
 
-export type ManualDemoRunner = (input: RunManualDemoInput) => Promise<RunManualDemoResult>;
 export type AiUrlDemoRunner = (input: RunAiUrlDemoInput) => Promise<RunAiUrlDemoResult>;
-export type LocalDemoResult = RunManualDemoResult | RunAiUrlDemoResult;
+export type LocalDemoResult = RunAiUrlDemoResult;
 
 export type RunLocalGenerationJobOptions = {
   now?: () => string;
   onProgress?: (event: GenerationProgressEvent) => void;
-  runManualDemo?: ManualDemoRunner;
   runAiUrlDemo?: AiUrlDemoRunner;
 };
 
@@ -106,7 +103,6 @@ export async function runLocalGenerationJob(
   options: RunLocalGenerationJobOptions = {},
 ): Promise<ManualFixtureGenerationResult> {
   const now = options.now ?? (() => new Date().toISOString());
-  const manualRunner = options.runManualDemo ?? runManualDemo;
   const aiUrlRunner = options.runAiUrlDemo ?? runAiUrlDemo;
   const initialTime = now();
   const jobId = extractJobId(rawRequest, initialTime);
@@ -141,8 +137,8 @@ export async function runLocalGenerationJob(
 
   const request: CreateDemoRequest = parsedRequest.data;
 
-  if (!("mode" in request) || (request.mode !== "manual-fixture" && request.mode !== "ai-url-planning")) {
-    const failure = createFailure(jobId, "validation", "Local generation jobs require mode: manual-fixture or ai-url-planning");
+  if (!("mode" in request) || request.mode !== "ai-url-planning") {
+    const failure = createFailure(jobId, "validation", "Local generation jobs require mode: ai-url-planning");
     emit("failed", failure.message, undefined, failure);
     throw new LocalGenerationJobError(failure);
   }
@@ -171,38 +167,21 @@ export async function runLocalGenerationJob(
   let activeStage: GenerationFailureStage = "unknown";
 
   try {
-    let demoResult: LocalDemoResult;
-
-    if (request.mode === "manual-fixture") {
-      demoResult = await manualRunner({
-        outputRoot: outputDirectory,
-        projectId: jobId,
-        createdAt: initialTime,
-        ...(request.repoUrl === undefined ? {} : { sourceRepoUrl: request.repoUrl }),
-        ...(request.productUrl === undefined ? {} : { productUrl: request.productUrl }),
-        ...(request.prompt === undefined ? {} : { prompt: request.prompt }),
-        onPhase: (phase) => {
-          activeStage = phase;
-          emit(statusForPhase(phase), `Manual fixture ${phase} started`);
-        },
-      });
-    } else {
-      demoResult = await aiUrlRunner({
-        outputRoot: outputDirectory,
-        projectId: jobId,
-        createdAt: initialTime,
-        productUrl: request.productUrl,
-        ...(request.repoUrl === undefined ? {} : { repoUrl: request.repoUrl }),
-        renderer: request.renderer,
-        prompt: request.prompt ?? "Make a short demo of the main value prop.",
-        durationCapSeconds: request.durationCapSeconds,
-        aspectRatio: request.aspectRatio,
-        onPhase: (phase: AiUrlDemoPhase) => {
-          activeStage = phase;
-          emit(statusForPhase(phase), `AI URL ${phase} started`);
-        },
-      });
-    }
+    const demoResult: LocalDemoResult = await aiUrlRunner({
+      outputRoot: outputDirectory,
+      projectId: jobId,
+      createdAt: initialTime,
+      productUrl: request.productUrl,
+      repoUrl: request.repoUrl,
+      renderer: request.renderer,
+      prompt: request.prompt ?? "Make a short demo of the main value prop.",
+      durationCapSeconds: request.durationCapSeconds,
+      aspectRatio: request.aspectRatio,
+      onPhase: (phase: AiUrlDemoPhase) => {
+        activeStage = phase;
+        emit(statusForPhase(phase), `AI URL ${phase} started`);
+      },
+    });
 
     const result = GenerationResultSchema.parse({
       jobId,
@@ -215,7 +194,7 @@ export async function runLocalGenerationJob(
     });
 
     if (!("projectPath" in result)) {
-      throw new Error("Local generation job produced a non-manual result");
+      throw new Error("Local generation job result is missing projectPath");
     }
 
     emit("completed", "Generation job completed", result.projectPath);

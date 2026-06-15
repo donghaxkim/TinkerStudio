@@ -12,7 +12,7 @@ What does not exist is any way to invoke the runner outside a terminal. `apps/ap
 
 This slice also records a product direction decision made during design:
 
-- **Generation is Hyperframes-only.** Agent-driven Playwright capture produced footage with motion quality too poor for Screen Studio-style output (smooth cursor paths, eased zooms). Hyperframes bakes that motion into a GSAP composition instead. The Playwright capture path and `manual-fixture` mode remain in the codebase as internal test/CLI paths but are not exposed through the API.
+- **Generation is Hyperframes-only.** Agent-driven Playwright capture produced footage with motion quality too poor for Screen Studio-style output (smooth cursor paths, eased zooms). Hyperframes bakes that motion into a GSAP composition instead. The Playwright capture path was not exposed through this API slice, and the old `manual-fixture` mode has since been removed from the shared create-demo contract.
 - **The editable artifact is the composition source, not a `DemoProject` timeline.** The job result returns served artifact URLs, including the generated `index.html` composition. The intended future editing loop is conversational: the user prompts an agent that edits the composition source and re-renders. The `DemoProject`/assisted result dialect stays in the contract untouched, but its deprecation — and the corresponding `docs/architecture.md` revision — must be discussed jointly with Person B. Neither happens in this slice.
 
 ## Goal
@@ -23,9 +23,9 @@ Build the smallest local HTTP server that lets a client create an AI Hyperframes
 
 - No `apps/web`, `apps/desktop`, or any Person B-owned package changes. Integration is a documented handoff.
 - No SSE or websockets. Polling only; streaming is deferred to the future chat-iteration feature.
-- No exposure of `manual-fixture` mode or the `playwright`/`both` renderers through the API.
+- No exposure of the removed `manual-fixture` mode or the `playwright`/`both` renderers through the API.
 - No `DemoProject` compilation or assisted-dialect result construction.
-- No modification or deletion of existing `generation-contract` schemas.
+- This slice originally avoided existing schema deletion; `manual-fixture` removal is covered by the later removal spec.
 - No durable job persistence, database, cancellation, retries, or authentication.
 - No chat/edit-iteration endpoints.
 
@@ -198,7 +198,7 @@ All tests run with `fastify.inject()` and an injected fake runner (via `RunLocal
 Planned checks:
 
 - `POST /api/jobs` accepts a valid ai-url-planning request and returns a queued snapshot with a server-generated ID.
-- Rejections: assisted-shape body, `mode: "manual-fixture"`, `renderer: "playwright"`/`"both"`, supplied `outputDirectory`, malformed JSON, full queue.
+- Rejections: assisted-shape body, removed `mode: "manual-fixture"`, `renderer: "playwright"`/`"both"`, supplied `outputDirectory`, malformed JSON, full queue.
 - Lifecycle: progress events append in runner order; terminal snapshots carry `result` xor `error`; FIFO order and single-concurrency hold under multiple submissions.
 - Artifact classification: known paths map to the kind table; unknown paths become `other`; URLs round-trip through the artifacts route; traversal attempts (`..`, absolute paths, encoded separators) return `404`.
 - Contract: `ApiGenerationJob`/`ApiArtifact` schemas parse valid payloads and reject malformed ones.

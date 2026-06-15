@@ -18,7 +18,7 @@ Expose Playwright screen-recording generation through the local HTTP API alongsi
 
 - No changes to `apps/web`, `apps/desktop`, `packages/editor`, `packages/ai-edit-ui`, or `packages/rendering`.
 - No new capture engine. The API uses the existing `runLocalGenerationJob` and `runAiUrlDemo` renderer support.
-- No exposure of `mode: "manual-fixture"` through the API.
+- No exposure of the removed `mode: "manual-fixture"` through the API.
 - No durable persistence, cancellation, retries, authentication, SSE, or websockets.
 - No redesign of the assisted `DemoProject` dialect beyond exposing Playwright artifacts produced by the existing runner.
 - No quality guarantees that Playwright output matches Hyperframes motion quality; clients choose the renderer based on the workflow they want.
@@ -37,7 +37,7 @@ Renderer behavior changes as follows:
 - `renderer: "both"` runs the existing combined runner path and returns artifacts from both renderers.
 - `outputDirectory` remains rejected. The server controls `generated/local-job/<jobId>`.
 - Client-supplied `id` remains ignored before validation.
-- `mode` must remain `"ai-url-planning"`; `"manual-fixture"` stays internal-only.
+- `mode` must remain `"ai-url-planning"`; `"manual-fixture"` has been removed from the shared create-demo contract.
 
 All existing status codes remain unchanged: `202` for accepted jobs, `422` for contract or API-rule violations, `429` for a full queue, and `400` for unparseable JSON.
 
@@ -133,7 +133,7 @@ No worker branching is needed for renderer selection. The runner already owns re
 ## Error Handling
 
 - Unknown renderer values fail request validation before enqueueing.
-- `manual-fixture`, assisted-shape requests, `outputDirectory`, and unknown request fields still fail with `GenerationError` at `stage: "validation"`.
+- Removed `manual-fixture` requests, assisted-shape requests, `outputDirectory`, and unknown request fields still fail with `GenerationError` at `stage: "validation"`.
 - Runtime failures from either renderer surface through the existing `LocalGenerationJobError` path and set the job to `failed`.
 - In `renderer: "both"`, the current runner behavior applies: if either renderer fails, the whole job fails. Partial successful artifacts may exist on disk, but the API job does not report a completed result.
 
@@ -143,7 +143,7 @@ Planned checks:
 
 - `POST /api/jobs` accepts explicit `renderer: "playwright"`, `"hyperframes"`, and `"both"`.
 - Omitted `renderer` stores `"playwright"` in the accepted request snapshot and passes it to the runner.
-- Invalid renderers, `manual-fixture`, assisted-shape bodies, unknown fields, and `outputDirectory` remain rejected.
+- Invalid renderers, removed `manual-fixture` requests, assisted-shape bodies, unknown fields, and `outputDirectory` remain rejected.
 - API job schemas parse all three renderer values and continue rejecting missing renderer values in stored snapshots.
 - Artifact classification maps Playwright JSON files, captured videos, captured screenshots, and traces to the new kinds.
 - Artifact serving keeps the same path traversal protections for Playwright paths.

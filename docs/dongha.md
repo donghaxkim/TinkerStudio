@@ -316,7 +316,7 @@ pnpm --filter @tinker/web test
 **Owner:** Person B
 **Status:** Done
 **Goal:** Make Create Demo understandable, recoverable, and truthful for a local one-user MVP.
-**Design note:** Rebuilt to match the provided Porcelain design (`design/createdemo.jsx`) exactly — a minimal "New demo" chat composer collecting a **repo** + a free-text **story prompt**. The design intentionally omits separate product-URL / duration / aspect-ratio fields; those are mapped to sensible defaults (`mode: manual-fixture`, `durationCapSeconds: 60`, `aspectRatio: 16:9`) and still validated through `CreateDemoRequestSchema`. The old form components (`CreateDemoForm`, `GenerationProgressPanel`, `useCreateDemoJob`, `GenerationErrorView`) were removed.
+**Design note:** Rebuilt to match the provided Porcelain design (`design/createdemo.jsx`) exactly — a minimal "New demo" chat composer collecting a **repo** + a free-text **story prompt**. The earlier implementation mapped those fields to the now-removed `manual-fixture` request mode; current generation requests must use the remaining `CreateDemoRequestSchema` shapes. The old form components (`CreateDemoForm`, `GenerationProgressPanel`, `useCreateDemoJob`, `GenerationErrorView`) were removed.
 
 **Files/areas:**
 
