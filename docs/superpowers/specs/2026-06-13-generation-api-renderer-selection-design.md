@@ -2,7 +2,9 @@
 
 ## Status
 
-Approved for implementation planning.
+Superseded by `docs/superpowers/specs/2026-06-14-dual-generation-methods-design.md`.
+
+> Important: This document is a historical design record and no longer describes the current generation API contract. The current contract rejects user-facing `renderer: "both"` requests and exposes completed output through method-discriminated API results rather than a single `{ artifacts: ApiArtifact[] }` result shape.
 
 ## Context
 

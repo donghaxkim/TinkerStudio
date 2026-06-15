@@ -3,7 +3,6 @@ import type { ApiGenerationJob } from "@tinker/generation-contract";
 import type { TimelineRegistryWindow } from "@tinker/editor";
 import type { CompositionEditClient } from "../../lib/compositionEditClient.js";
 import type { CompositionGenerationClient } from "../../lib/compositionGenerationClient.js";
-import { selectArtifactUrl } from "../../lib/compositionGenerationClient.js";
 import { useCompositionGenerationJob } from "../../lib/useCompositionGenerationJob.js";
 import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
 
@@ -35,14 +34,14 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
   const completedJob = initialCompletedJob ?? (job.phase === "completed" ? job.job : undefined);
 
   if (completedJob) {
-    const compositionIndexUrl = selectArtifactUrl(completedJob, "composition-index");
-    if (compositionIndexUrl) {
+    if (completedJob.result?.method === "hyperframes") {
+      const { composition } = completedJob.result;
       // Full-bleed: the editor carries its own porcelain app bar (with a Back
       // affordance), so it is not wrapped in the request-form page chrome.
       return (
         <CompositionEditorScreen
-          compositionIndexUrl={compositionIndexUrl}
-          outputVideoUrl={selectArtifactUrl(completedJob, "output-video")}
+          compositionIndexUrl={composition.indexArtifact.url}
+          outputVideoUrl={composition.outputVideoArtifact.url}
           jobId={completedJob.id}
           {...(editClient ? { editClient } : {})}
           onBack={onBack}

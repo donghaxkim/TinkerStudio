@@ -82,6 +82,34 @@ describe("CompositionDemoScreen", () => {
     await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
   });
 
+  it("opens HyperFrames jobs with the canonical composition result URL", () => {
+    const client = createMockCompositionGenerationClient();
+    const completedJob = completedCompositionJob();
+    if (completedJob.result?.method !== "hyperframes") throw new Error("Expected HyperFrames result");
+    completedJob.result.artifacts = [
+      {
+        kind: "composition-index",
+        relativePath: "decoy/index.html",
+        url: "/api/jobs/mock-job-1/artifacts/decoy/index.html",
+        mediaType: "text/html",
+      },
+      ...completedJob.result.artifacts,
+    ];
+
+    render(
+      <CompositionDemoScreen
+        client={client}
+        initialCompletedJob={completedJob}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
+      />,
+    );
+
+    expect(screen.getByTestId("composition-frame")).toHaveAttribute(
+      "src",
+      completedJob.result.composition.indexArtifact.url,
+    );
+  });
+
   it("generates a composition and opens it in the editor", async () => {
     const client = createMockCompositionGenerationClient();
     render(
