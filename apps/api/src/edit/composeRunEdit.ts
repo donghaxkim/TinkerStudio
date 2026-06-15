@@ -35,16 +35,27 @@ export function createComposeRunEdit(deps: { runAgent: RunAgent }): RunEdit {
     const indexHtml = await readFile(indexPath, "utf8");
 
     const prompt = buildEditPrompt({ instruction: edit.instruction, context: edit.context, indexHtml });
-    const agentText = await deps.runAgent(prompt, { logDir: revDir });
 
-    const blocks = parseSearchReplaceBlocks(agentText);
-    if (blocks.length === 0) throw new Error("The edit agent returned no search/replace blocks");
-    const applied = applySearchReplace(indexHtml, blocks);
-    if (!applied.ok) throw new Error(applied.error);
-    const lint = lintComposition(applied.result);
-    if (!lint.ok) throw new Error(`Edit failed validation: ${lint.issues.join("; ")}`);
+    function attempt(html: string, text: string): { ok: true; result: string } | { ok: false; error: string } {
+      const blocks = parseSearchReplaceBlocks(text);
+      if (blocks.length === 0) return { ok: false, error: "The edit agent returned no search/replace blocks" };
+      const applied = applySearchReplace(html, blocks);
+      if (!applied.ok) return { ok: false, error: applied.error };
+      const lint = lintComposition(applied.result);
+      if (!lint.ok) return { ok: false, error: `Edit failed validation: ${lint.issues.join("; ")}` };
+      return { ok: true, result: applied.result };
+    }
 
-    await writeFile(indexPath, applied.result, "utf8");
+    let agentText = await deps.runAgent(prompt, { logDir: revDir });
+    let outcome = attempt(indexHtml, agentText);
+    if (!outcome.ok) {
+      const retryPrompt = `${prompt}\n\nYour previous edit failed: ${outcome.error}\nRe-emit corrected search/replace blocks.`;
+      agentText = await deps.runAgent(retryPrompt, { logDir: revDir });
+      outcome = attempt(indexHtml, agentText);
+      if (!outcome.ok) throw new Error(outcome.error);
+    }
+
+    await writeFile(indexPath, outcome.result, "utf8");
     const files = await listFiles(revDir);
     return { artifacts: indexArtifacts({ jobId: record.id, outputRoot: record.outputRoot, artifactPaths: files }) };
   };

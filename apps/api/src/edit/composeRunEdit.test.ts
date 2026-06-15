@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createComposeRunEdit } from "./composeRunEdit.js";
 import { createJobStore } from "../jobs/jobStore.js";
 
@@ -37,5 +37,25 @@ describe("createComposeRunEdit", () => {
     const { store } = await seededRecord();
     const runEdit = createComposeRunEdit({ runAgent: async () => "<<<<<<< SEARCH\nwindow.__timelines={demo:1};\n=======\n// removed\n>>>>>>> REPLACE" });
     await expect(runEdit(store.getRecord("j")!, { revId: "rev-1", instruction: "x", context: [] })).rejects.toThrow(/__timelines|validation/i);
+  });
+  it("retries once feeding back the error, then succeeds", async () => {
+    const { store } = await seededRecord();
+    const runAgent = vi.fn()
+      .mockResolvedValueOnce("<<<<<<< SEARCH\nNOPE_NO_MATCH\n=======\nx\n>>>>>>> REPLACE")   // first: won't apply
+      .mockResolvedValueOnce("<<<<<<< SEARCH\nconst D=1.0;\n=======\nconst D=2.0;\n>>>>>>> REPLACE"); // retry: good
+    const runEdit = createComposeRunEdit({ runAgent: runAgent as unknown as Parameters<typeof createComposeRunEdit>[0]["runAgent"] });
+    const result = await runEdit(store.getRecord("j")!, { revId: "rev-1", instruction: "x", context: [] });
+    expect(result.artifacts.some((a) => a.kind === "composition-index")).toBe(true);
+    expect(runAgent).toHaveBeenCalledTimes(2);
+    // the retry prompt includes the previous error
+    expect(String(runAgent.mock.calls[1]?.[0])).toMatch(/did not match|previous/i);
+  });
+
+  it("throws after the retry also fails", async () => {
+    const { store } = await seededRecord();
+    const runAgent = vi.fn().mockResolvedValue("<<<<<<< SEARCH\nNOPE_NO_MATCH\n=======\nx\n>>>>>>> REPLACE");
+    const runEdit = createComposeRunEdit({ runAgent: runAgent as unknown as Parameters<typeof createComposeRunEdit>[0]["runAgent"] });
+    await expect(runEdit(store.getRecord("j")!, { revId: "rev-1", instruction: "x", context: [] })).rejects.toThrow(/did not match/i);
+    expect(runAgent).toHaveBeenCalledTimes(2);
   });
 });
