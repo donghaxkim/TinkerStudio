@@ -78,9 +78,14 @@ describe("renderWorker", () => {
     setRevisionResult(id: string, revId: string, result: ApiGenerationResult, now: string) {
       const record = records.get(id);
       if (record === undefined) return;
-      record.revisions = (record.revisions ?? []).map((r) => (r.id === revId ? { ...r, status: "completed", result } : r));
+      record.revisions = (record.revisions ?? []).map((r) => (r.id === revId ? { id: r.id, status: "completed", createdAt: r.createdAt, result } : r));
       delete record.pendingRender;
       record.updatedAt = now;
+    },
+    clearPendingRender(id: string) {
+      const record = records.get(id);
+      if (record === undefined) return;
+      delete record.pendingRender;
     },
 ```
 Create `apps/api/src/workers/renderWorker.ts`:
@@ -103,8 +108,8 @@ export function createRenderWorker(options: RenderWorkerOptions) {
       const result = await options.runRender(record, render);
       options.store.setRevisionResult(id, render.revId, result, now());
     } catch {
-      // leave the revision unrendered (no output-video); clear pendingRender so it isn't retried forever
-      options.store.setRevisionResult(id, render.revId, record.revisions?.find((r) => r.id === render.revId)?.result ?? { artifacts: [] }, now());
+      // leave the revision as-is (no output-video); just clear pendingRender so it isn't retried forever
+      options.store.clearPendingRender(id);
     }
   };
 }
@@ -122,14 +127,14 @@ git commit -m "feat(api): render worker + jobStore pendingRender/setRevisionResu
 
 **Files:** `apps/api/src/routes/jobs.ts`; new `apps/api/src/edit/renderRevision.ts`; `apps/api/src/main.ts`; extend `server.test.ts`.
 
-- [ ] **Step 1: Failing test** — append to `server.test.ts`: with an injected `runRender` fake + a job carrying a completed revision (drive via an edit, like 3b-4's serving test), `POST /api/jobs/:id/revisions/:revId/render` → 202; after `waitForRevision`-style poll the revision gains an `output-video` artifact; unknown job/revision → 404. Reuse real helpers; adapt.
+- [ ] **Step 1: Failing test** — append to `server.test.ts`: inject a **fake `runRender`** (NOT `createDefaultRunRender` — that shells out to `npx hyperframes` and would hang CI ~10min) + a fake `runEdit` (`createComposeRunEdit` with a fake agent) to drive a real completed revision exactly like the 3b-4 serving test (`server.test.ts` ~lines 809-872: post a job whose runner writes a real `hyperframes/index.html`, `waitForJobStatus` completed, POST `/edits`, `waitForRevision`, read `revisions[0].id`). Then `POST /api/jobs/:id/revisions/:revId/render` → 202; poll until that revision gains an `output-video` artifact; unknown job/revision → 404. Reuse real helpers.
 - [ ] **Step 2: FAIL. Step 3: Implement** the route in `routes/jobs.ts` (add `revIdRender` after the `/edits` route):
 ```ts
   server.post<{ Params: { id: string; revId: string } }>("/api/jobs/:id/revisions/:revId/render", async (request, reply) => {
     const job = options.store.getRecord(request.params.id);
     if (job === undefined) return reply.status(404).send({ message: "Job not found" });
-    if (!(job.revisions ?? []).some((r) => r.id === request.params.revId)) {
-      return reply.status(404).send({ message: "Revision not found" });
+    if (!(job.revisions ?? []).some((r) => r.id === request.params.revId && r.status === "completed")) {
+      return reply.status(404).send({ message: "Revision not found or not ready to render" });
     }
     if (!options.queue.hasCapacity()) return reply.status(429).send({ message: "Generation queue is full" });
     options.store.setPendingRender(request.params.id, { revId: request.params.revId });
@@ -195,7 +200,7 @@ to `window.open(url)`.
 > This changes the Export button from the 2a disabled stub to enabled-when-a-video-URL-exists. The current composition video = `edit.currentVideoUrl ?? outputVideoUrl`. (Render-on-demand for unrendered edits — calling the Task 2 endpoint then polling — can be layered on after; for this task, Export is enabled only when a video URL is present, and disabled with a tooltip otherwise.)
 - [ ] **Step 2: FAIL** (Export is currently `disabled`).
 - [ ] **Step 3: Implement** in `CompositionEditorScreen.tsx`: compute `const exportVideoUrl = edit.currentVideoUrl ?? outputVideoUrl;` and change the Export button to `disabled={exportVideoUrl === undefined}` with `onClick={() => exportVideoUrl && window.open(exportVideoUrl, "_blank")}` and a `title` reflecting state ("Export" when available, "Render the edit to export" when not).
-- [ ] **Step 4: Run screen tests + full web suite + typecheck.** Existing tests that asserted Export is disabled (the 2a shell test asserted `getByRole("button",{name:"Export"})` is in the doc — confirm whether any asserts `toBeDisabled`; if the base composition test passes an `outputVideoUrl` the button is now enabled — update that assertion if present).
+- [ ] **Step 4: Run screen tests + full web suite + typecheck.** NO existing test asserts Export `toBeDisabled` (the 2a shell test only asserts `toBeInTheDocument`), so enabling Export breaks nothing — just add the new test. `pnpm --filter @tinker/web test` green; typecheck clean.
 - [ ] **Step 5: commit.**
 ```bash
 git add apps/web/src/screens/CompositionEditor/CompositionEditorScreen.tsx apps/web/src/screens/CompositionEditor/CompositionEditorScreen.test.tsx
@@ -218,5 +223,6 @@ typecheck-only (slow + needs the hyperframes package, like generation).
 
 **Known v1 limitation (documented):** Task 3 enables Export only when a video URL exists;
 fully wiring the web "request render → poll → download" for unrendered edits is a thin
-follow-up over the Task 2 endpoint (the server support is built here). The 2a Export
-disabled-stub test must be updated to the new enabled-when-available behaviour.
+follow-up over the Task 2 endpoint (the server support is built here). No existing test
+asserts Export disabled, so enabling it requires no changes to existing tests — only the
+new Export test is added.
