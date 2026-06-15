@@ -31,7 +31,7 @@ function completedJob(id: string, request: CreateCompositionJobRequest): ApiGene
       productUrl: request.productUrl,
       durationCapSeconds: request.durationCapSeconds,
       aspectRatio: request.aspectRatio,
-      renderer: request.renderer ?? "hyperframes",
+      renderer: "hyperframes",
       ...(request.prompt === undefined ? {} : { prompt: request.prompt }),
     },
     createdAt: FIXED_TIME,
