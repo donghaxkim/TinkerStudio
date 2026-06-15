@@ -83,6 +83,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
   const noopClient = useMemo<CompositionEditClient>(() => ({ editComposition: async () => baseRevision }), [baseRevision]);
   const edit = useCompositionEditFlow({ jobId: jobId ?? "", client: editClient ?? noopClient, baseRevision });
   const editEnabled = jobId !== undefined && editClient !== undefined;
+  const exportVideoUrl = edit.currentVideoUrl ?? outputVideoUrl;
 
   function handleSend() {
     const refs = contextRefs;
@@ -121,7 +122,14 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
           <span style={{ fontSize: 14, fontWeight: 400, color: "var(--tk-text-sec)" }}>Studio</span>
         </button>
         <div style={{ marginLeft: "auto" }}>
-          <button type="button" className="tk-btn tk-btn-accent" aria-label="Export" title="Export (coming soon)" disabled>
+          <button
+            type="button"
+            className="tk-btn tk-btn-accent"
+            aria-label="Export"
+            title={exportVideoUrl === undefined ? "Render the edit to export" : "Export"}
+            disabled={exportVideoUrl === undefined}
+            onClick={() => { if (exportVideoUrl) window.open(exportVideoUrl, "_blank"); }}
+          >
             Export
           </button>
         </div>

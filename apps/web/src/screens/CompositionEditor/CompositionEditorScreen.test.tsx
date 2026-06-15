@@ -128,4 +128,17 @@ describe("CompositionEditorScreen", () => {
     // Reprompt scope preserved: the clip chip is still present during preview
     expect(screen.getByRole("button", { name: "Remove feature from chat" })).toBeInTheDocument();
   });
+
+  it("Export downloads the composition's output video when available", async () => {
+    const handle = fakeHandle(() => undefined);
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    render(<CompositionEditorScreen compositionIndexUrl={INDEX} outputVideoUrl={VIDEO} resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })} />);
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+    const exportBtn = screen.getByRole("button", { name: "Export" });
+    expect(exportBtn).not.toBeDisabled();
+    fireEvent.click(exportBtn);
+    expect(open).toHaveBeenCalledWith(VIDEO, "_blank");
+    open.mockRestore();
+  });
 });
