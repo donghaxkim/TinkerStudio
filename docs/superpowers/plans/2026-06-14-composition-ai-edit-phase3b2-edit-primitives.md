@@ -74,6 +74,10 @@ describe("applySearchReplace", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/did not match/i);
   });
+  it("refuses an empty / whitespace-only SEARCH (no silent insertion)", () => {
+    expect(applySearchReplace(src, [{ search: "", replace: "X" }]).ok).toBe(false);
+    expect(applySearchReplace(src, [{ search: "   ", replace: "X" }]).ok).toBe(false);
+  });
   it("applies multiple blocks sequentially", () => {
     const r = applySearchReplace("a\nb\n", [{ search: "a", replace: "A" }, { search: "b", replace: "B" }]);
     expect(r.ok).toBe(true);
@@ -130,8 +134,11 @@ export function applySearchReplace(source: string, blocks: SearchReplaceBlock[])
 }
 
 function applyOne(source: string, block: SearchReplaceBlock): string | null {
+  // Guard: an empty / whitespace-only SEARCH must NOT match (it would otherwise
+  // insert at the top via includes("") or match a blank line) — fail cleanly instead.
+  if (block.search.trim().length === 0) return null;
   // 1) exact substring
-  if (block.search.length > 0 && source.includes(block.search)) {
+  if (source.includes(block.search)) {
     return source.replace(block.search, () => block.replace);
   }
   // 2) whitespace-tolerant, line-based: match a contiguous run of source lines whose
