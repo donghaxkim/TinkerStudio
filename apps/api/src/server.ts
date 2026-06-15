@@ -8,6 +8,7 @@ import { registerArtifactsRoutes } from "./routes/artifacts.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
 import { createEditWorker, type RunEdit } from "./workers/editWorker.js";
 import { createGenerationWorker, type GenerationRunner } from "./workers/generationWorker.js";
+import { createRenderWorker, type RunRender } from "./workers/renderWorker.js";
 
 export type JobQueue = ReturnType<typeof createJobQueue>;
 
@@ -15,6 +16,7 @@ export type BuildServerOptions = {
   config: ApiConfig;
   runner?: GenerationRunner;
   runEdit?: RunEdit;
+  runRender?: RunRender;
   now?: () => string;
   idGenerator?: () => string;
   maxPendingJobs?: number;
@@ -31,9 +33,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   const store = createJobStore();
   const generationWorker = createGenerationWorker({ store, runner: options.runner, now });
   const editWorker = options.runEdit ? createEditWorker({ store, runEdit: options.runEdit, now }) : undefined;
+  const renderWorker = options.runRender ? createRenderWorker({ store, runRender: options.runRender, now }) : undefined;
   const runJob = async (id: string) => {
     const record = store.getRecord(id);
     if (record?.pendingEdit && editWorker) return editWorker(id);
+    if (record?.pendingRender && renderWorker) return renderWorker(id);
     return generationWorker(id);
   };
   const queue = createJobQueue({ maxPendingJobs: options.maxPendingJobs ?? 10, runJob });
