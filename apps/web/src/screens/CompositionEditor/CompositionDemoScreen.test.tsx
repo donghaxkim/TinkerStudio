@@ -1,9 +1,61 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import type { ApiGenerationJob } from "@tinker/generation-contract";
 import type { TimelineRegistryWindow, CompositionTimelineHandle } from "@tinker/editor";
 import type { CompositionGenerationClient } from "../../lib/compositionGenerationClient.js";
 import { createMockCompositionGenerationClient } from "../../lib/mockCompositionGenerationClient.js";
 import { CompositionDemoScreen } from "./CompositionDemoScreen.js";
+
+function completedCompositionJob(): ApiGenerationJob {
+  return {
+    id: "mock-job-1",
+    status: "completed",
+    request: {
+      id: "mock-job-1",
+      mode: "ai-url-planning",
+      repoUrl: "https://github.com/acme/driftboard",
+      productUrl: "https://driftboard.example.com",
+      durationCapSeconds: 60,
+      aspectRatio: "16:9",
+      renderer: "hyperframes",
+    },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    progressEvents: [],
+    result: {
+      method: "hyperframes",
+      composition: {
+        indexArtifact: {
+          kind: "composition-index",
+          relativePath: "hyperframes/index.html",
+          url: "/api/jobs/mock-job-1/artifacts/hyperframes/index.html",
+          mediaType: "text/html",
+        },
+        outputVideoArtifact: {
+          kind: "output-video",
+          relativePath: "hyperframes/output.mp4",
+          url: "/api/jobs/mock-job-1/artifacts/hyperframes/output.mp4",
+          mediaType: "video/mp4",
+        },
+      },
+      artifacts: [
+        {
+          kind: "composition-index",
+          relativePath: "hyperframes/index.html",
+          url: "/api/jobs/mock-job-1/artifacts/hyperframes/index.html",
+          mediaType: "text/html",
+        },
+        {
+          kind: "output-video",
+          relativePath: "hyperframes/output.mp4",
+          url: "/api/jobs/mock-job-1/artifacts/hyperframes/output.mp4",
+          mediaType: "video/mp4",
+        },
+      ],
+      warnings: [],
+    },
+  };
+}
 
 function fakeHandle(): CompositionTimelineHandle {
   return {
@@ -17,6 +69,19 @@ function fakeHandle(): CompositionTimelineHandle {
 }
 
 describe("CompositionDemoScreen", () => {
+  it("opens a preloaded completed HyperFrames job in the editor", async () => {
+    const client = createMockCompositionGenerationClient();
+    render(
+      <CompositionDemoScreen
+        client={client}
+        initialCompletedJob={completedCompositionJob()}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
+  });
+
   it("generates a composition and opens it in the editor", async () => {
     const client = createMockCompositionGenerationClient();
     render(
