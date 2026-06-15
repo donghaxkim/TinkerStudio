@@ -156,15 +156,22 @@ const terminalRightEdgeTargetProject = DemoProjectSchema.parse(
   }),
 );
 
-assert.equal(terminalRightEdgeTargetProject.zooms.length, 1);
-const [terminalRightEdgeZoom] = terminalRightEdgeTargetProject.zooms;
+assert.equal(terminalRightEdgeTargetProject.zooms.length, 2);
+const [terminalRightEdgeZoom, terminalRightEdgeOutroZoom] = terminalRightEdgeTargetProject.zooms;
 assert.ok(terminalRightEdgeZoom !== undefined, "expected one terminal right-edge zoom");
 assert.deepEqual(terminalRightEdgeZoom.target, { x: 1451, y: 79, width: 383, height: 29 });
 assert.equal(terminalRightEdgeZoom.end, 9.914);
 assert.ok(
   terminalRightEdgeTargetProject.duration - terminalRightEdgeZoom.end >= 0.599,
-  "right-edge terminal zooms should leave a stable overview before the cut",
+  "right-edge terminal zooms should leave room before the clean end crop",
 );
+assert.deepEqual(terminalRightEdgeOutroZoom, {
+  id: "zoom-0-outro",
+  start: 9.614,
+  end: 10.514,
+  target: { x: 0, y: 0, width: 1280, height: 720 },
+  easing: "easeOut",
+});
 
 const finalMomentRightEdgeTargetProject = DemoProjectSchema.parse(
   compileProject({

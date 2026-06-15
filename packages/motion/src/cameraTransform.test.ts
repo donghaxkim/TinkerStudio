@@ -197,6 +197,39 @@ describe("camera transform", () => {
     expect(result.state.wasZoomed).toBe(true);
   });
 
+  it("does not chase stale cursor positions from before a zoom starts", () => {
+    const regions = normalizeZoomRegions(
+      [zoom({ start: 2, end: 4, target: { x: 0, y: 0, width: 500, height: 250 } })],
+      frame,
+    );
+    const staleRightEdgeCursor = [point(1, 0.95, 0.5)];
+
+    const result = resolveDeterministicCameraTransform(regions, staleRightEdgeCursor, 3, {
+      transitionSeconds: 0,
+    });
+
+    expect(result.activeZoomId).toBe("zoom_001");
+    expect(result.focus).toEqual({ cx: 0.294117647059, cy: 0.294117647059 });
+  });
+
+  it("does not inherit cursor-follow focus for a later overlapping zoom without cursor samples", () => {
+    const regions = normalizeZoomRegions(
+      [
+        zoom({ id: "first", start: 1, end: 3, target: { x: 500, y: 125, width: 250, height: 125 } }),
+        zoom({ id: "second", start: 2.5, end: 4, target: { x: 0, y: 0, width: 500, height: 250 } }),
+      ],
+      frame,
+    );
+    const firstZoomCursor = [point(1.5, 0.95, 0.5)];
+
+    const result = resolveDeterministicCameraTransform(regions, firstZoomCursor, 3.2, {
+      transitionSeconds: 0,
+    });
+
+    expect(result.activeZoomId).toBe("second");
+    expect(result.focus).toEqual({ cx: 0.294117647059, cy: 0.294117647059 });
+  });
+
   it("resets cursor-follow state when sampling moves backward in time", () => {
     const futureState = {
       ...createCursorFollowCameraState(),

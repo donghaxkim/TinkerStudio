@@ -329,9 +329,14 @@ export function resolveCameraTransformWithCursorFollow(
     return { transform: base, state: reset.state };
   }
 
+  const regionCursorPoints = cursorPoints.filter(
+    (point) => point.time >= activeRegion.start && point.time <= activeRegion.end,
+  );
+  const cursorFollowState = regionCursorPoints.length === 0 ? createCursorFollowCameraState() : state;
+
   const followed = computeCursorFollowFocus(
-    state,
-    cursorPoints,
+    cursorFollowState,
+    regionCursorPoints,
     time,
     activeRegion.scale,
     base.strength,

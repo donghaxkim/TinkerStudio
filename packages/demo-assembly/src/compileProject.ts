@@ -13,6 +13,8 @@ const ZOOM_TARGET_HOLD_SECONDS = 2.5;
 const ZOOM_MERGE_EPSILON_SECONDS = 0.001;
 const RIGHT_EDGE_ZOOM_THRESHOLD_RATIO = 0.86;
 const RIGHT_EDGE_OVERVIEW_SECONDS = 0.6;
+const RIGHT_EDGE_OUTRO_SECONDS = 0.9;
+const RIGHT_EDGE_OUTRO_TARGET_RATIO = 2 / 3;
 const TERMINAL_ZOOM_EPSILON_SECONDS = 0.001;
 
 type FrameSize = { width: number; height: number };
@@ -76,21 +78,40 @@ function isRightEdgeTarget(target: ZoomKeyframe["target"], frame: FrameSize | un
   return frame !== undefined && target.x + target.width >= frame.width * RIGHT_EDGE_ZOOM_THRESHOLD_RATIO;
 }
 
-function releaseTerminalRightEdgeZoom(
+function terminalRightEdgeOutroTarget(frame: FrameSize): ZoomKeyframe["target"] {
+  return {
+    x: 0,
+    y: 0,
+    width: cleanNumber(frame.width * RIGHT_EDGE_OUTRO_TARGET_RATIO),
+    height: cleanNumber(frame.height * RIGHT_EDGE_OUTRO_TARGET_RATIO),
+  };
+}
+
+function frameTerminalRightEdgeZoom(
   zoom: ZoomKeyframe,
   duration: number,
   frame: FrameSize | undefined,
-): ZoomKeyframe | undefined {
+): ZoomKeyframe[] {
   if (!isRightEdgeTarget(zoom.target, frame) || zoom.end < duration - TERMINAL_ZOOM_EPSILON_SECONDS) {
-    return zoom;
+    return [zoom];
   }
 
+  const outroStart = cleanNumber(duration - RIGHT_EDGE_OUTRO_SECONDS);
   const overviewStart = cleanNumber(duration - RIGHT_EDGE_OVERVIEW_SECONDS);
-  if (overviewStart <= zoom.start) {
-    return undefined;
+  if (!frame || outroStart <= zoom.start) {
+    return [];
   }
 
-  return { ...zoom, end: Math.min(zoom.end, overviewStart) };
+  return [
+    { ...zoom, end: Math.min(zoom.end, overviewStart) },
+    {
+      id: `${zoom.id}-outro`,
+      start: outroStart,
+      end: duration,
+      target: terminalRightEdgeOutroTarget(frame),
+      easing: "easeOut",
+    },
+  ];
 }
 
 function toZoomKeyframes(events: readonly CaptureEvent[], duration: number, frame: FrameSize | undefined): ZoomKeyframe[] {
@@ -128,11 +149,7 @@ function toZoomKeyframes(events: readonly CaptureEvent[], duration: number, fram
     });
   });
 
-  return zooms.flatMap((zoom) => {
-    const released = releaseTerminalRightEdgeZoom(zoom, duration, frame);
-
-    return released === undefined ? [] : [released];
-  });
+  return zooms.flatMap((zoom) => frameTerminalRightEdgeZoom(zoom, duration, frame));
 }
 
 function captureFrameRate(asset: CaptureAsset) {
