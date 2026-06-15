@@ -11,6 +11,24 @@ import type { CompileProjectInput } from "./types.js";
 
 const ZOOM_TARGET_HOLD_SECONDS = 2.5;
 const ZOOM_MERGE_EPSILON_SECONDS = 0.001;
+const RIGHT_EDGE_ZOOM_THRESHOLD_RATIO = 0.86;
+const RIGHT_EDGE_ZOOM_MIN_WIDTH_RATIO = 0.5;
+const RIGHT_EDGE_ZOOM_MIN_HEIGHT_RATIO = 0.22;
+const RIGHT_EDGE_ZOOM_MAX_CENTER_X_RATIO = 0.62;
+
+type FrameSize = { width: number; height: number };
+
+function cleanNumber(value: number) {
+  return Number(value.toFixed(6));
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function isPositiveFinite(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value) && value > 0;
+}
 
 function toProjectAsset(asset: CaptureAsset): Asset {
   return {
@@ -59,7 +77,34 @@ function mergeRects(left: ZoomKeyframe["target"], right: ZoomKeyframe["target"])
   return { x, y, width: maxX - x, height: maxY - y };
 }
 
-function toZoomKeyframes(events: readonly CaptureEvent[], duration: number): ZoomKeyframe[] {
+function toPresentationSafeTarget(
+  target: ZoomKeyframe["target"],
+  frame: FrameSize | undefined,
+): ZoomKeyframe["target"] {
+  if (!frame || !isPositiveFinite(frame.width) || !isPositiveFinite(frame.height)) {
+    return target;
+  }
+
+  if (target.x + target.width < frame.width * RIGHT_EDGE_ZOOM_THRESHOLD_RATIO) {
+    return target;
+  }
+
+  // Right-aligned tab/button rects can include empty layout gutter. Keep the
+  // interaction center in frame, but do not let that gutter anchor the camera.
+  const width = Math.min(frame.width, Math.max(target.width, frame.width * RIGHT_EDGE_ZOOM_MIN_WIDTH_RATIO));
+  const height = Math.min(frame.height, Math.max(target.height, frame.height * RIGHT_EDGE_ZOOM_MIN_HEIGHT_RATIO));
+  const centerX = Math.min(target.x + target.width / 2, frame.width * RIGHT_EDGE_ZOOM_MAX_CENTER_X_RATIO);
+  const centerY = clamp(target.y + target.height / 2, height / 2, frame.height - height / 2);
+
+  return {
+    x: cleanNumber(clamp(centerX - width / 2, 0, frame.width - width)),
+    y: cleanNumber(clamp(centerY - height / 2, 0, frame.height - height)),
+    width: cleanNumber(width),
+    height: cleanNumber(height),
+  };
+}
+
+function toZoomKeyframes(events: readonly CaptureEvent[], duration: number, frame: FrameSize | undefined): ZoomKeyframe[] {
   const zooms: ZoomKeyframe[] = [];
   const zoomTargets = events
     .map((event, index) => ({ event, index }))
@@ -94,13 +139,23 @@ function toZoomKeyframes(events: readonly CaptureEvent[], duration: number): Zoo
     });
   });
 
-  return zooms;
+  return zooms.map((zoom) => ({
+    ...zoom,
+    target: toPresentationSafeTarget(zoom.target, frame),
+  }));
 }
 
 function captureFrameRate(asset: CaptureAsset) {
   const frameRate = asset.metadata?.frameRate;
 
   return typeof frameRate === "number" && Number.isFinite(frameRate) && frameRate > 0 ? frameRate : undefined;
+}
+
+function captureFrameSize(asset: CaptureAsset, fallback: CompileProjectInput["capturePlan"]["viewport"]): FrameSize | undefined {
+  const width = isPositiveFinite(asset.width) ? asset.width : fallback.width;
+  const height = isPositiveFinite(asset.height) ? asset.height : fallback.height;
+
+  return isPositiveFinite(width) && isPositiveFinite(height) ? { width, height } : undefined;
 }
 
 export function compileProject(input: CompileProjectInput): DemoProject {
@@ -123,7 +178,7 @@ export function compileProject(input: CompileProjectInput): DemoProject {
 
     return cursorEvent && cursorEvent.time <= duration ? [cursorEvent] : [];
   });
-  const zooms = toZoomKeyframes(input.captureResult.events, duration);
+  const zooms = toZoomKeyframes(input.captureResult.events, duration, captureFrameSize(videoAsset, input.capturePlan.viewport));
   const project: DemoProject = {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     id: input.projectId,
