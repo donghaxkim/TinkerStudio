@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiGenerationJob } from "@tinker/generation-contract";
 import { DemoProjectSchema } from "@tinker/project-schema";
@@ -305,7 +305,7 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
     expect(screen.getByText("Record & open in editor")).toBeInTheDocument();
   });
 
-  it("submits HyperFrames requests and routes the completed job to composition", async () => {
+  it("uses native generation method radios and routes HyperFrames jobs to composition", async () => {
     const compositionJobs: string[] = [];
     const createDemo = vi.fn(async () => ({
       ...completedApiJob(),
@@ -357,8 +357,19 @@ describe("CreateDemoScreen — Porcelain chat composer", () => {
       />,
     );
 
+    const methodGroup = screen.getByRole("radiogroup", { name: "Generation method" });
+    const playwrightRadio = within(methodGroup).getByRole("radio", { name: /Playwright recording/i });
+    const hyperframesRadio = within(methodGroup).getByRole("radio", { name: /HyperFrames composition/i });
+    expect(playwrightRadio).toBeInstanceOf(HTMLInputElement);
+    expect(playwrightRadio).toHaveAttribute("type", "radio");
+    expect(playwrightRadio).toBeChecked();
+    expect(hyperframesRadio).toBeInstanceOf(HTMLInputElement);
+    expect(hyperframesRadio).toHaveAttribute("type", "radio");
+    expect(hyperframesRadio).not.toBeChecked();
+
     await enterAndVerifyRepo();
-    fireEvent.click(screen.getByRole("radio", { name: /HyperFrames composition/i }));
+    fireEvent.click(hyperframesRadio);
+    expect(hyperframesRadio).toBeChecked();
     fireEvent.change(screen.getByLabelText("Demo prompt"), {
       target: { value: "Show the analytics workflow" },
     });

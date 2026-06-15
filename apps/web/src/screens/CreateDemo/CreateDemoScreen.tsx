@@ -176,6 +176,7 @@ export function CreateDemoScreen({
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [generationMethod, setGenerationMethod] = useState<GenerationMethod>("playwright");
+  const [focusedGenerationMethod, setFocusedGenerationMethod] = useState<GenerationMethod | undefined>(undefined);
 
   const repoInputRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -804,13 +805,11 @@ export function CreateDemoScreen({
                   ["playwright", "Playwright recording", "Real browser capture, editable timeline project"],
                   ["hyperframes", "HyperFrames composition", "Generated motion composition with revisions"],
                 ] as const).map(([method, label, description]) => (
-                  <button
+                  <label
                     key={method}
-                    type="button"
-                    role="radio"
-                    aria-checked={generationMethod === method}
-                    onClick={() => setGenerationMethod(method)}
                     style={{
+                      position: "relative",
+                      display: "block",
                       textAlign: "left",
                       border: `1px solid ${generationMethod === method ? "var(--tk-accent-line)" : "var(--tk-border-soft)"}`,
                       background: generationMethod === method ? "var(--tk-accent-soft)" : "var(--tk-raised)",
@@ -819,13 +818,24 @@ export function CreateDemoScreen({
                       padding: "7px 9px",
                       fontFamily: "inherit",
                       cursor: "pointer",
+                      boxShadow: focusedGenerationMethod === method ? "0 0 0 2px var(--tk-accent-line)" : "none",
                     }}
                   >
+                    <input
+                      type="radio"
+                      name="generation-method"
+                      value={method}
+                      checked={generationMethod === method}
+                      onChange={() => setGenerationMethod(method)}
+                      onFocus={() => setFocusedGenerationMethod(method)}
+                      onBlur={() => setFocusedGenerationMethod(undefined)}
+                      style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", margin: 0 }}
+                    />
                     <span style={{ display: "block", fontSize: 12, fontWeight: 650 }}>{label}</span>
                     <span style={{ display: "block", marginTop: 2, fontSize: 11, color: "var(--tk-text-sec)", lineHeight: 1.35 }}>
                       {description}
                     </span>
-                  </button>
+                  </label>
                 ))}
               </div>
 
