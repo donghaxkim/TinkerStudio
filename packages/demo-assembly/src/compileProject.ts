@@ -14,7 +14,7 @@ const ZOOM_MERGE_EPSILON_SECONDS = 0.001;
 const RIGHT_EDGE_ZOOM_THRESHOLD_RATIO = 0.86;
 const RIGHT_EDGE_OVERVIEW_SECONDS = 0.6;
 const RIGHT_EDGE_OUTRO_SECONDS = 0.9;
-const RIGHT_EDGE_OUTRO_TARGET_RATIO = 2 / 3;
+const RIGHT_EDGE_OUTRO_SCALE = 1.1;
 const TERMINAL_ZOOM_EPSILON_SECONDS = 0.001;
 
 type FrameSize = { width: number; height: number };
@@ -79,8 +79,8 @@ function isRightEdgeTarget(target: ZoomKeyframe["target"], frame: FrameSize | un
 }
 
 function terminalRightEdgeOutroTarget(frame: FrameSize): ZoomKeyframe["target"] {
-  const width = cleanNumber(frame.width * RIGHT_EDGE_OUTRO_TARGET_RATIO);
-  const height = cleanNumber(frame.height * RIGHT_EDGE_OUTRO_TARGET_RATIO);
+  const width = cleanNumber(frame.width / RIGHT_EDGE_OUTRO_SCALE);
+  const height = cleanNumber(frame.height / RIGHT_EDGE_OUTRO_SCALE);
 
   return {
     x: 0,
@@ -112,6 +112,7 @@ function frameTerminalRightEdgeZoom(
       start: outroStart,
       end: duration,
       target: terminalRightEdgeOutroTarget(frame),
+      scale: RIGHT_EDGE_OUTRO_SCALE,
       easing: "easeOut",
     },
   ];
