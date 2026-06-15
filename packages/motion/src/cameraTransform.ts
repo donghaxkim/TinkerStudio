@@ -57,6 +57,7 @@ const DEFAULT_TRANSITION_SECONDS = 0.2;
 const DEFAULT_SAFE_ZONE_RADIUS = 0.18;
 const DEFAULT_FULL_ZOOM_THRESHOLD = 0.999;
 const POST_REGION_RESET_SAMPLE_SECONDS = 0.000001;
+const TERMINAL_ZOOM_EPSILON_SECONDS = 0.000001;
 
 function cleanNumber(value: number) {
   return Number(value.toFixed(12));
@@ -351,16 +352,50 @@ export function resolveDeterministicCameraTransform(
   options: DeterministicCameraOptions = {},
 ): CameraTransform {
   const safeTime = clampTime(time, options.maxTime ?? time);
+  const resolvedRegions =
+    options.maxTime === undefined ? regions : holdTerminalZoomsThroughMaxTime(regions, options.maxTime);
   let state = createCursorFollowCameraState();
   let camera: CameraTransform | undefined;
 
-  for (const sampleTime of collectDeterministicCameraSampleTimes(regions, cursorPoints, safeTime, options)) {
-    const resolved = resolveCameraTransformWithCursorFollow(regions, cursorPoints, sampleTime, state, options);
+  for (const sampleTime of collectDeterministicCameraSampleTimes(resolvedRegions, cursorPoints, safeTime, options)) {
+    const resolved = resolveCameraTransformWithCursorFollow(resolvedRegions, cursorPoints, sampleTime, state, options);
     state = resolved.state;
     camera = resolved.transform;
   }
 
-  return camera ?? resolveCameraTransformWithCursorFollow(regions, cursorPoints, safeTime, state, options).transform;
+  return camera ?? resolveCameraTransformWithCursorFollow(resolvedRegions, cursorPoints, safeTime, state, options).transform;
+}
+
+function holdTerminalZoomsThroughMaxTime(
+  regions: readonly NormalizedZoomRegion[],
+  maxTime: number,
+): readonly NormalizedZoomRegion[] {
+  if (!Number.isFinite(maxTime)) {
+    return regions;
+  }
+
+  return regions.map((region) => {
+    if (region.end < maxTime - TERMINAL_ZOOM_EPSILON_SECONDS) {
+      return region;
+    }
+
+    const duration = region.end - region.start;
+    const transitionSeconds = clamp(
+      region.transitionSeconds ?? DEFAULT_TRANSITION_SECONDS,
+      0,
+      duration > 0 ? duration / 2 : 0,
+    );
+
+    if (transitionSeconds <= 0) {
+      return region;
+    }
+
+    return {
+      ...region,
+      end: cleanNumber(maxTime + transitionSeconds),
+      transitionSeconds: cleanNumber(transitionSeconds),
+    };
+  });
 }
 
 function collectDeterministicCameraSampleTimes(
