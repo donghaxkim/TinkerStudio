@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { DemoProjectSchema } from "@tinker/project-schema";
+import goldenProjectInput from "../../project-schema/fixtures/person-a-generated-project.sample.json" with { type: "json" };
 import {
   ApiArtifactKindSchema,
   ApiArtifactSchema,
   ApiGenerationJobSchema,
   ApiGenerationJobStatusSchema,
+  ApiGenerationResultSchema,
   parseApiGenerationJob,
   safeParseApiGenerationJob,
 } from "./index.js";
@@ -24,6 +27,29 @@ const progressEvent = {
   status: "running",
   message: "AI URL analysis started",
   time: "2026-06-11T00:00:01.000Z",
+} as const;
+
+const goldenProject = DemoProjectSchema.parse(goldenProjectInput);
+
+const compositionIndexArtifact = {
+  kind: "composition-index",
+  relativePath: "hyperframes/index.html",
+  url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
+  mediaType: "text/html; charset=utf-8",
+} as const;
+
+const outputVideoArtifact = {
+  kind: "output-video",
+  relativePath: "hyperframes/output.mp4",
+  url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
+  mediaType: "video/mp4",
+} as const;
+
+const playwrightProjectArtifact = {
+  kind: "playwright-demo-project",
+  relativePath: "playwright/demo-project.json",
+  url: "/api/jobs/job-test/artifacts/playwright/demo-project.json",
+  mediaType: "application/json; charset=utf-8",
 } as const;
 
 describe("API generation job contract", () => {
@@ -62,7 +88,7 @@ describe("API generation job contract", () => {
   });
 
   it("parses queued and completed API job snapshots", () => {
-    for (const renderer of ["hyperframes", "playwright", "both"] as const) {
+    for (const renderer of ["hyperframes", "playwright"] as const) {
       const queued = parseApiGenerationJob({
         id: `job-${renderer}`,
         status: "queued",
@@ -85,24 +111,111 @@ describe("API generation job contract", () => {
       updatedAt: "2026-06-11T00:00:02.000Z",
       progressEvents: [progressEvent],
       result: {
-        artifacts: [
-          {
-            kind: "output-video",
-            relativePath: "hyperframes/output.mp4",
-            url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
-            mediaType: "video/mp4",
-          },
-          {
-            kind: "playwright-video",
-            relativePath: "playwright/capture/videos/clip.webm",
-            url: "/api/jobs/job-test/artifacts/playwright/capture/videos/clip.webm",
-            mediaType: "video/webm",
-          },
-        ],
+        method: "hyperframes",
+        composition: {
+          indexArtifact: compositionIndexArtifact,
+          outputVideoArtifact,
+        },
+        artifacts: [compositionIndexArtifact, outputVideoArtifact],
+        warnings: [],
       },
     });
 
-    expect(completed.result?.artifacts.map((artifact) => artifact.kind)).toEqual(["output-video", "playwright-video"]);
+    expect(completed.result?.method).toBe("hyperframes");
+    expect(completed.result?.artifacts.map((artifact) => artifact.kind)).toEqual(["composition-index", "output-video"]);
+  });
+
+  it("accepts Playwright API results with a valid DemoProject", () => {
+    const result = ApiGenerationResultSchema.parse({
+      method: "playwright",
+      project: goldenProject,
+      artifacts: [playwrightProjectArtifact],
+      warnings: [],
+    });
+
+    expect(result.method).toBe("playwright");
+    if (result.method !== "playwright") {
+      throw new Error("expected playwright result");
+    }
+    expect(result.project.id).toBe(goldenProject.id);
+  });
+
+  it("accepts HyperFrames API results with required composition artifacts", () => {
+    const result = ApiGenerationResultSchema.parse({
+      method: "hyperframes",
+      composition: {
+        indexArtifact: compositionIndexArtifact,
+        outputVideoArtifact,
+      },
+      artifacts: [compositionIndexArtifact, outputVideoArtifact],
+      warnings: [],
+    });
+
+    expect(result.method).toBe("hyperframes");
+    if (result.method !== "hyperframes") {
+      throw new Error("expected hyperframes result");
+    }
+    expect(result.composition.indexArtifact.kind).toBe("composition-index");
+    expect(result.composition.outputVideoArtifact.kind).toBe("output-video");
+  });
+
+  it("rejects method/result mismatches and missing native outputs", () => {
+    expect(
+      ApiGenerationResultSchema.safeParse({
+        method: "playwright",
+        artifacts: [playwrightProjectArtifact],
+        warnings: [],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ApiGenerationResultSchema.safeParse({
+        method: "playwright",
+        project: goldenProject,
+        composition: {
+          indexArtifact: compositionIndexArtifact,
+          outputVideoArtifact,
+        },
+        artifacts: [playwrightProjectArtifact],
+        warnings: [],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ApiGenerationResultSchema.safeParse({
+        method: "hyperframes",
+        composition: {
+          indexArtifact: compositionIndexArtifact,
+        },
+        artifacts: [compositionIndexArtifact],
+        warnings: [],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ApiGenerationResultSchema.safeParse({
+        method: "hyperframes",
+        composition: {
+          indexArtifact: outputVideoArtifact,
+          outputVideoArtifact: compositionIndexArtifact,
+        },
+        artifacts: [compositionIndexArtifact, outputVideoArtifact],
+        warnings: [],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects renderer both in API job snapshots", () => {
+    expect(
+      safeParseApiGenerationJob({
+        id: "job-both",
+        status: "queued",
+        request: { ...request, id: "job-both", renderer: "both" },
+        createdAt: "2026-06-11T00:00:00.000Z",
+        updatedAt: "2026-06-11T00:00:00.000Z",
+        progressEvents: [],
+      }).success,
+    ).toBe(false);
   });
 
   it("requires AI URL planning requests and explicit progress events", () => {
@@ -220,13 +333,13 @@ describe("API generation job contract", () => {
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [progressEvent],
         result: {
-          artifacts: [
-            {
-              kind: "output-video",
-              relativePath: "hyperframes/output.mp4",
-              url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
-            },
-          ],
+          method: "hyperframes",
+          composition: {
+            indexArtifact: compositionIndexArtifact,
+            outputVideoArtifact,
+          },
+          artifacts: [compositionIndexArtifact, outputVideoArtifact],
+          warnings: [],
         },
       }).success,
     ).toBe(false);
@@ -272,13 +385,13 @@ describe("API generation job contract", () => {
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [progressEvent],
         result: {
-          artifacts: [
-            {
-              kind: "output-video",
-              relativePath: "hyperframes/output.mp4",
-              url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
-            },
-          ],
+          method: "hyperframes",
+          composition: {
+            indexArtifact: compositionIndexArtifact,
+            outputVideoArtifact,
+          },
+          artifacts: [compositionIndexArtifact, outputVideoArtifact],
+          warnings: [],
         },
         error: {
           status: "failed",
@@ -297,13 +410,13 @@ describe("API generation job contract", () => {
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [progressEvent],
         result: {
-          artifacts: [
-            {
-              kind: "output-video",
-              relativePath: "hyperframes/output.mp4",
-              url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
-            },
-          ],
+          method: "hyperframes",
+          composition: {
+            indexArtifact: compositionIndexArtifact,
+            outputVideoArtifact,
+          },
+          artifacts: [compositionIndexArtifact, outputVideoArtifact],
+          warnings: [],
         },
         error: {
           status: "failed",
