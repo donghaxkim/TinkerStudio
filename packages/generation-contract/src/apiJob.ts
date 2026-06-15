@@ -63,7 +63,7 @@ const PlaywrightGenerationResultSchema = z
     method: z.literal("playwright"),
     project: DemoProjectSchema,
     artifacts: z.array(ApiArtifactSchema),
-    warnings: z.array(z.string()).default([]),
+    warnings: z.array(z.string()),
   })
   .strict();
 
@@ -79,7 +79,7 @@ const HyperframesGenerationResultSchema = z
       })
       .strict(),
     artifacts: z.array(ApiArtifactSchema),
-    warnings: z.array(z.string()).default([]),
+    warnings: z.array(z.string()),
   })
   .strict();
 

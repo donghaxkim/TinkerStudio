@@ -172,6 +172,14 @@ describe("API generation job contract", () => {
       ApiGenerationResultSchema.safeParse({
         method: "playwright",
         project: goldenProject,
+        artifacts: [playwrightProjectArtifact],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ApiGenerationResultSchema.safeParse({
+        method: "playwright",
+        project: goldenProject,
         composition: {
           indexArtifact: compositionIndexArtifact,
           outputVideoArtifact,
