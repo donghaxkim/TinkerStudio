@@ -83,10 +83,28 @@ const HyperframesGenerationResultSchema = z
   })
   .strict();
 
+const HyperframesRevisionResultSchema = z
+  .object({
+    method: z.literal("hyperframes"),
+    composition: z
+      .object({
+        indexArtifact: artifactOfKind("composition-index"),
+        outputVideoArtifact: artifactOfKind("output-video").optional(),
+        generationManifestArtifact: artifactOfKind("generation-manifest").optional(),
+        assetManifestArtifact: artifactOfKind("asset-manifest").optional(),
+      })
+      .strict(),
+    artifacts: z.array(ApiArtifactSchema),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+
 export const ApiGenerationResultSchema = z.discriminatedUnion("method", [
   PlaywrightGenerationResultSchema,
   HyperframesGenerationResultSchema,
 ]);
+
+export const ApiRevisionResultSchema = HyperframesRevisionResultSchema;
 
 export const ApiGenerationJobStatusSchema = z.enum([
   "queued",
@@ -96,6 +114,26 @@ export const ApiGenerationJobStatusSchema = z.enum([
   "completed",
   "failed",
 ]);
+
+export const ApiRevisionSchema = z
+  .object({
+    id: z.string().min(1),
+    status: ApiGenerationJobStatusSchema,
+    createdAt: z.string().datetime(),
+    result: ApiRevisionResultSchema.optional(),
+    error: GenerationErrorSchema.optional(),
+  })
+  .strict()
+  .superRefine((rev, ctx) => {
+    if (rev.status === "completed" && rev.result === undefined) {
+      ctx.addIssue({ code: "custom", path: ["result"], message: "completed revisions require a result" });
+    }
+    if (rev.status === "failed" && rev.error === undefined) {
+      ctx.addIssue({ code: "custom", path: ["error"], message: "failed revisions require an error" });
+    }
+  });
+
+export type ApiRevision = z.infer<typeof ApiRevisionSchema>;
 
 export const ApiGenerationJobSchema = z
   .object({
@@ -107,6 +145,8 @@ export const ApiGenerationJobSchema = z
     progressEvents: z.array(ManualFixtureProgressEventSchema),
     result: ApiGenerationResultSchema.optional(),
     error: GenerationErrorSchema.optional(),
+    revisions: z.array(ApiRevisionSchema).optional(),
+    currentRevisionId: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((job, ctx) => {
@@ -137,6 +177,7 @@ export type ApiArtifactKind = z.infer<typeof ApiArtifactKindSchema>;
 export type ApiArtifact = z.infer<typeof ApiArtifactSchema>;
 export type ApiGenerationMethod = z.infer<typeof ApiGenerationMethodSchema>;
 export type ApiGenerationResult = z.infer<typeof ApiGenerationResultSchema>;
+export type ApiRevisionResult = z.infer<typeof ApiRevisionResultSchema>;
 export type ApiGenerationJobStatus = z.infer<typeof ApiGenerationJobStatusSchema>;
 export type ApiGenerationJob = z.infer<typeof ApiGenerationJobSchema>;
 

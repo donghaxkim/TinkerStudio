@@ -7,6 +7,8 @@ import {
   ApiGenerationJobSchema,
   ApiGenerationJobStatusSchema,
   ApiGenerationResultSchema,
+  ApiRevisionSchema,
+  ApiRevisionResultSchema,
   parseApiGenerationJob,
   safeParseApiGenerationJob,
 } from "./index.js";
@@ -472,5 +474,75 @@ describe("API generation job contract", () => {
         progressEvents: [],
       }).success,
     ).toBe(false);
+  });
+});
+
+const revBaseJob = {
+  id: "job-1",
+  status: "completed" as const,
+  request: {
+    id: "job-1",
+    mode: "ai-url-planning",
+    repoUrl: "https://github.com/a/b",
+    productUrl: "https://a.com",
+    durationCapSeconds: 60,
+    aspectRatio: "16:9",
+    renderer: "hyperframes",
+  },
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  progressEvents: [],
+  result: {
+    method: "hyperframes",
+    composition: {
+      indexArtifact: compositionIndexArtifact,
+      outputVideoArtifact,
+    },
+    artifacts: [compositionIndexArtifact, outputVideoArtifact],
+    warnings: [],
+  },
+};
+
+const editOnlyRevisionResult = {
+  method: "hyperframes",
+  composition: {
+    indexArtifact: compositionIndexArtifact,
+  },
+  artifacts: [compositionIndexArtifact],
+  warnings: [],
+} as const;
+
+describe("ApiRevisionSchema", () => {
+  it("accepts edit-only HyperFrames revision results before render", () => {
+    const result = ApiRevisionResultSchema.parse(editOnlyRevisionResult);
+
+    expect(result.method).toBe("hyperframes");
+    expect(result.composition.indexArtifact.kind).toBe("composition-index");
+    expect(result.composition.outputVideoArtifact).toBeUndefined();
+  });
+
+  it("requires result when completed, error when failed", () => {
+    expect(
+      ApiRevisionSchema.safeParse({
+        id: "rev-1",
+        status: "completed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        result: editOnlyRevisionResult,
+      }).success,
+    ).toBe(true);
+    expect(ApiRevisionSchema.safeParse({ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:00.000Z" }).success).toBe(false);
+    expect(ApiRevisionSchema.safeParse({ id: "rev-1", status: "failed", createdAt: "2026-01-01T00:00:00.000Z", error: { status: "failed", stage: "unknown", message: "boom" } }).success).toBe(true);
+  });
+});
+
+describe("ApiGenerationJobSchema with revisions", () => {
+  it("accepts a completed job carrying revisions + currentRevisionId", () => {
+    expect(ApiGenerationJobSchema.safeParse({
+      ...revBaseJob, currentRevisionId: "rev-1",
+      revisions: [{ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:00.000Z", result: editOnlyRevisionResult }],
+    }).success).toBe(true);
+  });
+  it("still accepts a job with no revisions (back-compat)", () => {
+    expect(ApiGenerationJobSchema.safeParse(revBaseJob).success).toBe(true);
   });
 });

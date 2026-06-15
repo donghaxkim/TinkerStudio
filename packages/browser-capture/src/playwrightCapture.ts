@@ -14,6 +14,7 @@ import { CaptureError, type CaptureAsset, type CaptureEvent, type CapturePlan, t
 
 export type RunPlaywrightCaptureOptions = { outputDir: string; headless?: boolean };
 
+const PLAYWRIGHT_RECORD_VIDEO_FRAME_RATE = 25;
 const TYPE_KEYSTROKE_DELAY_MS = 40;
 
 type CursorPosition = { x: number; y: number };
@@ -48,6 +49,7 @@ async function createAsset(
   mimeType: string,
   dimensions: { width: number; height: number },
   duration?: number,
+  metadata: Record<string, unknown> = {},
 ): Promise<CaptureAsset> {
   const stats = await stat(path);
 
@@ -61,6 +63,7 @@ async function createAsset(
     width: dimensions.width,
     height: dimensions.height,
     sizeBytes: stats.size,
+    metadata,
   };
 }
 
@@ -331,7 +334,16 @@ export async function runPlaywrightCapture(
     const screenshots = [await createAsset("screenshot-final", options.outputDir, screenshotPath, "image", "image/png", screenshotDimensions)];
     const clips = videoPath === undefined
       ? []
-      : [await createAsset("capture-video-main", options.outputDir, mainVideoPath, "video", "video/webm", plan.viewport, secondsSince(startedAtMs, completedAtMs))];
+      : [await createAsset(
+        "capture-video-main",
+        options.outputDir,
+        mainVideoPath,
+        "video",
+        "video/webm",
+        plan.viewport,
+        secondsSince(startedAtMs, completedAtMs),
+        { recorder: "playwright", frameRate: PLAYWRIGHT_RECORD_VIDEO_FRAME_RATE },
+      )];
 
     return {
       clips,

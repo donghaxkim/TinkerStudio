@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   CompositionPreview,
   CompositionTimeline,
@@ -52,6 +52,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
   const [contextRefs, setContextRefs] = useState<ChatContextRef[]>([]);
   const [instruction, setInstruction] = useState("");
   const [refSeq, setRefSeq] = useState(0);
+  const [lastEditedRange, setLastEditedRange] = useState<{ start: number; end: number } | undefined>(undefined);
 
   const duration = model?.durationSeconds ?? 0;
   const playback = useCompositionPlayback(duration);
@@ -82,12 +83,29 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
   const noopClient = useMemo<CompositionEditClient>(() => ({ editComposition: async () => baseRevision }), [baseRevision]);
   const edit = useCompositionEditFlow({ jobId: jobId ?? "", client: editClient ?? noopClient, baseRevision });
   const editEnabled = jobId !== undefined && editClient !== undefined;
+  const exportVideoUrl = edit.currentVideoUrl ?? outputVideoUrl;
 
   function handleSend() {
-    void edit.submit(instruction, contextRefs);
+    const refs = contextRefs;
+    const editedRange = refs.length
+      ? { start: Math.min(...refs.map((r) => r.start)), end: Math.max(...refs.map((r) => r.end)) }
+      : undefined;
+    setLastEditedRange(editedRange);
+    void edit.submit(instruction, refs);
+    // Clear the instruction only; keep contextRefs so Send-during-preview reprompts the same clip.
     setInstruction("");
-    setContextRefs([]);
   }
+
+  // Auto-replay the edited clip on loop whenever a new revision previews. Keyed on the
+  // composition URL (changes per revision) so it re-fires for each Reprompt revision —
+  // isPreviewing stays true across a Reprompt and would not re-trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (edit.isPreviewing && model && lastEditedRange) {
+      playback.playSegment(lastEditedRange.start, lastEditedRange.end);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit.currentCompositionUrl]);
 
   return (
     <div className="tk-porcelain" style={shellStyle}>
@@ -104,7 +122,14 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
           <span style={{ fontSize: 14, fontWeight: 400, color: "var(--tk-text-sec)" }}>Studio</span>
         </button>
         <div style={{ marginLeft: "auto" }}>
-          <button type="button" className="tk-btn tk-btn-accent" aria-label="Export" title="Export (coming soon)" disabled>
+          <button
+            type="button"
+            className="tk-btn tk-btn-accent"
+            aria-label="Export"
+            title={exportVideoUrl === undefined ? "Render the edit to export" : "Export"}
+            disabled={exportVideoUrl === undefined}
+            onClick={() => { if (exportVideoUrl) window.open(exportVideoUrl, "_blank"); }}
+          >
             Export
           </button>
         </div>
@@ -160,8 +185,8 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
                 onSend: handleSend,
                 status: edit.status,
                 isPreviewing: edit.isPreviewing,
-                onAccept: edit.accept,
-                onReject: edit.reject,
+                onAccept: () => { edit.accept(); setContextRefs([]); setSelection(undefined); },
+                onReject: () => { edit.reject(); setContextRefs([]); setSelection(undefined); },
                 canUndo: edit.canUndo,
                 onUndo: edit.undo,
                 ...(edit.error === undefined ? {} : { error: edit.error }),

@@ -42,4 +42,16 @@ describe("useCompositionPlayback", () => {
     expect(result.current.currentTime).toBe(1);
     expect(result.current.isPlaying).toBe(false);
   });
+
+  it("playSegment loops within [start, end]", () => {
+    const cbs = stubRaf();
+    const { result } = renderHook(() => useCompositionPlayback(10));
+    act(() => result.current.playSegment(4, 6));
+    expect(result.current.currentTime).toBe(4);
+    expect(result.current.isPlaying).toBe(true);
+    act(() => cbs.shift()?.(0));
+    act(() => cbs.shift()?.(3000)); // +3s would reach 7 (>6) → wraps to 4
+    expect(result.current.currentTime).toBe(4);
+    expect(result.current.isPlaying).toBe(true); // still looping (does not stop)
+  });
 });

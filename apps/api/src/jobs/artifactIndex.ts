@@ -1,5 +1,5 @@
 import { isAbsolute, relative, sep } from "node:path";
-import type { ApiArtifact, ApiArtifactKind } from "@tinker/generation-contract";
+import type { ApiArtifact, ApiArtifactKind, ApiRevisionResult } from "@tinker/generation-contract";
 
 export type IndexArtifactsInput = {
   jobId: string;
@@ -12,12 +12,14 @@ function toPosixPath(value: string) {
 }
 
 function classifyArtifact(relativePath: string): ApiArtifactKind {
-  if (relativePath === "hyperframes/output.mp4") return "output-video";
-  if (relativePath === "hyperframes/index.html") return "composition-index";
-  if (relativePath === "hyperframes/asset-manifest.json") return "asset-manifest";
-  if (relativePath === "hyperframes/generation-manifest.json") return "generation-manifest";
-  if (relativePath === "hyperframes/lint.log") return "lint-log";
-  if (relativePath === "hyperframes/render.log") return "render-log";
+  const revMatch = relativePath.match(/^revisions\/[^/]+\/(.+)$/);
+  const p = revMatch ? revMatch[1]! : relativePath;
+  if (p === "hyperframes/output.mp4") return "output-video";
+  if (p === "hyperframes/index.html") return "composition-index";
+  if (p === "hyperframes/asset-manifest.json") return "asset-manifest";
+  if (p === "hyperframes/generation-manifest.json") return "generation-manifest";
+  if (p === "hyperframes/lint.log") return "lint-log";
+  if (p === "hyperframes/render.log") return "render-log";
   if (relativePath === "product-analysis.json") return "product-analysis";
   if (relativePath === "product-analysis.png") return "product-analysis-screenshot";
   if (relativePath === "repo-analysis.json") return "repo-analysis";
@@ -30,7 +32,7 @@ function classifyArtifact(relativePath: string): ApiArtifactKind {
   if (relativePath.startsWith("playwright/") && (relativePath.endsWith(".zip") || relativePath.endsWith(".trace"))) {
     return "playwright-trace";
   }
-  if (relativePath.startsWith("hyperframes/assets/")) return "asset";
+  if (p.startsWith("hyperframes/assets/")) return "asset";
   return "other";
 }
 
@@ -70,4 +72,34 @@ export function indexArtifacts(input: IndexArtifactsInput): ApiArtifact[] {
       },
     ];
   });
+}
+
+function requireArtifact(artifacts: ApiArtifact[], kind: ApiArtifactKind) {
+  const artifact = artifacts.find((candidate) => candidate.kind === kind);
+  if (artifact === undefined) {
+    throw new Error(`Revision is missing required ${kind} artifact`);
+  }
+  return artifact;
+}
+
+function optionalArtifact(artifacts: ApiArtifact[], kind: ApiArtifactKind) {
+  return artifacts.find((candidate) => candidate.kind === kind);
+}
+
+export function buildHyperframesRevisionResult(artifacts: ApiArtifact[]): ApiRevisionResult {
+  const outputVideoArtifact = optionalArtifact(artifacts, "output-video");
+  const generationManifestArtifact = optionalArtifact(artifacts, "generation-manifest");
+  const assetManifestArtifact = optionalArtifact(artifacts, "asset-manifest");
+
+  return {
+    method: "hyperframes",
+    composition: {
+      indexArtifact: requireArtifact(artifacts, "composition-index"),
+      ...(outputVideoArtifact === undefined ? {} : { outputVideoArtifact }),
+      ...(generationManifestArtifact === undefined ? {} : { generationManifestArtifact }),
+      ...(assetManifestArtifact === undefined ? {} : { assetManifestArtifact }),
+    },
+    artifacts,
+    warnings: [],
+  };
 }
