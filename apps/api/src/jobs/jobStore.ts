@@ -4,13 +4,18 @@ import {
   type ApiGenerationJob,
   type ApiGenerationJobStatus,
   type ApiGenerationResult,
+  type ApiRevision,
+  type EditContextRef,
   type GenerationError,
   type ManualFixtureProgressEvent,
 } from "@tinker/generation-contract";
 
+export type PendingEdit = { revId: string; instruction: string; context: EditContextRef[] };
+
 export type JobRecord = Omit<ApiGenerationJob, "request"> & {
   request: AiUrlPlanningCreateDemoRequest & { id: string };
   outputRoot: string;
+  pendingEdit?: PendingEdit;
 };
 
 export type CreateJobInput = {
@@ -34,7 +39,7 @@ function isNonTerminalStatus(status: ManualFixtureProgressEvent["status"]): stat
 }
 
 function snapshot(record: JobRecord): ApiGenerationJob {
-  const { outputRoot: _outputRoot, ...job } = record;
+  const { outputRoot: _outputRoot, pendingEdit: _pendingEdit, ...job } = record;
   return ApiGenerationJobSchema.parse(job);
 }
 
@@ -43,7 +48,7 @@ function isTerminalStatus(status: ApiGenerationJobStatus) {
 }
 
 function hasValidSnapshotDatetime(record: JobRecord, updatedAt: string) {
-  const { outputRoot: _outputRoot, ...job } = { ...record, updatedAt };
+  const { outputRoot: _outputRoot, pendingEdit: _pendingEdit, ...job } = { ...record, updatedAt };
   return ApiGenerationJobSchema.safeParse(job).success;
 }
 
@@ -105,6 +110,30 @@ export function createJobStore() {
       record.status = "failed";
       record.error = error;
       delete record.result;
+      record.updatedAt = now;
+    },
+
+    setPendingEdit(id: string, edit: PendingEdit) {
+      const record = records.get(id);
+      if (record === undefined) return;
+      record.pendingEdit = edit;
+    },
+
+    appendRevision(id: string, revision: ApiRevision, now: string) {
+      const record = records.get(id);
+      if (record === undefined) return;
+      record.revisions = [...(record.revisions ?? []), revision];
+      record.currentRevisionId = revision.id;
+      delete record.pendingEdit;
+      record.updatedAt = now;
+    },
+
+    failRevision(id: string, revId: string, error: GenerationError, now: string) {
+      const record = records.get(id);
+      if (record === undefined) return;
+      const failed: ApiRevision = { id: revId, status: "failed", createdAt: now, error };
+      record.revisions = [...(record.revisions ?? []), failed];
+      delete record.pendingEdit;
       record.updatedAt = now;
     },
   };
