@@ -139,11 +139,46 @@ assert.ok(
   mergedTabsZoom.start <= 7.537 && mergedTabsZoom.end >= 11.548,
   `merged zoom must cover both target windows; got ${mergedTabsZoom.start}-${mergedTabsZoom.end}`,
 );
-assert.equal(mergedTabsZoom.target.width, 960);
-assert.equal(mergedTabsZoom.target.height, 237.6);
-assert.ok(mergedTabsZoom.target.x < 1451, "right-edge tab zooms should include left-side context");
-assert.ok(mergedTabsZoom.target.x + mergedTabsZoom.target.width >= 1451 + 383 / 2, "merged target center remains framed");
-assert.ok(mergedTabsZoom.target.x + mergedTabsZoom.target.width < 1451 + 383, "unsafe right-edge gutter should not anchor the zoom");
+assert.deepEqual(mergedTabsZoom.target, { x: 1451, y: 79, width: 383, height: 29 });
+
+const terminalRightEdgeTargetProject = DemoProjectSchema.parse(
+  compileProject({
+    ...input,
+    storyboard: { ...input.storyboard, durationCapSeconds: 10.514 },
+    captureResult: {
+      ...input.captureResult,
+      clips: [{ ...input.captureResult.clips[0]!, duration: 10.514, width: 1920, height: 1080 }],
+      events: [
+        { type: "zoomTarget", time: 7.361, x: 1451, y: 79, width: 188, height: 29, label: "Chat" },
+        { type: "zoomTarget", time: 8.876, x: 1646, y: 79, width: 188, height: 29, label: "Notes" },
+      ],
+    },
+  }),
+);
+
+assert.equal(terminalRightEdgeTargetProject.zooms.length, 1);
+const [terminalRightEdgeZoom] = terminalRightEdgeTargetProject.zooms;
+assert.ok(terminalRightEdgeZoom !== undefined, "expected one terminal right-edge zoom");
+assert.deepEqual(terminalRightEdgeZoom.target, { x: 1451, y: 79, width: 383, height: 29 });
+assert.equal(terminalRightEdgeZoom.end, 9.914);
+assert.ok(
+  terminalRightEdgeTargetProject.duration - terminalRightEdgeZoom.end >= 0.599,
+  "right-edge terminal zooms should leave a stable overview before the cut",
+);
+
+const finalMomentRightEdgeTargetProject = DemoProjectSchema.parse(
+  compileProject({
+    ...input,
+    storyboard: { ...input.storyboard, durationCapSeconds: 10.514 },
+    captureResult: {
+      ...input.captureResult,
+      clips: [{ ...input.captureResult.clips[0]!, duration: 10.514, width: 1920, height: 1080 }],
+      events: [{ type: "zoomTarget", time: 10.2, x: 1646, y: 79, width: 188, height: 29, label: "Notes" }],
+    },
+  }),
+);
+
+assert.equal(finalMomentRightEdgeTargetProject.zooms.length, 0, "last-moment right-edge zooms should not become terminal");
 
 const adjacentTargetProject = DemoProjectSchema.parse(
   compileProject({

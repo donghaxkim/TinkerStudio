@@ -12,18 +12,13 @@ import type { CompileProjectInput } from "./types.js";
 const ZOOM_TARGET_HOLD_SECONDS = 2.5;
 const ZOOM_MERGE_EPSILON_SECONDS = 0.001;
 const RIGHT_EDGE_ZOOM_THRESHOLD_RATIO = 0.86;
-const RIGHT_EDGE_ZOOM_MIN_WIDTH_RATIO = 0.5;
-const RIGHT_EDGE_ZOOM_MIN_HEIGHT_RATIO = 0.22;
-const RIGHT_EDGE_ZOOM_MAX_CENTER_X_RATIO = 0.62;
+const RIGHT_EDGE_OVERVIEW_SECONDS = 0.6;
+const TERMINAL_ZOOM_EPSILON_SECONDS = 0.001;
 
 type FrameSize = { width: number; height: number };
 
 function cleanNumber(value: number) {
   return Number(value.toFixed(6));
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
 }
 
 function isPositiveFinite(value: number | undefined): value is number {
@@ -77,31 +72,25 @@ function mergeRects(left: ZoomKeyframe["target"], right: ZoomKeyframe["target"])
   return { x, y, width: maxX - x, height: maxY - y };
 }
 
-function toPresentationSafeTarget(
-  target: ZoomKeyframe["target"],
+function isRightEdgeTarget(target: ZoomKeyframe["target"], frame: FrameSize | undefined) {
+  return frame !== undefined && target.x + target.width >= frame.width * RIGHT_EDGE_ZOOM_THRESHOLD_RATIO;
+}
+
+function releaseTerminalRightEdgeZoom(
+  zoom: ZoomKeyframe,
+  duration: number,
   frame: FrameSize | undefined,
-): ZoomKeyframe["target"] {
-  if (!frame || !isPositiveFinite(frame.width) || !isPositiveFinite(frame.height)) {
-    return target;
+): ZoomKeyframe | undefined {
+  if (!isRightEdgeTarget(zoom.target, frame) || zoom.end < duration - TERMINAL_ZOOM_EPSILON_SECONDS) {
+    return zoom;
   }
 
-  if (target.x + target.width < frame.width * RIGHT_EDGE_ZOOM_THRESHOLD_RATIO) {
-    return target;
+  const overviewStart = cleanNumber(duration - RIGHT_EDGE_OVERVIEW_SECONDS);
+  if (overviewStart <= zoom.start) {
+    return undefined;
   }
 
-  // Right-aligned tab/button rects can include empty layout gutter. Keep the
-  // interaction center in frame, but do not let that gutter anchor the camera.
-  const width = Math.min(frame.width, Math.max(target.width, frame.width * RIGHT_EDGE_ZOOM_MIN_WIDTH_RATIO));
-  const height = Math.min(frame.height, Math.max(target.height, frame.height * RIGHT_EDGE_ZOOM_MIN_HEIGHT_RATIO));
-  const centerX = Math.min(target.x + target.width / 2, frame.width * RIGHT_EDGE_ZOOM_MAX_CENTER_X_RATIO);
-  const centerY = clamp(target.y + target.height / 2, height / 2, frame.height - height / 2);
-
-  return {
-    x: cleanNumber(clamp(centerX - width / 2, 0, frame.width - width)),
-    y: cleanNumber(clamp(centerY - height / 2, 0, frame.height - height)),
-    width: cleanNumber(width),
-    height: cleanNumber(height),
-  };
+  return { ...zoom, end: Math.min(zoom.end, overviewStart) };
 }
 
 function toZoomKeyframes(events: readonly CaptureEvent[], duration: number, frame: FrameSize | undefined): ZoomKeyframe[] {
@@ -139,10 +128,11 @@ function toZoomKeyframes(events: readonly CaptureEvent[], duration: number, fram
     });
   });
 
-  return zooms.map((zoom) => ({
-    ...zoom,
-    target: toPresentationSafeTarget(zoom.target, frame),
-  }));
+  return zooms.flatMap((zoom) => {
+    const released = releaseTerminalRightEdgeZoom(zoom, duration, frame);
+
+    return released === undefined ? [] : [released];
+  });
 }
 
 function captureFrameRate(asset: CaptureAsset) {
