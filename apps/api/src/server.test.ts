@@ -1245,6 +1245,54 @@ describe("generation worker", () => {
     ]);
   });
 
+  it("embeds Playwright projects from the indexed demo-project artifact", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-playwright-indexed-project-"));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
+    const indexedProjectPath = join(outputRoot, "playwright", "demo-project.json");
+    const unindexedProjectPath = join(outputRoot, "playwright", "unindexed-demo-project.json");
+    const captureResultPath = join(outputRoot, "playwright", "capture-result.json");
+    const unindexedProject = DemoProjectSchema.parse({ ...goldenProject, id: "project-from-unindexed-path" });
+    const store = createJobStore();
+    store.create({
+      id: "job-test",
+      request: { ...request, renderer: "playwright" },
+      outputRoot,
+      now: "2026-06-11T00:00:00.000Z",
+    });
+
+    const runner: GenerationRunner = async () => {
+      await mkdir(join(outputRoot, "playwright"), { recursive: true });
+      await writeFile(indexedProjectPath, `${JSON.stringify(goldenProject, null, 2)}\n`);
+      await writeFile(unindexedProjectPath, `${JSON.stringify(unindexedProject, null, 2)}\n`);
+      await writeFile(captureResultPath, "{}");
+      return {
+        jobId: "job-test",
+        status: "completed",
+        projectPath: unindexedProjectPath,
+        captureResultPath,
+        outputDirectory: outputRoot,
+        artifactPaths: [indexedProjectPath, captureResultPath],
+        renderer: "playwright",
+        rendererResults: {
+          playwright: {
+            projectPath: unindexedProjectPath,
+            captureResultPath,
+          },
+        },
+      };
+    };
+
+    const worker = createGenerationWorker({ store, runner, now: () => "2026-06-11T00:00:02.000Z" });
+    await worker("job-test");
+
+    const completed = store.getSnapshot("job-test");
+    expect(completed?.status).toBe("completed");
+    expect(completed?.result?.method === "playwright" ? completed.result.project.id : undefined).toBe(goldenProject.id);
+    expect(completed?.result?.artifacts.find((artifact) => artifact.kind === "playwright-demo-project")?.relativePath).toBe(
+      "playwright/demo-project.json",
+    );
+  });
+
   it("fails HyperFrames jobs that do not expose required composition artifacts", async () => {
     const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-missing-hyperframes-"));
     const store = createJobStore();

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { DemoProjectSchema } from "@tinker/project-schema";
 import type {
   ApiArtifact,
@@ -39,9 +40,8 @@ export async function buildApiGenerationResult(input: BuildApiGenerationResultIn
   });
 
   if (input.generationResult.renderer === "playwright") {
-    const projectPath = input.generationResult.rendererResults?.playwright?.projectPath ?? input.generationResult.projectPath;
-    requireArtifact(artifacts, "playwright-demo-project");
-    const project = await readDemoProject(projectPath);
+    const projectArtifact = requireArtifact(artifacts, "playwright-demo-project");
+    const project = await readDemoProject(join(input.outputRoot, projectArtifact.relativePath));
     return {
       method: "playwright",
       project,
