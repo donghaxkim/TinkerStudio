@@ -27,7 +27,7 @@ Two editors exist in the app and share **no layout code**:
   bar.
 
 The composition editor inherited the porcelain **design tokens** but **not the
-layout shell**, because that shell was welded to the retired `DemoProject` model.
+layout shell**, because that shell was welded to the legacy `DemoProject` model.
 Phase 1 intentionally built only the new, risky mechanics (reading a live GSAP
 timeline out of a sandboxed iframe and scrubbing it). Phase 2 fills the rest.
 
@@ -51,8 +51,8 @@ the AI chat-edit loop:
   panel".)
 - **No deletion of the legacy editor.** `EditorScreen`, `@tinker/ai-edit-ui`,
   `DemoProject`, and `@tinker/demo-assembly` stay untouched — the legacy editor is
-  our visual reference, and ~75 files (incl. Person A's `demo-assembly`) depend on
-  `DemoProject`. Retiring it is a later, joint effort.
+  our visual reference, and Playwright jobs still use `DemoProject` as their
+  canonical editable state.
 - **No routing change yet.** "Generate" still routes to the legacy editor; the
   composition editor stays on its own ("beta") route. Promoting composition to the
   primary flow is a tiny follow-up after Phase 2 reaches parity.

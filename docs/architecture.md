@@ -240,6 +240,15 @@ type Asset = {
 
 The editor, renderer, and capture pipeline should reference assets by `id`, not by duplicating paths throughout the project.
 
+## Dual Generation Methods
+
+Tinker supports two equal first-class Create Demo methods:
+
+- Playwright recording produces a validated `DemoProject` and opens the existing project editor/export loop.
+- HyperFrames composition produces composition source, output video, manifests, and logs, then opens the composition editor/revision loop.
+
+The API returns completed jobs as a method-discriminated result. Clients branch on `result.method`, not on artifact paths. Playwright jobs require `result.project`; HyperFrames jobs require `result.composition.indexArtifact` and `result.composition.outputVideoArtifact`.
+
 ## AI Editing Contract
 
 AI editing should work like Cursor for a selected timeline range.

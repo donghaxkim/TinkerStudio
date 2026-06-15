@@ -4,6 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { CapturePlan, CaptureResult } from "@tinker/browser-capture";
+import { DemoProjectSchema } from "@tinker/project-schema";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { runAiUrlDemo, type AiUrlDemoPhase } from "./runAiUrlDemo.js";
 
@@ -191,6 +192,8 @@ assert.equal(
   defaultRendererResult.rendererResults.hyperframes?.outputVideoPath,
   join(defaultRendererOutputRoot, "hyperframes", "output.mp4"),
 );
+assert.ok(defaultRendererResult.artifactPaths.includes(join(defaultRendererOutputRoot, "hyperframes", "index.html")));
+assert.ok(defaultRendererResult.artifactPaths.includes(join(defaultRendererOutputRoot, "hyperframes", "output.mp4")));
 assert.equal(existsSync(join(defaultRendererOutputRoot, ".repo-scratch")), false);
 
 const hyperframesScreenshotOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-hyperframes-screenshot-"));
@@ -844,6 +847,11 @@ for (const path of expectedPaths) {
 const projectJson = JSON.parse(await readFile(join(playwrightOutputRoot, "demo-project.json"), "utf8"));
 assert.equal(projectJson.metadata.productUrl, productUrl);
 assert.equal(projectJson.metadata.prompt, prompt);
+const parsedProject = DemoProjectSchema.parse(projectJson);
+assert.equal(result.renderer, "playwright");
+assert.equal(result.rendererResults.playwright?.projectPath, join(playwrightOutputRoot, "demo-project.json"));
+assert.equal(result.projectPath, join(playwrightOutputRoot, "demo-project.json"));
+assert.equal(parsedProject.metadata.productUrl, productUrl);
 const repoAnalysisJson = JSON.parse(await readFile(join(outputRoot, "repo-analysis.json"), "utf8"));
 assert.deepEqual(repoAnalysisJson, repoAnalysis);
 assert.equal(projectJson.metadata.sourceRepoUrl, repoUrl);
