@@ -99,9 +99,10 @@ function frameTerminalRightEdgeZoom(
     return [zoom];
   }
 
-  const outroStart = cleanNumber(duration - RIGHT_EDGE_OUTRO_SECONDS);
   const overviewStart = cleanNumber(duration - RIGHT_EDGE_OVERVIEW_SECONDS);
-  if (!frame || outroStart <= zoom.start) {
+  const outroStart = overviewStart;
+  const latestInteractionStart = cleanNumber(duration - RIGHT_EDGE_OUTRO_SECONDS);
+  if (!frame || latestInteractionStart <= zoom.start) {
     return [];
   }
 

@@ -165,9 +165,13 @@ assert.ok(
   terminalRightEdgeTargetProject.duration - terminalRightEdgeZoom.end >= 0.599,
   "right-edge terminal zooms should leave room before the clean end crop",
 );
+assert.ok(
+  terminalRightEdgeOutroZoom !== undefined && terminalRightEdgeOutroZoom.start >= terminalRightEdgeZoom.end,
+  "clean outro crop should not overlap the interaction zoom",
+);
 assert.deepEqual(terminalRightEdgeOutroZoom, {
   id: "zoom-0-outro",
-  start: 9.614,
+  start: 9.914,
   end: 10.514,
   target: { x: 0, y: 49.090909, width: 1745.454545, height: 981.818182 },
   scale: 1.1,
@@ -187,6 +191,20 @@ const finalMomentRightEdgeTargetProject = DemoProjectSchema.parse(
 );
 
 assert.equal(finalMomentRightEdgeTargetProject.zooms.length, 0, "last-moment right-edge zooms should not become terminal");
+
+const lateRightEdgeTargetProject = DemoProjectSchema.parse(
+  compileProject({
+    ...input,
+    storyboard: { ...input.storyboard, durationCapSeconds: 10.514 },
+    captureResult: {
+      ...input.captureResult,
+      clips: [{ ...input.captureResult.clips[0]!, duration: 10.514, width: 1920, height: 1080 }],
+      events: [{ type: "zoomTarget", time: 9.7, x: 1646, y: 79, width: 188, height: 29, label: "Notes" }],
+    },
+  }),
+);
+
+assert.equal(lateRightEdgeTargetProject.zooms.length, 0, "late right-edge zooms should not become terminal");
 
 const adjacentTargetProject = DemoProjectSchema.parse(
   compileProject({
