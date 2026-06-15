@@ -251,9 +251,10 @@ The API returns completed jobs as a method-discriminated result. Clients branch 
 
 ## AI Editing Contract
 
-AI editing should work like Cursor for a selected timeline range.
+For Playwright jobs, AI editing should work like Cursor for a selected
+`DemoProject` timeline range.
 
-Flow:
+Playwright flow:
 
 ```text
 User selects 50s-56s on timeline
@@ -265,7 +266,7 @@ User selects 50s-56s on timeline
   -> accepted operations mutate DemoProject
 ```
 
-AI must output operations, not directly modify video files.
+For Playwright jobs, AI must output operations, not directly modify video files.
 
 Example:
 
@@ -285,7 +286,12 @@ Example:
 }
 ```
 
-All AI edit operations should be validated before application and should be undoable.
+All Playwright `DemoProject` AI edit operations should be validated before
+application and should be undoable.
+
+For HyperFrames jobs, AI editing follows the composition-source revision contract:
+the assistant rewrites the current composition source, re-renders it, and the user
+accepts, rejects, or undoes whole-composition revisions.
 
 ## Two-Person Ownership Split
 
