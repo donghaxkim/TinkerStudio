@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { DemoProject } from "@tinker/project-schema";
 import { createMockGenerationClient } from "./lib/mockGenerationClient.js";
 import { createHttpCompositionGenerationClient } from "./lib/httpCompositionGenerationClient.js";
-import { createMockCompositionEditClient } from "./lib/mockCompositionEditClient.js";
+import { createHttpCompositionEditClient } from "./lib/httpCompositionEditClient.js";
 import { loadSampleProject } from "./fixtures/loadSampleProject.js";
 import { CreateDemoScreen } from "./screens/CreateDemo/CreateDemoScreen.js";
 import { EditorScreen, type ProjectOrigin } from "./screens/Editor/EditorScreen.js";
@@ -22,9 +22,9 @@ type AppState = {
 
 const generationClient = createMockGenerationClient();
 // Phase 3a: the composition flow runs against Samuel's real generation API
-// (same-origin via the Vite /api proxy → :4500). The edit client stays mock until 3b-5.
+// (same-origin via the Vite /api proxy → :4500). Phase 3b-5: edits POST /edits + poll.
 const compositionClient = createHttpCompositionGenerationClient();
-const compositionEditClient = createMockCompositionEditClient();
+const compositionEditClient = createHttpCompositionEditClient();
 
 export function App() {
   const [state, setState] = useState<AppState>({
