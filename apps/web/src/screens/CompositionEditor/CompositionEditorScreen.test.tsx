@@ -141,4 +141,40 @@ describe("CompositionEditorScreen", () => {
     expect(open).toHaveBeenCalledWith(VIDEO, "_blank");
     open.mockRestore();
   });
+
+  it("does not expose the original output video for export while previewing an edit-only revision", async () => {
+    const handle = fakeHandle(() => undefined);
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const editComposition = vi.fn(async () => ({ id: "rev-1", compositionIndexUrl: "/rev1/index.html?rev=1" }));
+    render(<CompositionEditorScreen compositionIndexUrl={INDEX} outputVideoUrl={VIDEO} jobId="job-1" editClient={{ editComposition }} resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })} />);
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Edit instruction"), { target: { value: "punch in" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(screen.getByTestId("composition-frame")).toHaveAttribute("src", "/rev1/index.html?rev=1"));
+
+    const exportBtn = screen.getByRole("button", { name: "Export" });
+    expect(exportBtn).toBeDisabled();
+    fireEvent.click(exportBtn);
+    expect(open).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  it("exports the current revision output video when the revision has rendered", async () => {
+    const handle = fakeHandle(() => undefined);
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const editComposition = vi.fn(async () => ({ id: "rev-1", compositionIndexUrl: "/rev1/index.html?rev=1", outputVideoUrl: "/rev1/output.mp4" }));
+    render(<CompositionEditorScreen compositionIndexUrl={INDEX} outputVideoUrl={VIDEO} jobId="job-1" editClient={{ editComposition }} resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })} />);
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Edit instruction"), { target: { value: "rendered edit" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(screen.getByTestId("composition-frame")).toHaveAttribute("src", "/rev1/index.html?rev=1"));
+
+    const exportBtn = screen.getByRole("button", { name: "Export" });
+    expect(exportBtn).not.toBeDisabled();
+    fireEvent.click(exportBtn);
+    expect(open).toHaveBeenCalledWith("/rev1/output.mp4", "_blank");
+    open.mockRestore();
+  });
 });

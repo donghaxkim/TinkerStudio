@@ -83,7 +83,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, o
   const noopClient = useMemo<CompositionEditClient>(() => ({ editComposition: async () => baseRevision }), [baseRevision]);
   const edit = useCompositionEditFlow({ jobId: jobId ?? "", client: editClient ?? noopClient, baseRevision });
   const editEnabled = jobId !== undefined && editClient !== undefined;
-  const exportVideoUrl = edit.currentVideoUrl ?? outputVideoUrl;
+  const exportVideoUrl = edit.currentVideoUrl;
 
   function handleSend() {
     const refs = contextRefs;

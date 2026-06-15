@@ -8,6 +8,7 @@ const completedResult = { method: "hyperframes" as const, composition: { indexAr
 const revisionIndexArtifact = { kind: "composition-index" as const, relativePath: "revisions/rev-1/hyperframes/index.html", url: "/api/jobs/job-1/artifacts/revisions/rev-1/hyperframes/index.html", mediaType: "text/html" };
 const revisionOutputVideoArtifact = { kind: "output-video" as const, relativePath: "revisions/rev-1/hyperframes/output.mp4", url: "/api/jobs/job-1/artifacts/revisions/rev-1/hyperframes/output.mp4", mediaType: "video/mp4" };
 const renderedRevisionResult = { method: "hyperframes" as const, composition: { indexArtifact: revisionIndexArtifact, outputVideoArtifact: revisionOutputVideoArtifact }, artifacts: [revisionIndexArtifact, revisionOutputVideoArtifact], warnings: [] };
+const editOnlyRevisionResult = { method: "hyperframes" as const, composition: { indexArtifact: revisionIndexArtifact }, artifacts: [revisionIndexArtifact, revisionOutputVideoArtifact], warnings: [] };
 
 function job(over: Partial<ApiGenerationJob>): ApiGenerationJob {
   return {
@@ -33,6 +34,22 @@ describe("createHttpCompositionEditClient", () => {
     const rev = await client.editComposition({ jobId: "job-1", instruction: "punch in", context: [] });
     expect(rev).toEqual({ id: "rev-1", compositionIndexUrl: "/api/jobs/job-1/artifacts/revisions/rev-1/hyperframes/index.html", outputVideoUrl: "/api/jobs/job-1/artifacts/revisions/rev-1/hyperframes/output.mp4" });
     expect(fetchFn).toHaveBeenNthCalledWith(1, expect.stringContaining("/api/jobs/job-1/edits"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("maps HyperFrames edit-only revision output from composition, not artifacts", async () => {
+    const before = job({ revisions: [] });
+    const after = job({
+      currentRevisionId: "rev-1",
+      revisions: [{ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:01.000Z", result: editOnlyRevisionResult }],
+    });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(res(before, 202))
+      .mockResolvedValueOnce(res(after));
+    const client = createHttpCompositionEditClient({ fetchFn: fetchFn as unknown as typeof fetch, intervalMs: 0 });
+
+    const rev = await client.editComposition({ jobId: "job-1", instruction: "punch in", context: [] });
+
+    expect(rev).toEqual({ id: "rev-1", compositionIndexUrl: "/api/jobs/job-1/artifacts/revisions/rev-1/hyperframes/index.html" });
   });
 
   it("throws when the new revision failed", async () => {

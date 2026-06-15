@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildHyperframesRevisionResult, indexArtifacts } from "../jobs/artifactIndex.js";
 import type { RunEdit } from "../workers/editWorker.js";
@@ -29,6 +29,7 @@ export function createComposeRunEdit(deps: { runAgent: RunAgent }): RunEdit {
     const revDir = join(record.outputRoot, "revisions", edit.revId, "hyperframes");
     await mkdir(revDir, { recursive: true });
     await cp(currentDir, revDir, { recursive: true });
+    await rm(join(revDir, "output.mp4"), { force: true });
 
     const indexPath = join(revDir, "index.html");
     const indexHtml = await readFile(indexPath, "utf8");

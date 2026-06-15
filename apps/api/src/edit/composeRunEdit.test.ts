@@ -31,6 +31,18 @@ describe("createComposeRunEdit", () => {
     const written = await readFile(join(store.getRecord("j")!.outputRoot, "revisions/rev-1/hyperframes/index.html"), "utf8");
     expect(written).toContain("const D=2.0;");
   });
+
+  it("omits copied render outputs from edit-only revision results", async () => {
+    const { store, outputRoot } = await seededRecord();
+    await writeFile(join(outputRoot, "hyperframes", "output.mp4"), "old video", "utf8");
+    const runEdit = createComposeRunEdit({ runAgent: async () => "<<<<<<< SEARCH\nconst D=1.0;\n=======\nconst D=2.0;\n>>>>>>> REPLACE" });
+
+    const result = await runEdit(store.getRecord("j")!, { revId: "rev-1", instruction: "slower", context: [] });
+
+    expect(result.composition.outputVideoArtifact).toBeUndefined();
+    expect(result.artifacts.some((artifact) => artifact.kind === "output-video")).toBe(false);
+  });
+
   it("throws when the agent edit does not apply", async () => {
     const { store } = await seededRecord();
     const runEdit = createComposeRunEdit({ runAgent: async () => "<<<<<<< SEARCH\nNOPE\n=======\nX\n>>>>>>> REPLACE" });
