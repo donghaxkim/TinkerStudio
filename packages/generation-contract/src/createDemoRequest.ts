@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AspectRatioSchema } from "@tinker/project-schema";
 
-const PublicUrlSchema = z.string().url().refine((value) => {
+export const PublicUrlSchema = z.string().url().refine((value) => {
   try {
     const protocol = new URL(value).protocol;
     return protocol === "http:" || protocol === "https:";
@@ -13,7 +13,7 @@ const PublicUrlSchema = z.string().url().refine((value) => {
 const GithubOwnerSegmentPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const GithubRepoSegmentPattern = /^(?=.*[A-Za-z0-9])[A-Za-z0-9._-]+$/;
 
-const PublicGithubRepoUrlSchema = z.string().url().refine((value) => {
+export const PublicGithubRepoUrlSchema = z.string().url().refine((value) => {
   try {
     const url = new URL(value);
     const pathMatch = /^\/([^/]+)\/([^/]+)$/.exec(url.pathname);

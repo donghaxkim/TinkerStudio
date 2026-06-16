@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PublicGithubRepoUrlSchema, PublicUrlSchema } from "./createDemoRequest.js";
 
 const nonEmptyString = z.string().trim().min(1);
 const finiteNumber = z.number().finite();
@@ -61,36 +62,8 @@ export const PlanningMessageSchema = z.object({ role: z.enum(["user", "assistant
 
 export const CreatePlanningSessionRequestSchema = z
   .object({
-    productUrl: z.string().url().refine((value) => {
-      try {
-        const protocol = new URL(value).protocol;
-        return protocol === "http:" || protocol === "https:";
-      } catch {
-        return false;
-      }
-    }, "productUrl must use http or https"),
-    repoUrl: z.string().url().refine((value) => {
-      try {
-        const url = new URL(value);
-        const pathSegments = url.pathname.slice(1).split("/");
-        return (
-          url.protocol === "https:" &&
-          url.hostname === "github.com" &&
-          url.username === "" &&
-          url.password === "" &&
-          url.port === "" &&
-          url.search === "" &&
-          url.hash === "" &&
-          pathSegments.length === 2 &&
-          pathSegments.every((segment) => {
-            const decodedSegment = decodeURIComponent(segment);
-            return decodedSegment.trim().length > 0 && !decodedSegment.includes("/");
-          })
-        );
-      } catch {
-        return false;
-      }
-    }, "repoUrl must be a public GitHub repository root URL"),
+    productUrl: PublicUrlSchema,
+    repoUrl: PublicGithubRepoUrlSchema,
     agent: PlanningAgentSchema.default("claude"),
   })
   .strict();
@@ -100,8 +73,8 @@ export const ContinuePlanningSessionRequestSchema = z.object({ message: nonEmpty
 export const PlanningSessionResponseSchema = z
   .object({
     id: nonEmptyString,
-    productUrl: nonEmptyString,
-    repoUrl: nonEmptyString,
+    productUrl: PublicUrlSchema,
+    repoUrl: PublicGithubRepoUrlSchema,
     agent: PlanningAgentSchema,
     status: PlanningSessionStatusSchema,
     messages: z.array(PlanningMessageSchema),

@@ -8,6 +8,7 @@ import {
   GenerationProgressEventSchema,
   GenerationResultSchema,
   PlanningSessionResponseSchema,
+  parseDemoOutline,
   safeParseDemoOutline,
 } from "./index.js";
 import { parseCreateDemoRequest, safeParseCreateDemoRequest } from "./createDemoRequest.js";
@@ -154,6 +155,7 @@ const validDemoOutline = {
 } as const;
 
 assert.deepEqual(DemoOutlineSchema.parse(validDemoOutline), validDemoOutline);
+assert.deepEqual(parseDemoOutline(validDemoOutline), validDemoOutline);
 assert.equal(safeParseDemoOutline(validDemoOutline).success, true);
 
 assert.equal(
@@ -221,6 +223,10 @@ for (const repoUrl of [
   "https://github.com//example/product",
   "https://github.com/example//product",
   "https://github.com/example/product//",
+  "https://github.com/example_/product",
+  "https://github.com/-example/product",
+  "https://github.com/example/.",
+  "https://github.com/example/..",
   "https://github.com/%20/product",
   "https://github.com/example/%20",
   "https://user:token@github.com/example/product",
@@ -236,6 +242,20 @@ for (const repoUrl of [
     `Expected planning repoUrl to reject ${repoUrl}`,
   );
 }
+
+assert.equal(
+  PlanningSessionResponseSchema.safeParse({
+    id: "plan-test",
+    productUrl: "https://example.com",
+    repoUrl: "https://github.com/example_/product",
+    agent: "claude",
+    status: "ready",
+    messages: [{ role: "assistant", content: "I drafted an outline." }],
+    outline: validDemoOutline,
+    outlineValid: true,
+  }).success,
+  false,
+);
 
 const validAssistedRequest = CreateDemoRequestSchema.parse({
   durationCapSeconds: 10,
