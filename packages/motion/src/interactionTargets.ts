@@ -472,6 +472,19 @@ function candidateTargetSize(candidate: InteractionFocusCandidate, options: Sugg
   return candidate.targetSize ?? (candidate.kind === "dwell" ? options.targetSize : undefined);
 }
 
+function reserveExplicitZoomIds(candidates: readonly { candidate: InteractionFocusCandidate }[], usedIds: Set<string>) {
+  const idsByCandidate = new Map<InteractionFocusCandidate, string>();
+
+  for (const { candidate } of candidates) {
+    if (candidate.zoomId && !usedIds.has(candidate.zoomId)) {
+      usedIds.add(candidate.zoomId);
+      idsByCandidate.set(candidate, candidate.zoomId);
+    }
+  }
+
+  return idsByCandidate;
+}
+
 export function suggestInteractionZooms(
   cursorEvents: readonly CursorEvent[],
   existingZooms: readonly ZoomKeyframe[],
@@ -487,10 +500,12 @@ export function suggestInteractionZooms(
     .filter(
       ({ zoomRange }) => !excludeExistingZooms || !existingZooms.some((existing) => rangesOverlap(zoomRange, existing)),
     );
-  const idsByCandidate = new Map<InteractionFocusCandidate, string>();
+  const idsByCandidate = reserveExplicitZoomIds(candidates, usedIds);
 
   for (const { candidate } of [...candidates].sort((left, right) => compareCandidates(left.candidate, right.candidate))) {
-    idsByCandidate.set(candidate, candidateZoomId(candidate, idPrefix, usedIds));
+    if (!idsByCandidate.has(candidate)) {
+      idsByCandidate.set(candidate, candidateZoomId(candidate, idPrefix, usedIds));
+    }
   }
 
   return candidates

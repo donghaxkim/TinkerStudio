@@ -217,6 +217,21 @@ describe("interaction target candidates", () => {
     expect(zooms[0]?.start).toBe(5.75);
   });
 
+  it("reserves pending explicit zoom ids before allocating generated ids", () => {
+    const zooms = suggestInteractionZooms([click(1, 600, 400)], [], {
+      duration: 8,
+      frame,
+      idPrefix: "auto_zoom",
+      minSpacingSeconds: 0,
+      explicitTargets: [explicit({ id: "auto_zoom_001", time: 4, x: 100, y: 100, width: 120, height: 80 })],
+    });
+
+    expect(zooms.map((zoom) => ({ id: zoom.id, start: zoom.start }))).toEqual([
+      { id: "auto_zoom_002", start: 0.75 },
+      { id: "auto_zoom_001", start: 4 },
+    ]);
+  });
+
   it("converts dwell candidates with the centered auto-zoom duration", () => {
     const zooms = suggestInteractionZooms(
       [move(4, 700, 500), move(4.5, 702, 502), move(5, 701, 501)],
