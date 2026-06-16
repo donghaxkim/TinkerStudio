@@ -313,6 +313,26 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByRole("button", { name: "Open empty editor shell" })).toBeInTheDocument();
   });
 
+  it("disables the empty editor shortcut while initial planning is in flight", async () => {
+    const client = createLocalCompositionGenerationClient();
+    const createSession = deferred<CompositionPlanningSession>();
+    const planningClient: CompositionPlanningClient = {
+      createSession: vi.fn(async () => createSession.promise),
+      sendMessage: vi.fn(async () => planningSession()),
+    };
+    render(<CompositionDemoScreen client={client} planningClient={planningClient} />);
+
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
+
+    await waitFor(() => expect(planningClient.createSession).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Open empty editor shell" })).toBeDisabled();
+
+    createSession.resolve(planningSession());
+    expect(await screen.findByText("I drafted a grounded outline.")).toBeInTheDocument();
+  });
+
   it("trims a clip in the empty editor shell (same manual repair tools as the real editor)", async () => {
     const client = createLocalCompositionGenerationClient();
     render(
@@ -607,6 +627,31 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByRole("button", { name: "Generating..." })).toHaveAttribute("aria-busy", "true");
     expect(screen.getByRole("button", { name: "Back to URLs" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Back to URLs" }));
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  });
+
+  it("disables the top-level Back button while generation is running", async () => {
+    const client = {
+      createJob: vi.fn(async () => ({ id: "j" })),
+      getJob: async () => ({ id: "j" }),
+      waitForJob: (_id: string, opts?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          opts?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    } as unknown as CompositionGenerationClient;
+    const onBack = vi.fn();
+    render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} onBack={onBack} />);
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
+    await screen.findByText("I drafted a grounded outline.");
+    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+
+    await screen.findByTestId("composition-generating");
+    const topLevelBack = screen.getByRole("button", { name: "Back" });
+    expect(topLevelBack).toBeDisabled();
+    fireEvent.click(topLevelBack);
+    expect(onBack).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
   });
 });

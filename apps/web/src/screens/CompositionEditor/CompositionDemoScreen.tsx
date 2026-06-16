@@ -152,6 +152,7 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
   const canPlan = !planningBusy && normalizedProductUrl !== undefined && normalizedRepo !== undefined;
   const canGenerate = !planningBusy && job.phase !== "running" && planningSession?.outlineValid === true && planningSession.outline !== undefined;
   const canNavigateBackToUrls = !planningBusy && job.phase !== "running";
+  const canUseGlobalNavigation = !planningBusy && job.phase !== "running";
 
   useEffect(() => {
     productInputRef.current?.focus();
@@ -304,7 +305,18 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
         }}
       >
         {onBack ? (
-          <button type="button" className="tk-btn" onClick={onBack} style={{ alignSelf: "flex-start", marginBottom: 24 }}>
+          <button
+            type="button"
+            className="tk-btn"
+            onClick={onBack}
+            disabled={!canUseGlobalNavigation}
+            style={{
+              alignSelf: "flex-start",
+              marginBottom: 24,
+              opacity: canUseGlobalNavigation ? 1 : 0.45,
+              cursor: canUseGlobalNavigation ? "pointer" : "not-allowed",
+            }}
+          >
             Back
           </button>
         ) : null}
@@ -489,8 +501,21 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
               <button
                 type="button"
                 className="tk-btn"
-                onClick={() => setShowEmptyEditor(true)}
-                style={{ alignSelf: "center", marginTop: 14, fontSize: 12.5, color: "var(--tk-text-sec)", background: "transparent" }}
+                onClick={() => {
+                  if (planningBusy) return;
+                  planningRequestIdRef.current += 1;
+                  setShowEmptyEditor(true);
+                }}
+                disabled={planningBusy}
+                style={{
+                  alignSelf: "center",
+                  marginTop: 14,
+                  fontSize: 12.5,
+                  color: "var(--tk-text-sec)",
+                  background: "transparent",
+                  opacity: planningBusy ? 0.45 : 1,
+                  cursor: planningBusy ? "not-allowed" : "pointer",
+                }}
               >
                 Open empty editor shell
               </button>
@@ -652,6 +677,9 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
                   </button>
                   {job.phase === "running" ? (
                     <div data-testid="composition-generating" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span role="status" style={{ fontSize: 12, color: "var(--tk-text-sec)" }}>
+                        Generating video...
+                      </span>
                       <div style={{ display: "flex", gap: 4 }}>
                         {[0, 1, 2].map((index) => (
                           <span
