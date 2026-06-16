@@ -205,6 +205,94 @@ describe("CompositionEditorScreen", () => {
     expect(screen.queryByTestId("zoom-unit-zoom-1")).not.toBeInTheDocument();
   });
 
+  async function createZoom() {
+    const handle = fakeHandle(() => undefined);
+    const view = render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("zoom-track")).toBeInTheDocument());
+    const zoomTrack = screen.getByTestId("zoom-track");
+    vi.spyOn(zoomTrack, "getBoundingClientRect").mockReturnValue({
+      left: 0, width: 1000, top: 0, right: 1000, bottom: 24, height: 24, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+    // Drag-create a 2s–6s zoom on the 10s timeline.
+    fireEvent.mouseDown(zoomTrack, { clientX: 200 });
+    fireEvent.mouseMove(zoomTrack, { clientX: 600 });
+    fireEvent.mouseUp(zoomTrack, { clientX: 600 });
+    await screen.findByTestId("zoom-unit-zoom-1");
+    return view;
+  }
+
+  it("selecting a zoom opens its properties in the Zoom tab and an editable preview overlay", async () => {
+    await createZoom();
+    // The Zoom tab is active and the properties + preview target box are shown.
+    expect(screen.getByRole("button", { name: "Zoom properties" })).toBeInTheDocument();
+    expect(screen.getByTestId("zoom-properties")).toBeInTheDocument();
+    expect(screen.getByTestId("zoom-target")).toBeInTheDocument();
+    // A fresh unit shows the default scale; the target box is 1/1.6 of the frame.
+    expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("1.6×");
+    expect(screen.getByTestId("zoom-target")).toHaveStyle({ width: "62.5%" });
+  });
+
+  it("changing the zoom scale updates the timeline model and the preview overlay, and undo restores it", async () => {
+    await createZoom();
+    const slider = screen.getByLabelText("Zoom scale");
+    fireEvent.change(slider, { target: { value: "2" } });
+    fireEvent.mouseUp(slider);
+    expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("2.0×");
+    expect(screen.getByTestId("zoom-target")).toHaveStyle({ width: "50%" }); // 1/2 of the frame
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("1.6×");
+    expect(screen.getByTestId("zoom-target")).toHaveStyle({ width: "62.5%" });
+  });
+
+  it("editing the zoom duration moves the block on the timeline (undoable)", async () => {
+    await createZoom();
+    const unit = screen.getByTestId("zoom-unit-zoom-1");
+    expect(unit).toHaveStyle({ left: "20%", width: "40%" }); // 2s–6s on a 10s timeline
+
+    fireEvent.change(screen.getByLabelText("Zoom duration"), { target: { value: "2" } }); // end → 4s
+    expect(screen.getByTestId("zoom-unit-zoom-1")).toHaveStyle({ left: "20%", width: "20%" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByTestId("zoom-unit-zoom-1")).toHaveStyle({ left: "20%", width: "40%" });
+  });
+
+  it("resets the zoom look and removes the unit, closing the Zoom tab", async () => {
+    await createZoom();
+    // Bump the scale, then Reset returns it to the default.
+    const slider = screen.getByLabelText("Zoom scale");
+    fireEvent.change(slider, { target: { value: "2.4" } });
+    fireEvent.mouseUp(slider);
+    expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("2.4×");
+    fireEvent.click(screen.getByRole("button", { name: "Reset zoom" }));
+    expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("1.6×");
+
+    // Remove deletes the unit, closes the Zoom tab, and drops the preview overlay.
+    fireEvent.click(screen.getByRole("button", { name: "Remove zoom" }));
+    expect(screen.queryByTestId("zoom-unit-zoom-1")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Zoom properties" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("zoom-target")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Edit instruction")).toBeInTheDocument(); // back to chat
+  });
+
+  it("returns to chat from the Zoom tab and back, without losing the selection", async () => {
+    await createZoom();
+    fireEvent.click(screen.getByRole("button", { name: "Chat to edit" }));
+    expect(screen.getByLabelText("Edit instruction")).toBeInTheDocument(); // chat restored
+    expect(screen.queryByTestId("zoom-properties")).not.toBeInTheDocument();
+    // The unit is still selected, and the Zoom tab can be reopened.
+    expect(screen.getByTestId("zoom-unit-zoom-1")).toHaveAttribute("data-selected", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Zoom properties" }));
+    expect(screen.getByTestId("zoom-properties")).toBeInTheDocument();
+  });
+
   it("adds a clip selection to chat as a chip", async () => {
     const handle = fakeHandle(() => undefined);
     render(
