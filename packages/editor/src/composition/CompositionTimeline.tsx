@@ -1,8 +1,13 @@
 import { useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { createTimeScale } from "../timeline/timeScale.js";
+import { formatTimecode } from "../timeline/formatTimecode.js";
+import { clampTrim, type TrimEdge } from "./compositionEdits.js";
 import type { CompositionClip, CompositionTimelineModel } from "./compositionTimelineModel.js";
 
 const DRAG_THRESHOLD_PX = 4;
+/** Keyboard nudge step (seconds) for a focused trim handle; Shift = a larger step. */
+const TRIM_NUDGE = 0.25;
+const TRIM_NUDGE_SHIFT = 1;
 
 export type CompositionTimelineProps = {
   model: CompositionTimelineModel;
@@ -14,6 +19,12 @@ export type CompositionTimelineProps = {
   onSelectClip?: (clip: CompositionClip) => void;
   /** Emitted when the user drags out a range on the track. */
   onSelectRange?: (range: { start: number; end: number }) => void;
+  /**
+   * Emitted when the user trims a clip by dragging (or nudging) one of its edge handles.
+   * `time` is already clamped to the clip's generated source extent. Enabling this prop
+   * is what turns on the per-clip trim handles — there is no separate trim mode.
+   */
+  onTrimClip?: (clipId: string, edge: TrimEdge, time: number) => void;
   /**
    * Floating action offered over a committed range selection (Cursor-style popup).
    * Shown above the selection band; absent = no popup. Not shown for clip selections.
@@ -71,7 +82,54 @@ const clipDurationStyle: CSSProperties = {
 
 const selectedClipStyle: CSSProperties = {
   outline: "2px solid var(--tk-accent, #6C8CFF)",
+  outlineOffset: -1,
   borderColor: "var(--tk-accent, #6C8CFF)",
+  background: "var(--tk-accent-soft, rgba(108,140,255,0.12))",
+  boxShadow: "0 0 0 4px var(--tk-accent-ring, rgba(108,140,255,0.18))",
+};
+
+/** A subtle edge grip on a clip card: a thin hit-target that brightens its inner bar on hover. */
+const trimHandleStyle: CSSProperties = {
+  position: "absolute",
+  top: -1,
+  bottom: -1,
+  width: 11,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "ew-resize",
+  background: "transparent",
+  border: "none",
+  padding: 0,
+  zIndex: 3,
+  touchAction: "none",
+};
+
+/** The visible part of a trim handle — a short rounded bar, kept quiet until hovered/focused. */
+const trimGripStyle: CSSProperties = {
+  width: 3,
+  height: 18,
+  borderRadius: 3,
+  background: "var(--tk-accent, #6C8CFF)",
+  opacity: 0.55,
+  pointerEvents: "none",
+};
+
+/** Compact timecode bubble that follows the dragged edge. */
+const trimTooltipStyle: CSSProperties = {
+  position: "absolute",
+  top: -22,
+  transform: "translateX(-50%)",
+  padding: "2px 6px",
+  borderRadius: 5,
+  background: "var(--tk-text, #1B1A17)",
+  color: "var(--tk-card, #FFFFFF)",
+  fontFamily: "var(--tk-mono)",
+  fontSize: 10,
+  lineHeight: 1.2,
+  whiteSpace: "nowrap",
+  pointerEvents: "none",
+  zIndex: 5,
 };
 
 const labelStyle: CSSProperties = {
@@ -140,18 +198,82 @@ export function CompositionTimeline({
   onSeek,
   onSelectClip,
   onSelectRange,
+  onTrimClip,
   selectionAction,
 }: CompositionTimelineProps) {
   const scale = createTimeScale(model.durationSeconds, 100);
 
+  const trackRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ startTime: number; startX: number; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
+  // An in-flight edge drag. Held in a ref (read by the track's move/up handlers) plus mirrored
+  // into `liveTrim` state so the clip can preview its new bound and the tooltip can render.
+  const trimDragRef = useRef<{ clip: CompositionClip; edge: TrimEdge } | null>(null);
   const [liveRange, setLiveRange] = useState<{ start: number; end: number } | null>(null);
+  const [liveTrim, setLiveTrim] = useState<{ clipId: string; edge: TrimEdge; time: number } | null>(null);
+  const [hoveredClipId, setHoveredClipId] = useState<string | null>(null);
   const supportsPointerEvents = typeof window !== "undefined" && "PointerEvent" in window;
 
-  function timeAt(event: { clientX: number }, el: HTMLDivElement): number {
+  function timeAtX(clientX: number, el: HTMLDivElement): number {
     const bounds = el.getBoundingClientRect();
-    return createTimeScale(model.durationSeconds, Math.max(1, bounds.width)).pixelsToSeconds(event.clientX - bounds.left);
+    return createTimeScale(model.durationSeconds, Math.max(1, bounds.width)).pixelsToSeconds(clientX - bounds.left);
+  }
+
+  function timeAt(event: { clientX: number }, el: HTMLDivElement): number {
+    return timeAtX(event.clientX, el);
+  }
+
+  // --- Clip edge trimming -------------------------------------------------
+  // A trim starts on an edge handle (which stops propagation so the track's own range
+  // drag never begins) and is then driven by the track's existing move/up handlers, which
+  // delegate here while `trimDragRef` is set. Nothing is committed until release, so a drag
+  // is a single undoable edit rather than one per pointer move.
+
+  function beginTrim(clip: CompositionClip, edge: TrimEdge, clientX: number, pointerId?: number) {
+    const el = trackRef.current;
+    trimDragRef.current = { clip, edge };
+    if (el && pointerId !== undefined && "setPointerCapture" in el) el.setPointerCapture(pointerId);
+    const raw = el ? timeAtX(clientX, el) : edge === "end" ? clip.end : clip.start;
+    setLiveTrim({ clipId: clip.id, edge, time: clampTrim(clip, edge, raw) });
+  }
+
+  function moveTrim(clientX: number) {
+    const drag = trimDragRef.current;
+    const el = trackRef.current;
+    if (!drag || !el) return;
+    setLiveTrim({ clipId: drag.clip.id, edge: drag.edge, time: clampTrim(drag.clip, drag.edge, timeAtX(clientX, el)) });
+  }
+
+  function commitTrim(clientX: number, el: HTMLDivElement, pointerId?: number) {
+    const drag = trimDragRef.current;
+    trimDragRef.current = null;
+    setLiveTrim(null);
+    if (pointerId !== undefined && "releasePointerCapture" in el) el.releasePointerCapture(pointerId);
+    if (!drag) return;
+    suppressClickRef.current = true; // swallow the click the browser fires after the drag
+    onTrimClip?.(drag.clip.id, drag.edge, clampTrim(drag.clip, drag.edge, timeAtX(clientX, el)));
+  }
+
+  function handleTrimPointerDown(event: PointerEvent<HTMLElement>, clip: CompositionClip, edge: TrimEdge) {
+    if (!onTrimClip) return;
+    event.stopPropagation();
+    beginTrim(clip, edge, event.clientX, event.pointerId);
+  }
+
+  function handleTrimMouseDown(event: MouseEvent<HTMLElement>, clip: CompositionClip, edge: TrimEdge) {
+    if (supportsPointerEvents || !onTrimClip) return;
+    event.stopPropagation();
+    beginTrim(clip, edge, event.clientX);
+  }
+
+  function handleTrimKeyDown(event: KeyboardEvent<HTMLElement>, clip: CompositionClip, edge: TrimEdge) {
+    if (!onTrimClip || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const magnitude = event.shiftKey ? TRIM_NUDGE_SHIFT : TRIM_NUDGE;
+    const delta = event.key === "ArrowRight" ? magnitude : -magnitude;
+    const current = edge === "end" ? clip.end : clip.start;
+    onTrimClip(clip.id, edge, clampTrim(clip, edge, current + delta));
   }
 
   function handleTrackPointerDown(event: PointerEvent<HTMLDivElement>) {
@@ -164,6 +286,10 @@ export function CompositionTimeline({
   }
 
   function handleTrackPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (trimDragRef.current) {
+      moveTrim(event.clientX);
+      return;
+    }
     const drag = dragRef.current;
     if (!drag) return;
     if (Math.abs(event.clientX - drag.startX) > DRAG_THRESHOLD_PX) drag.moved = true;
@@ -174,6 +300,10 @@ export function CompositionTimeline({
   }
 
   function handleTrackPointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (trimDragRef.current) {
+      commitTrim(event.clientX, event.currentTarget, event.pointerId);
+      return;
+    }
     const drag = dragRef.current;
     dragRef.current = null;
     setLiveRange(null);
@@ -188,6 +318,10 @@ export function CompositionTimeline({
   }
 
   function handleTrackPointerCancel(event: PointerEvent<HTMLDivElement>) {
+    if (trimDragRef.current) {
+      trimDragRef.current = null;
+      setLiveTrim(null);
+    }
     dragRef.current = null;
     setLiveRange(null);
     const el = event.currentTarget;
@@ -204,6 +338,10 @@ export function CompositionTimeline({
 
   function handleTrackMouseMove(event: MouseEvent<HTMLDivElement>) {
     if (supportsPointerEvents) return;
+    if (trimDragRef.current) {
+      moveTrim(event.clientX);
+      return;
+    }
     const drag = dragRef.current;
     if (!drag) return;
     if (Math.abs(event.clientX - drag.startX) > DRAG_THRESHOLD_PX) drag.moved = true;
@@ -215,6 +353,10 @@ export function CompositionTimeline({
 
   function handleTrackMouseUp(event: MouseEvent<HTMLDivElement>) {
     if (supportsPointerEvents) return;
+    if (trimDragRef.current) {
+      commitTrim(event.clientX, event.currentTarget);
+      return;
+    }
     const drag = dragRef.current;
     dragRef.current = null;
     setLiveRange(null);
@@ -288,6 +430,7 @@ export function CompositionTimeline({
         ))}
       </div>
       <div
+        ref={trackRef}
         data-testid="composition-timeline"
         aria-label="Composition timeline"
         role="slider"
@@ -307,9 +450,17 @@ export function CompositionTimeline({
       onKeyDown={handleTrackKeyDown}
     >
       {model.clips.map((clip) => {
-        const left = scale.secondsToPixels(clip.start);
-        const width = scale.secondsToPixels(clip.end) - left;
+        const trimming = liveTrim?.clipId === clip.id ? liveTrim : null;
+        // While dragging an edge the clip previews its new bound; otherwise it renders as stored.
+        const dispStart = trimming?.edge === "start" ? trimming.time : clip.start;
+        const dispEnd = trimming?.edge === "end" ? trimming.time : clip.end;
+        const left = scale.secondsToPixels(dispStart);
+        const width = scale.secondsToPixels(dispEnd) - left;
         const selected = clip.id === selectedClipId;
+        // Handles appear on the focused clip (selected or hovered), or one being trimmed.
+        // Gated on onTrimClip so there is no trim affordance — and no trim mode — without it.
+        const showHandles = !!onTrimClip && (selected || hoveredClipId === clip.id || trimming !== null);
+        const name = clip.label ?? clip.id;
         return (
           <div
             key={clip.id}
@@ -322,9 +473,32 @@ export function CompositionTimeline({
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => handleClipClick(event, clip)}
             onKeyDown={(event) => handleClipKeyDown(event, clip)}
+            onMouseEnter={() => setHoveredClipId(clip.id)}
+            onMouseLeave={() => setHoveredClipId((id) => (id === clip.id ? null : id))}
           >
-            <span style={clipNameStyle}>{clip.label ?? clip.id}</span>
-            <span style={clipDurationStyle}>{(clip.end - clip.start).toFixed(1)}s</span>
+            <span style={clipNameStyle}>{name}</span>
+            <span style={clipDurationStyle}>{(dispEnd - dispStart).toFixed(1)}s</span>
+            {showHandles
+              ? (["start", "end"] as const).map((edge) => (
+                  <span
+                    key={edge}
+                    data-testid={`composition-trim-${clip.id}-${edge}`}
+                    role="slider"
+                    tabIndex={0}
+                    aria-label={`Trim ${edge} of ${name}`}
+                    aria-valuemin={clip.sourceStart ?? clip.start}
+                    aria-valuemax={clip.sourceEnd ?? clip.end}
+                    aria-valuenow={edge === "start" ? dispStart : dispEnd}
+                    style={{ ...trimHandleStyle, [edge === "start" ? "left" : "right"]: -1 }}
+                    onPointerDown={(event) => handleTrimPointerDown(event, clip, edge)}
+                    onMouseDown={(event) => handleTrimMouseDown(event, clip, edge)}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => handleTrimKeyDown(event, clip, edge)}
+                  >
+                    <span style={trimGripStyle} />
+                  </span>
+                ))
+              : null}
           </div>
         );
       })}
@@ -356,6 +530,14 @@ export function CompositionTimeline({
             pointerEvents: "none",
           }}
         />
+      ) : null}
+      {liveTrim ? (
+        <div
+          data-testid="composition-trim-tooltip"
+          style={{ ...trimTooltipStyle, left: `${scale.secondsToPixels(liveTrim.time)}%` }}
+        >
+          {formatTimecode(liveTrim.time)}
+        </div>
       ) : null}
       </div>
       <div data-testid="composition-playhead" style={{ ...playheadStyle, left: `${scale.secondsToPixels(currentTime)}%` }}>

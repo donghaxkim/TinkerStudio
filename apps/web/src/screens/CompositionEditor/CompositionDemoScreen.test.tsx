@@ -158,6 +158,41 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByRole("button", { name: "Open empty editor shell" })).toBeInTheDocument();
   });
 
+  it("trims a clip in the empty editor shell (same manual repair tools as the real editor)", async () => {
+    const client = createLocalCompositionGenerationClient();
+    render(
+      <CompositionDemoScreen
+        client={client}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open empty editor shell" }));
+    await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByLabelText("Editor status")).toHaveTextContent("Empty editor shell"));
+    await waitFor(() => expect(screen.getByTestId("composition-clip-scene")).toBeInTheDocument());
+
+    const track = screen.getByTestId("composition-timeline");
+    vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
+      left: 0, width: 1000, top: 0, right: 1000, bottom: 56, height: 56, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+
+    // Select the lone scene clip (0–10s), then drag its end handle from 10s to 8s.
+    fireEvent.click(screen.getByTestId("composition-clip-scene"));
+    fireEvent.mouseDown(screen.getByTestId("composition-trim-scene-end"), { clientX: 1000 });
+    fireEvent.mouseMove(track, { clientX: 800 });
+    fireEvent.mouseUp(track, { clientX: 800 });
+
+    const clip = screen.getByTestId("composition-clip-scene");
+    expect(clip).toHaveTextContent("8.0s");
+    expect(clip).toHaveAttribute("data-selected", "true");
+
+    // Undo works on the local model in the empty shell, just like split/delete/marker.
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByTestId("composition-clip-scene")).toHaveTextContent("10.0s");
+  });
+
   it("generates a composition and opens it in the editor", async () => {
     const client = {
       createJob: vi.fn(async (_request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => ({

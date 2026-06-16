@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CompositionTimelineModel } from "./compositionTimelineModel.js";
-import { addMarker, clipAt, removeClip, splitClipAt } from "./compositionEdits.js";
+import { addMarker, clampTrim, clipAt, removeClip, splitClipAt, trimClip } from "./compositionEdits.js";
 
 const model: CompositionTimelineModel = {
   durationSeconds: 12,
@@ -53,5 +53,70 @@ describe("addMarker", () => {
     expect(next.labels).toEqual([{ name: "Marker 1", time: 7.5 }]);
     const clamped = addMarker(next, 99, "Marker 2");
     expect(clamped.labels.map((l) => l.time)).toEqual([7.5, 12]);
+  });
+});
+
+const clipById = (m: CompositionTimelineModel, id: string) => m.clips.find((c) => c.id === id)!;
+
+describe("trimClip", () => {
+  it("shortens a clip's end edge and remembers the generated extent as the source bound", () => {
+    const next = trimClip(model, "a", "end", 3);
+    const a = clipById(next, "a");
+    expect(a.start).toBe(0);
+    expect(a.end).toBe(3);
+    // the original end is captured so the user can extend back to it later
+    expect(a.sourceEnd).toBe(5);
+    // the neighbouring clip is untouched
+    expect(clipById(next, "b")).toEqual(model.clips[1]);
+  });
+
+  it("extends a previously-shortened clip back toward its source bound", () => {
+    const shortened = trimClip(model, "a", "end", 3);
+    const extended = trimClip(shortened, "a", "end", 4.5);
+    expect(clipById(extended, "a").end).toBe(4.5);
+  });
+
+  it("clamps an over-extension to the generated source bound (invalid bounds)", () => {
+    const shortened = trimClip(model, "a", "end", 3);
+    const over = trimClip(shortened, "a", "end", 99);
+    expect(clipById(over, "a").end).toBe(5); // cannot exceed the generated source
+  });
+
+  it("adjusts a clip's start edge and clamps an extend-back to the source start", () => {
+    const moved = trimClip(model, "b", "start", 8);
+    const b = clipById(moved, "b");
+    expect(b.start).toBe(8);
+    expect(b.end).toBe(12);
+    expect(b.sourceStart).toBe(5);
+
+    const over = trimClip(moved, "b", "start", 0); // past the generated source start
+    expect(clipById(over, "b").start).toBe(5);
+  });
+
+  it("won't shrink a clip below the minimum duration", () => {
+    const next = trimClip(model, "a", "end", 0); // would collapse the clip to zero length
+    const a = clipById(next, "a");
+    expect(a.end).toBeGreaterThan(a.start);
+    expect(a.end).toBeLessThan(1);
+  });
+
+  it("is a no-op (same model reference) for an unknown clip id", () => {
+    expect(trimClip(model, "nope", "end", 3)).toBe(model);
+  });
+
+  it("is a no-op (same model reference) when the edge does not move", () => {
+    expect(trimClip(model, "a", "end", 5)).toBe(model);
+  });
+});
+
+describe("clampTrim", () => {
+  it("clamps an end trim to [start + min, source end]", () => {
+    expect(clampTrim(model.clips[0]!, "end", 3)).toBe(3);
+    expect(clampTrim(model.clips[0]!, "end", 99)).toBe(5);
+  });
+
+  it("clamps a start trim to [source start, end - min]", () => {
+    expect(clampTrim(model.clips[1]!, "start", 8)).toBe(8);
+    expect(clampTrim(model.clips[1]!, "start", 0)).toBe(5);
   });
 });

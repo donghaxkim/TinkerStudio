@@ -25,6 +25,14 @@ export type CompositionClip = {
   label?: string;
   start: number;
   end: number;
+  /**
+   * The full generated source extent this clip was cut from. Trims may shorten within
+   * `[sourceStart, sourceEnd]` and extend back out to those bounds, but no further.
+   * Absent on a freshly generated clip — then its current `start`/`end` ARE the bounds,
+   * and the first trim captures them (a generated clip starts at full source extent).
+   */
+  sourceStart?: number;
+  sourceEnd?: number;
 };
 
 export type CompositionTimelineLabel = {

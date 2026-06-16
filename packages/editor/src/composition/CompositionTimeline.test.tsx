@@ -187,3 +187,114 @@ describe("CompositionTimeline (interaction)", () => {
     expect(onSeek).toHaveBeenCalledWith(4);
   });
 });
+
+// A clip already shortened from its generated source (sourceEnd 5 > end 3), so extend-back is testable.
+const SOURCED: CompositionTimelineModel = {
+  durationSeconds: 10,
+  clips: [
+    { id: "hook", label: "hook", start: 0, end: 3, sourceEnd: 5 },
+    { id: "feature", label: "feature", start: 5, end: 10 },
+  ],
+  labels: [],
+};
+
+describe("CompositionTimeline (trim handles)", () => {
+  it("shows trim handles on the selected clip but not on unselected clips", () => {
+    render(<CompositionTimeline model={MODEL} currentTime={0} selectedClipId="hook" onTrimClip={() => undefined} />);
+    expect(screen.getByTestId("composition-trim-hook-start")).toBeInTheDocument();
+    expect(screen.getByTestId("composition-trim-hook-end")).toBeInTheDocument();
+    // no global trim mode — the unselected clip has no handles
+    expect(screen.queryByTestId("composition-trim-feature-start")).not.toBeInTheDocument();
+  });
+
+  it("shows trim handles on a hovered clip", () => {
+    render(<CompositionTimeline model={MODEL} currentTime={0} onTrimClip={() => undefined} />);
+    expect(screen.queryByTestId("composition-trim-feature-end")).not.toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByTestId("composition-clip-feature"));
+    expect(screen.getByTestId("composition-trim-feature-end")).toBeInTheDocument();
+  });
+
+  it("does not render handles at all without an onTrimClip handler", () => {
+    render(<CompositionTimeline model={MODEL} currentTime={0} selectedClipId="hook" />);
+    expect(screen.queryByTestId("composition-trim-hook-end")).not.toBeInTheDocument();
+  });
+
+  it("shortens a clip by dragging its end handle inward", () => {
+    const onTrimClip = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={0} selectedClipId="hook" onTrimClip={onTrimClip} />);
+    const track = screen.getByTestId("composition-timeline");
+    mockBounds(track, 1000); // 1000px = 10s
+    fireEvent.mouseDown(screen.getByTestId("composition-trim-hook-end"), { clientX: 400 }); // 4s, hook's end
+    fireEvent.mouseMove(track, { clientX: 300 }); // drag to 3s
+    // live preview: the clip resizes to the dragged bound while dragging
+    expect(screen.getByTestId("composition-clip-hook")).toHaveStyle({ width: "30%" });
+    fireEvent.mouseUp(track, { clientX: 300 });
+    expect(onTrimClip).toHaveBeenCalledTimes(1);
+    expect(onTrimClip).toHaveBeenCalledWith("hook", "end", 3);
+  });
+
+  it("extends a shortened clip back out to (but not past) its generated source bound", () => {
+    const onTrimClip = vi.fn();
+    render(<CompositionTimeline model={SOURCED} currentTime={0} selectedClipId="hook" onTrimClip={onTrimClip} />);
+    const track = screen.getByTestId("composition-timeline");
+    mockBounds(track, 1000);
+
+    // extend the end from 3s out to 4.5s — allowed (within source extent of 5s)
+    fireEvent.mouseDown(screen.getByTestId("composition-trim-hook-end"), { clientX: 300 });
+    fireEvent.mouseMove(track, { clientX: 450 });
+    fireEvent.mouseUp(track, { clientX: 450 });
+    expect(onTrimClip).toHaveBeenLastCalledWith("hook", "end", 4.5);
+
+    // drag past the source extent — clamped to 5s, never beyond (invalid bounds)
+    fireEvent.mouseDown(screen.getByTestId("composition-trim-hook-end"), { clientX: 300 });
+    fireEvent.mouseMove(track, { clientX: 800 }); // 8s, well past the 5s source end
+    fireEvent.mouseUp(track, { clientX: 800 });
+    expect(onTrimClip).toHaveBeenLastCalledWith("hook", "end", 5);
+  });
+
+  it("adjusts a clip's start by dragging its left handle", () => {
+    const onTrimClip = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={0} selectedClipId="feature" onTrimClip={onTrimClip} />);
+    const track = screen.getByTestId("composition-timeline");
+    mockBounds(track, 1000);
+    fireEvent.mouseDown(screen.getByTestId("composition-trim-feature-start"), { clientX: 400 }); // feature.start = 4s
+    fireEvent.mouseMove(track, { clientX: 500 }); // drag start to 5s
+    fireEvent.mouseUp(track, { clientX: 500 });
+    expect(onTrimClip).toHaveBeenCalledWith("feature", "start", 5);
+  });
+
+  it("shows a timecode tooltip while dragging, then hides it on release", () => {
+    render(<CompositionTimeline model={MODEL} currentTime={0} selectedClipId="hook" onTrimClip={() => undefined} />);
+    const track = screen.getByTestId("composition-timeline");
+    mockBounds(track, 1000);
+    fireEvent.mouseDown(screen.getByTestId("composition-trim-hook-end"), { clientX: 400 });
+    fireEvent.mouseMove(track, { clientX: 250 }); // 2.5s
+    const tooltip = screen.getByTestId("composition-trim-tooltip");
+    expect(tooltip).toHaveTextContent("0:02.5");
+    fireEvent.mouseUp(track, { clientX: 250 });
+    expect(screen.queryByTestId("composition-trim-tooltip")).not.toBeInTheDocument();
+  });
+
+  it("does not select or seek the clip when its trim handle is pressed", () => {
+    const onSelectClip = vi.fn();
+    const onSeek = vi.fn();
+    render(
+      <CompositionTimeline
+        model={MODEL}
+        currentTime={0}
+        selectedClipId="hook"
+        onTrimClip={() => undefined}
+        onSelectClip={onSelectClip}
+        onSeek={onSeek}
+      />,
+    );
+    const track = screen.getByTestId("composition-timeline");
+    mockBounds(track, 1000);
+    fireEvent.mouseDown(screen.getByTestId("composition-trim-hook-end"), { clientX: 400 });
+    fireEvent.mouseMove(track, { clientX: 300 });
+    fireEvent.mouseUp(track, { clientX: 300 });
+    fireEvent.click(track, { clientX: 300 }); // the post-drag click must be swallowed
+    expect(onSelectClip).not.toHaveBeenCalled();
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+});

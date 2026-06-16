@@ -58,4 +58,30 @@ describe("useTimelineEdits", () => {
     expect(result.current.canUndo).toBe(false);
     expect(result.current.canRedo).toBe(false);
   });
+
+  const endOf = (m: CompositionTimelineModel | undefined, id: string) => m?.clips.find((c) => c.id === id)?.end;
+
+  it("trims a clip edge as a single undoable/redoable edit", () => {
+    const { result } = renderHook(() => useTimelineEdits());
+    act(() => result.current.reset(base));
+
+    act(() => result.current.trim("a", "end", 3)); // shorten clip a to 0–3
+    expect(endOf(result.current.model, "a")).toBe(3);
+    expect(result.current.canUndo).toBe(true);
+
+    act(() => result.current.undo());
+    expect(endOf(result.current.model, "a")).toBe(5); // back to the generated extent
+    expect(result.current.canRedo).toBe(true);
+
+    act(() => result.current.redo());
+    expect(endOf(result.current.model, "a")).toBe(3);
+  });
+
+  it("extends a shortened clip back toward its source bound", () => {
+    const { result } = renderHook(() => useTimelineEdits());
+    act(() => result.current.reset(base));
+    act(() => result.current.trim("a", "end", 3));
+    act(() => result.current.trim("a", "end", 4.5));
+    expect(endOf(result.current.model, "a")).toBe(4.5);
+  });
 });
