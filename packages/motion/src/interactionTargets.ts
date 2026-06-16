@@ -356,6 +356,7 @@ function shouldSkipCandidate(
 export function buildInteractionFocusCandidates(
   cursorEvents: readonly CursorEvent[],
   options: BuildInteractionFocusCandidatesOptions,
+  includeCandidate: (candidate: InteractionFocusCandidate) => boolean = () => true,
 ): InteractionFocusCandidate[] {
   const duration = safePositive(options.duration, 0);
 
@@ -396,7 +397,7 @@ export function buildInteractionFocusCandidates(
   };
   const accepted: InteractionFocusCandidate[] = [];
 
-  for (const candidate of rawCandidates.sort(compareCandidates)) {
+  for (const candidate of rawCandidates.filter(includeCandidate).sort(compareCandidates)) {
     if (!shouldSkipCandidate(candidate, accepted, selectionOptions)) {
       accepted.push(candidate);
     }
@@ -494,12 +495,14 @@ export function suggestInteractionZooms(
   const idPrefix = options.idPrefix ?? "auto_zoom";
   const easing = options.easing ?? "easeInOut";
   const usedIds = new Set(existingZooms.map((zoom) => zoom.id));
-  const candidates = buildInteractionFocusCandidates(cursorEvents, options)
+  const candidates = buildInteractionFocusCandidates(
+    cursorEvents,
+    options,
+    (candidate) =>
+      !excludeExistingZooms || !existingZooms.some((existing) => rangesOverlap(candidateZoomRange(candidate, options), existing)),
+  )
     .map((candidate) => ({ candidate, zoomRange: candidateZoomRange(candidate, options) }))
-    .filter(({ zoomRange }) => zoomRange.end > zoomRange.start)
-    .filter(
-      ({ zoomRange }) => !excludeExistingZooms || !existingZooms.some((existing) => rangesOverlap(zoomRange, existing)),
-    );
+    .filter(({ zoomRange }) => zoomRange.end > zoomRange.start);
   const idsByCandidate = reserveExplicitZoomIds(candidates, usedIds);
 
   for (const { candidate } of [...candidates].sort((left, right) => compareCandidates(left.candidate, right.candidate))) {
@@ -510,7 +513,7 @@ export function suggestInteractionZooms(
 
   return candidates
     .map(({ candidate, zoomRange }) => ({
-      id: idsByCandidate.get(candidate) ?? candidateZoomId(candidate, idPrefix, usedIds),
+      id: idsByCandidate.get(candidate)!,
       start: zoomRange.start,
       end: zoomRange.end,
       target: targetRect(candidate.focus, frameAtTime(options, candidate.centerTime), candidateTargetSize(candidate, options)),

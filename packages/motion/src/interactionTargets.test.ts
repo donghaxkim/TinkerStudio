@@ -217,6 +217,27 @@ describe("interaction target candidates", () => {
     expect(zooms[0]?.start).toBe(5.75);
   });
 
+  it("does not let existing-overlap candidates consume spacing before filtering", () => {
+    const existing: ZoomKeyframe[] = [
+      { id: "manual_zoom", start: 1.8, end: 2.2, target: { x: 0, y: 0, width: 100, height: 100 }, easing: "linear" },
+    ];
+    const zooms = suggestInteractionZooms(
+      [click(2, 600, 400), move(3.2, 300, 300), move(3.6, 302, 302), move(4, 301, 301)],
+      existing,
+      { duration: 8, frame },
+    );
+
+    expect(zooms).toEqual<ZoomKeyframe[]>([
+      {
+        id: "auto_zoom_001",
+        start: 3.2,
+        end: 4,
+        target: { x: 26, y: 26, width: 550, height: 550 },
+        easing: "easeInOut",
+      },
+    ]);
+  });
+
   it("reserves pending explicit zoom ids before allocating generated ids", () => {
     const zooms = suggestInteractionZooms([click(1, 600, 400)], [], {
       duration: 8,
