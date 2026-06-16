@@ -1021,7 +1021,7 @@ describe("renderFinalToMp4", () => {
       });
     });
 
-    expect(Math.max(...cropXs(filterComplex(calls[0]?.args ?? [])))).toBeGreaterThan(480);
+    expect(Math.max(...cropXs(filterComplex(calls[0]?.args ?? [])))).toBe(432);
   });
 
   it("exports a playable MP4 from real trimmed source media with zoom and click filters", async () => {
