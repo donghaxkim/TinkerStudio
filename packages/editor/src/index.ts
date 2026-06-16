@@ -63,7 +63,8 @@ export type {
   GsapChildLike,
   GsapTimelineLike,
 } from "./composition/compositionTimelineModel.js";
-export { readCompositionTimeline } from "./composition/compositionTimelineModel.js";
+export { readCompositionTimeline, readSceneClipsFromDocument } from "./composition/compositionTimelineModel.js";
+export { addMarker, clipAt, removeClip, splitClipAt } from "./composition/compositionEdits.js";
 export type {
   CompositionTimelineHandle,
   TimelineRegistryWindow,

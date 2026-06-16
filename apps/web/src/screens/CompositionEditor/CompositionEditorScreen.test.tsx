@@ -65,10 +65,69 @@ describe("CompositionEditorScreen", () => {
     );
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+    // Settings and Preview were removed from the app bar; only Export remains.
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Preview" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
     expect(screen.getByLabelText("Playback controls")).toBeInTheDocument();
+    // The edit toolbar is always present (identical in the empty shell and the real editor).
+    expect(screen.getByRole("button", { name: "Split clip" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add marker" })).toBeInTheDocument();
+    // The chat panel is no longer resizable — the drag handle was removed.
+    expect(screen.queryByRole("separator", { name: "Resize chat panel" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Chat")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add selection to chat" })).toBeDisabled();
+    expect(screen.getByLabelText("Chat to edit")).toBeInTheDocument();
+  });
+
+  it("deletes the selected clip from the timeline via the Delete tool", async () => {
+    const handle = fakeHandle(() => undefined);
+    render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-clip-feature")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Delete clip" })).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    expect(screen.getByRole("button", { name: "Delete clip" })).not.toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Delete clip" }));
+    expect(screen.queryByTestId("composition-clip-feature")).not.toBeInTheDocument();
+    expect(screen.getByTestId("composition-clip-hook")).toBeInTheDocument();
+
+    // Undo restores it; redo deletes again.
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByTestId("composition-clip-feature")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    expect(screen.queryByTestId("composition-clip-feature")).not.toBeInTheDocument();
+  });
+
+  it("splits the clip under the playhead and drops a marker", async () => {
+    const handle = fakeHandle(() => undefined);
+    render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-clip-hook")).toBeInTheDocument());
+
+    // Playhead at 0 sits on a boundary — Split is disabled until it moves inside a clip.
+    expect(screen.getByRole("button", { name: "Split clip" })).toBeDisabled();
+    fireEvent.keyDown(screen.getByTestId("composition-timeline"), { key: "ArrowRight" }); // -> 0.25, inside "hook"
+    expect(screen.getByRole("button", { name: "Split clip" })).not.toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Split clip" }));
+    expect(screen.getByTestId("composition-clip-hook-1")).toBeInTheDocument();
+    expect(screen.getByTestId("composition-clip-hook-2")).toBeInTheDocument();
+    expect(screen.queryByTestId("composition-clip-hook")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add marker" }));
+    expect(screen.getByTestId("composition-label-Marker-1")).toBeInTheDocument();
   });
 
   it("adds a clip selection to chat as a chip", async () => {
@@ -83,10 +142,42 @@ describe("CompositionEditorScreen", () => {
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(screen.getByTestId("composition-clip-feature")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("composition-clip-feature")); // selects clip "feature" (4–10)
-    fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
     // Assert via the chip's remove button — "feature" text also appears on the timeline clip,
     // so getByText("feature") would match two nodes.
     expect(screen.getByRole("button", { name: "Remove feature from chat" })).toBeInTheDocument();
+  });
+
+  it("offers an Add to Chat popup on a range drag and attaches the range only when confirmed", async () => {
+    const handle = fakeHandle(() => undefined);
+    render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        jobId="job-1"
+        editClient={{ editComposition: async () => ({ id: "rev-1", compositionIndexUrl: "/rev1/index.html" }), renderRevision: async () => "/rendered.mp4" }}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+    const track = screen.getByTestId("composition-timeline");
+    vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
+      left: 0, width: 1000, top: 0, right: 1000, bottom: 56, height: 56, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+
+    // Drag a 2s–6s window (10s timeline → 200px–600px of a 1000px track).
+    fireEvent.mouseDown(track, { clientX: 200 });
+    fireEvent.mouseMove(track, { clientX: 600 });
+    fireEvent.mouseUp(track, { clientX: 600 });
+
+    // The popup appears, but the range is NOT yet attached as context.
+    expect(screen.getByTestId("composition-selection-popup")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /from chat$/ })).not.toBeInTheDocument();
+
+    // Confirming attaches the time window as a chip and dismisses the popup.
+    fireEvent.click(screen.getByRole("button", { name: /Add to Chat/ }));
+    expect(screen.getByRole("button", { name: "Remove 2.0s–6.0s from chat" })).toBeInTheDocument();
+    expect(screen.queryByTestId("composition-selection-popup")).not.toBeInTheDocument();
   });
 
   it("sends an instruction to the edit client and previews the returned revision", async () => {
@@ -121,7 +212,6 @@ describe("CompositionEditorScreen", () => {
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(screen.getByTestId("composition-clip-feature")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("composition-clip-feature"));
-    fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
     fireEvent.change(screen.getByLabelText("Edit instruction"), { target: { value: "punch in" } });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Accept edit" })).toBeInTheDocument());
@@ -166,7 +256,7 @@ describe("CompositionEditorScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Accept edit" })).toBeInTheDocument());
     // The edited revision has no rendered video → first Export click renders it on demand.
-    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    fireEvent.click(screen.getByRole("button", { name: "Render export" }));
     await waitFor(() => expect(renderRevision).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByRole("button", { name: "Export" })).not.toBeDisabled());
     // Second click downloads the freshly rendered EDIT — never the base video.

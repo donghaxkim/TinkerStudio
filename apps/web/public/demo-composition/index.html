@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tinker empty editor shell</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #050609;
+        overflow: hidden;
+      }
+
+      .screen {
+        width: 100vw;
+        height: 100vh;
+        background: #050609;
+      }
+
+      /* Scenes carry the timeline segmentation (data-start / data-duration / data-label).
+         The editor reads them as clips — the same shape the real generation pipeline emits —
+         so the empty shell shows a chopped-up timeline identical to a generated demo. */
+      .scene {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="screen" data-composition-id="preview">
+      <section class="scene clip" id="s1" data-start="0" data-duration="6" data-label="Open dashboard"></section>
+      <section class="scene clip" id="s2" data-start="6" data-duration="7" data-label="Invite teammates"></section>
+      <section class="scene clip" id="s3" data-start="13" data-duration="5.5" data-label="Workspace settings"></section>
+      <section class="scene clip" id="s4" data-start="18.5" data-duration="5.5" data-label="Share & wrap-up"></section>
+    </main>
+    <script>
+      const duration = 24;
+      let current = 0;
+
+      function setTime(time) {
+        current = Math.max(0, Math.min(time, duration));
+      }
+
+      // A flat timeline handle (no nested children) — exactly the shape generated demos
+      // register. The editor falls back to the DOM .scene sections above for the clips.
+      window.__timelines = {
+        preview: {
+          labels: {},
+          totalDuration: () => duration,
+          getChildren: () => [],
+          seek: (time) => setTime(time),
+          play: (from) => {
+            if (typeof from === "number") setTime(from);
+          },
+          pause: (atTime) => {
+            if (typeof atTime === "number") setTime(atTime);
+          },
+        },
+      };
+
+      setTime(0);
+    </script>
+  </body>
+</html>
