@@ -186,6 +186,81 @@ describe("CompositionTimeline (interaction)", () => {
     expect(onSelectClip).toHaveBeenCalledWith(MODEL.clips[1]);
     expect(onSeek).toHaveBeenCalledWith(4);
   });
+
+});
+
+describe("CompositionTimeline (clip popover)", () => {
+  const noopActions = { onAddToChat: () => undefined, onEdit: () => undefined };
+
+  it("shows a contextual popover over the selected clip with Add to chat / Edit manually", () => {
+    render(<CompositionTimeline model={MODEL} currentTime={0} selectedClipId="feature" clipActions={noopActions} />);
+    const popup = screen.getByTestId("composition-clip-popup");
+    expect(popup).toHaveStyle({ left: "70%" }); // center of feature (4s–10s) over a 10s timeline
+    expect(screen.getByRole("button", { name: "Add to chat" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit manually" })).toBeInTheDocument();
+  });
+
+  it("shows no popover without clipActions, and none without a selected clip", () => {
+    const { rerender } = render(<CompositionTimeline model={MODEL} currentTime={0} selectedClipId="feature" />);
+    expect(screen.queryByTestId("composition-clip-popup")).not.toBeInTheDocument();
+    rerender(<CompositionTimeline model={MODEL} currentTime={0} clipActions={noopActions} />);
+    expect(screen.queryByTestId("composition-clip-popup")).not.toBeInTheDocument();
+  });
+
+  it("fires onAddToChat and onEdit with the selected clip from the popover", () => {
+    const onAddToChat = vi.fn();
+    const onEdit = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={0} selectedClipId="feature" clipActions={{ onAddToChat, onEdit }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onAddToChat).toHaveBeenCalledWith(MODEL.clips[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Edit manually" }));
+    expect(onEdit).toHaveBeenCalledWith(MODEL.clips[1]);
+  });
+
+  it("edits a clip on double-click without needing the popover", () => {
+    const onEdit = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={0} onSelectClip={() => undefined} clipActions={{ onAddToChat: () => undefined, onEdit }} />);
+    fireEvent.doubleClick(screen.getByTestId("composition-clip-feature"));
+    expect(onEdit).toHaveBeenCalledWith(MODEL.clips[1]);
+  });
+
+  it("a single click selects the clip but never edits it (no auto tab switch)", () => {
+    const onSelectClip = vi.fn();
+    const onEdit = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={0} onSelectClip={onSelectClip} clipActions={{ onAddToChat: () => undefined, onEdit }} />);
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    expect(onSelectClip).toHaveBeenCalledWith(MODEL.clips[1]);
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe("CompositionTimeline (speed badge)", () => {
+  const withSpeeds: CompositionTimelineModel = {
+    durationSeconds: 10,
+    clips: [
+      { id: "hook", label: "hook", start: 0, end: 4, speed: 1.5 },
+      { id: "feature", label: "feature", start: 4, end: 10 }, // 1x (default)
+    ],
+    labels: [],
+  };
+
+  it("shows a speed badge only on clips whose speed is not 1x", () => {
+    render(<CompositionTimeline model={withSpeeds} currentTime={0} />);
+    const badge = screen.getByTestId("composition-clip-speed-hook");
+    expect(badge).toHaveTextContent("1.5×");
+    // the 1x clip carries no badge — keeps the timeline quiet for un-retimed clips
+    expect(screen.queryByTestId("composition-clip-speed-feature")).not.toBeInTheDocument();
+  });
+
+  it("renders no badge when a clip is explicitly at 1x", () => {
+    render(
+      <CompositionTimeline
+        model={{ durationSeconds: 4, clips: [{ id: "c", label: "c", start: 0, end: 4, speed: 1 }], labels: [] }}
+        currentTime={0}
+      />,
+    );
+    expect(screen.queryByTestId("composition-clip-speed-c")).not.toBeInTheDocument();
+  });
 });
 
 // A clip already shortened from its generated source (sourceEnd 5 > end 3), so extend-back is testable.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
+  ClipProperties,
   CompositionPreview,
   CompositionTimeline,
   DEFAULT_ZOOM_EASING,
@@ -49,12 +50,13 @@ const EDIT_SUGGESTIONS = ["Tighten the pacing", "Zoom in on every click", "Smoot
 export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, repo, onBack, jobId, editClient, resolveWindow }: CompositionEditorScreenProps) {
   // Local timeline-edit history (split / delete / marker, with undo/redo). Self-contained so
   // the toolbar behaves identically in the empty shell and the real generated editor.
-  const { model, reset: resetEdits, split, remove: removeClipEdit, mark, trim, addZoom, moveZoom, resizeZoom, updateZoom, removeZoom, undo, redo, canUndo, canRedo } = useTimelineEdits();
+  const { model, reset: resetEdits, split, remove: removeClipEdit, trim, setClipSpeed, addZoom, moveZoom, resizeZoom, updateZoom, removeZoom, undo, redo, canUndo, canRedo } = useTimelineEdits();
   const [selection, setSelection] = useState<CompositionSelection | undefined>(undefined);
   const [selectedZoomId, setSelectedZoomId] = useState<string | undefined>(undefined);
   // Which surface the right panel shows. Selecting a zoom flips it to "zoom" (its properties);
-  // the Chat tab returns to "chat" without losing chat state.
-  const [rightTab, setRightTab] = useState<"chat" | "zoom">("chat");
+  // a clip's properties ("clip") open only on an explicit Clip-tab click — selecting a clip stays
+  // on "chat". The Chat tab returns to "chat" without losing chat state.
+  const [rightTab, setRightTab] = useState<"chat" | "zoom" | "clip">("chat");
   // Monotonic counter for unique zoom ids — keeps ids stable across undo/redo (snapshots
   // bake the id in) without colliding when a unit is created after an undo.
   const zoomSeq = useRef(0);
@@ -79,10 +81,13 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   // Zoom tab — no stale unit is held). The Zoom tab is active only while one is selected.
   const selectedZoom = selectedZoomId === undefined ? undefined : model?.zooms?.find((z) => z.id === selectedZoomId);
   const zoomTabActive = rightTab === "zoom" && selectedZoom !== undefined;
+  // The live selected clip (looked up each render so a speed edit reflects immediately and a delete
+  // just drops the Clip tab). Its properties open only when the Clip tab is the active surface.
+  const selectedClip = selectedClipId === undefined ? undefined : clips.find((c) => c.id === selectedClipId);
+  const clipTabActive = rightTab === "clip" && selectedClip !== undefined;
 
   // Toolbar enablement: split only inside a clip; delete only with a clip selected.
   const playheadClip = model ? clipAt(model, playback.currentTime) : undefined;
-  const markerCount = model?.labels.length ?? 0;
 
   function handleSplit() {
     split(playback.currentTime);
@@ -97,6 +102,15 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
     // Keep the trimmed clip selected (its id is stable) and slide the selection band's
     // matching edge to the committed, already-clamped time so the focus stays in sync.
     setSelection((sel) => (sel?.kind === "clip" && sel.clipId === clipId ? { ...sel, [edge]: time } : sel));
+  }
+
+  // --- Clip properties (right panel). Speed edits rescale the clip's duration and ride the shared
+  // undo/redo history; reset is just a change back to 1×.
+  function handleClipSpeed(speed: number) {
+    if (selectedClipId !== undefined) setClipSpeed(selectedClipId, speed);
+  }
+  function handleResetClipSpeed() {
+    if (selectedClipId !== undefined) setClipSpeed(selectedClipId, 1);
   }
 
   // --- Zoom track. Units live in the model, so create/move/resize/delete are undoable via
@@ -155,9 +169,6 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   }
   function handleRemoveSelectedZoom() {
     if (selectedZoom) handleDeleteZoom(selectedZoom.id);
-  }
-  function handleAddMarker() {
-    mark(playback.currentTime, `Marker ${markerCount + 1}`);
   }
 
   function attachSelection(nextSelection: CompositionSelection) {
@@ -367,7 +378,6 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
               canSplit={playheadClip !== undefined}
               onDelete={handleDeleteClip}
               canDelete={selectedClipId !== undefined}
-              onAddMarker={handleAddMarker}
             />
           ) : null}
 
@@ -404,6 +414,20 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
           zoomTabActive={zoomTabActive}
           onSelectChatTab={() => setRightTab("chat")}
           onSelectZoomTab={() => setRightTab("zoom")}
+          clipTabActive={clipTabActive}
+          onSelectClipTab={() => setRightTab("clip")}
+          {...(selectedClip
+            ? {
+                clipProperties: (
+                  <ClipProperties
+                    clip={selectedClip}
+                    onSpeed={handleClipSpeed}
+                    onReset={handleResetClipSpeed}
+                    onClose={() => setRightTab("chat")}
+                  />
+                ),
+              }
+            : {})}
           {...(selectedZoom
             ? {
                 zoomProperties: (

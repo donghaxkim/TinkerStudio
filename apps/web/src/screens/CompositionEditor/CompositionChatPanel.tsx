@@ -9,14 +9,6 @@ function ChatIcon() {
   );
 }
 
-function PointerIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m5 3 6.4 16 2.4-6.6 6.6-2.4L5 3Z" />
-    </svg>
-  );
-}
-
 function MediaIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -55,6 +47,17 @@ function ZoomTabIcon() {
   );
 }
 
+/** Sliders — the Clip (properties) tab. */
+function ClipTabIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 8h10M18 8h2M4 16h4M12 16h8" />
+      <circle cx="16" cy="8" r="2" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="16" r="2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export type CompositionChatPanelProps = {
   instruction: string;
   onInstructionChange: (value: string) => void;
@@ -84,6 +87,14 @@ export type CompositionChatPanelProps = {
   zoomTabActive?: boolean;
   onSelectChatTab?: () => void;
   onSelectZoomTab?: () => void;
+  /**
+   * Contextual clip property editor (speed) for the selected clip. When supplied, a Clip tab appears
+   * in the tab strip; it opens only on an explicit tab click (`clipTabActive`) — selecting a clip
+   * alone keeps this panel on chat. Mutually exclusive with the Zoom tab in practice.
+   */
+  clipProperties?: ReactNode;
+  clipTabActive?: boolean;
+  onSelectClipTab?: () => void;
 };
 
 export function CompositionChatPanel({
@@ -105,17 +116,25 @@ export function CompositionChatPanel({
   zoomTabActive = false,
   onSelectChatTab,
   onSelectZoomTab,
+  clipProperties,
+  clipTabActive = false,
+  onSelectClipTab,
 }: CompositionChatPanelProps) {
   const drafting = status === "drafting";
   const editingUnavailable = onSend === undefined;
   const sendDisabled = editingUnavailable || instruction.trim() === "" || drafting;
   const showSuggestions =
     !editingUnavailable && status === "idle" && !isPreviewing && instruction.trim() === "" && (suggestions?.length ?? 0) > 0;
-  // The Zoom tab only exists while a zoom unit is selected (zoomProperties supplied). When it's
-  // the active tab, the properties replace the chat body; the chat composer is unmounted, but its
-  // state lives in the parent, so switching back restores it.
+  // The Clip / Zoom property tabs are always present but disabled (greyed out) until their target is
+  // selected — `clipProperties` / `zoomProperties` are only supplied then. Clicking an enabled tab
+  // replaces the chat body with its properties; the chat composer unmounts, but its state lives in
+  // the parent, so switching back restores it. Zoom takes precedence if both are somehow supplied
+  // (the screen keeps them mutually exclusive).
   const hasZoomTab = zoomProperties != null;
+  const hasClipTab = clipProperties != null;
   const showZoom = hasZoomTab && zoomTabActive;
+  const showClip = hasClipTab && clipTabActive && !showZoom;
+  const showChat = !showZoom && !showClip;
 
   return (
     <aside aria-label="Chat" className="tk-composition-chat">
@@ -123,28 +142,35 @@ export function CompositionChatPanel({
         <div className="tk-composition-chat-tabs">
           <button
             type="button"
-            className={`tk-tab-icon${showZoom ? "" : " tk-tab-icon-on"}`}
+            className={`tk-tab-icon${showChat ? " tk-tab-icon-on" : ""}`}
             aria-label="Chat to edit"
-            {...(showZoom ? {} : { "aria-current": "page" as const })}
+            {...(showChat ? { "aria-current": "page" as const } : {})}
             onClick={onSelectChatTab}
           >
             <ChatIcon />
           </button>
-          {hasZoomTab ? (
-            <button
-              type="button"
-              className={`tk-tab-icon${showZoom ? " tk-tab-icon-on" : ""}`}
-              aria-label="Zoom properties"
-              {...(showZoom ? { "aria-current": "page" as const } : {})}
-              onClick={onSelectZoomTab}
-            >
-              <ZoomTabIcon />
-            </button>
-          ) : (
-            <button type="button" className="tk-tab-icon" aria-label="Pointer" disabled>
-              <PointerIcon />
-            </button>
-          )}
+          <button
+            type="button"
+            className={`tk-tab-icon${showClip ? " tk-tab-icon-on" : ""}`}
+            aria-label="Clip properties"
+            title={hasClipTab ? "Clip properties" : "Select a clip to edit its properties"}
+            disabled={!hasClipTab}
+            {...(showClip ? { "aria-current": "page" as const } : {})}
+            onClick={onSelectClipTab}
+          >
+            <ClipTabIcon />
+          </button>
+          <button
+            type="button"
+            className={`tk-tab-icon${showZoom ? " tk-tab-icon-on" : ""}`}
+            aria-label="Zoom properties"
+            title={hasZoomTab ? "Zoom properties" : "Select a zoom on the timeline to edit it"}
+            disabled={!hasZoomTab}
+            {...(showZoom ? { "aria-current": "page" as const } : {})}
+            onClick={onSelectZoomTab}
+          >
+            <ZoomTabIcon />
+          </button>
           <button type="button" className="tk-tab-icon" aria-label="Media" disabled>
             <MediaIcon />
           </button>
@@ -152,6 +178,8 @@ export function CompositionChatPanel({
 
         {showZoom ? (
           <div className="tk-composition-chat-zoom">{zoomProperties}</div>
+        ) : showClip ? (
+          <div className="tk-composition-chat-zoom">{clipProperties}</div>
         ) : (
         <>
         <div className="tk-composition-chat-composer">

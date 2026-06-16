@@ -33,6 +33,13 @@ export type CompositionClip = {
    */
   sourceStart?: number;
   sourceEnd?: number;
+  /**
+   * Playback rate of this clip (1 = real-time). A manual clip property, off by default; read it
+   * through `clipSpeed`, which applies and clamps the default. Changing speed rescales the clip's
+   * on-timeline length inversely (2× → half as long), so it is the clip's *playback* duration that
+   * moves, not its content. Absent on a freshly generated clip.
+   */
+  speed?: number;
 };
 
 export type CompositionTimelineLabel = {
@@ -75,6 +82,17 @@ export const DEFAULT_ZOOM_TARGET: ZoomTarget = { x: 0.5, y: 0.5 };
 
 function clampUnit(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/** Manual clip playback-speed presets (×), ascending. 1× is real-time and the default. */
+export const CLIP_SPEED_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+export const MIN_CLIP_SPEED = 0.5;
+export const MAX_CLIP_SPEED = 2;
+export const DEFAULT_CLIP_SPEED = 1;
+
+/** The clip's playback rate, defaulted to real-time and clamped to the supported range. */
+export function clipSpeed(clip: CompositionClip): number {
+  return clampUnit(clip.speed ?? DEFAULT_CLIP_SPEED, MIN_CLIP_SPEED, MAX_CLIP_SPEED);
 }
 
 /** The unit's scale, defaulted and clamped to the supported range. */

@@ -6,6 +6,7 @@ import {
   removeClip,
   removeZoom,
   resizeZoom,
+  setClipSpeed,
   splitClipAt,
   trimClip,
   updateZoom,
@@ -32,6 +33,8 @@ export type TimelineEdits = {
   mark: (time: number, name: string) => void;
   /** Move one edge of a clip to `time` (clamped to its generated source bounds). */
   trim: (clipId: string, edge: TrimEdge, time: number) => void;
+  /** Set a clip's playback speed (rescales its duration); pass 1 to reset to real-time. */
+  setClipSpeed: (clipId: string, speed: number) => void;
   /** Add a zoom unit `id` spanning `[start, end]` on the zoom track. */
   addZoom: (id: string, start: number, end: number) => void;
   /** Move a zoom unit to a new start, preserving its length. */
@@ -75,6 +78,10 @@ export function useTimelineEdits(): TimelineEdits {
     (clipId: string, edge: TrimEdge, time: number) => apply((m) => trimClip(m, clipId, edge, time)),
     [apply],
   );
+  const setSpeed = useCallback(
+    (clipId: string, speed: number) => apply((m) => setClipSpeed(m, clipId, speed)),
+    [apply],
+  );
   const addZoomUnit = useCallback(
     (id: string, start: number, end: number) => apply((m) => addZoom(m, id, start, end)),
     [apply],
@@ -116,6 +123,7 @@ export function useTimelineEdits(): TimelineEdits {
       remove,
       mark,
       trim,
+      setClipSpeed: setSpeed,
       addZoom: addZoomUnit,
       moveZoom: moveZoomUnit,
       resizeZoom: resizeZoomUnit,
@@ -124,6 +132,6 @@ export function useTimelineEdits(): TimelineEdits {
       undo,
       redo,
     }),
-    [hist, reset, split, remove, mark, trim, addZoomUnit, moveZoomUnit, resizeZoomUnit, updateZoomUnit, removeZoomUnit, undo, redo],
+    [hist, reset, split, remove, mark, trim, setSpeed, addZoomUnit, moveZoomUnit, resizeZoomUnit, updateZoomUnit, removeZoomUnit, undo, redo],
   );
 }

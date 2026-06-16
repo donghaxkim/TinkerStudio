@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CompositionTimelineHandle, TimelineRegistryWindow } from "@tinker/editor";
 import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
@@ -72,7 +72,6 @@ describe("CompositionEditorScreen", () => {
     expect(screen.getByLabelText("Playback controls")).toBeInTheDocument();
     // The edit toolbar is always present (identical in the empty shell and the real editor).
     expect(screen.getByRole("button", { name: "Split clip" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add marker" })).toBeInTheDocument();
     // The chat panel is no longer resizable — the drag handle was removed.
     expect(screen.queryByRole("separator", { name: "Resize chat panel" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Chat")).toBeInTheDocument();
@@ -105,7 +104,7 @@ describe("CompositionEditorScreen", () => {
     expect(screen.queryByTestId("composition-clip-feature")).not.toBeInTheDocument();
   });
 
-  it("splits the clip under the playhead and drops a marker", async () => {
+  it("splits the clip under the playhead", async () => {
     const handle = fakeHandle(() => undefined);
     render(
       <CompositionEditorScreen
@@ -125,9 +124,6 @@ describe("CompositionEditorScreen", () => {
     expect(screen.getByTestId("composition-clip-hook-1")).toBeInTheDocument();
     expect(screen.getByTestId("composition-clip-hook-2")).toBeInTheDocument();
     expect(screen.queryByTestId("composition-clip-hook")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Add marker" }));
-    expect(screen.getByTestId("composition-label-Marker-1")).toBeInTheDocument();
   });
 
   it("trims the selected clip by dragging its edge handle, keeps it selected, and undo restores it", async () => {
@@ -274,10 +270,10 @@ describe("CompositionEditorScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reset zoom" }));
     expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("1.6×");
 
-    // Remove deletes the unit, closes the Zoom tab, and drops the preview overlay.
+    // Remove deletes the unit, disables the Zoom tab (no unit selected), and drops the overlay.
     fireEvent.click(screen.getByRole("button", { name: "Remove zoom" }));
     expect(screen.queryByTestId("zoom-unit-zoom-1")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Zoom properties" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Zoom properties" })).toBeDisabled();
     expect(screen.queryByTestId("zoom-target")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Edit instruction")).toBeInTheDocument(); // back to chat
   });
@@ -453,5 +449,61 @@ describe("CompositionEditorScreen", () => {
     fireEvent.click(exportBtn);
     expect(open).toHaveBeenCalledWith("/rev1/output.mp4", "_blank");
     open.mockRestore();
+  });
+
+  async function loadEditor() {
+    const handle = fakeHandle(() => undefined);
+    render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+  }
+
+  it("keeps clip speed controls hidden until the Clip properties tab is explicitly opened", async () => {
+    await loadEditor();
+    // Nothing selected: no speed controls, and the Clip properties tab is present but disabled.
+    expect(screen.queryByTestId("clip-properties")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Playback speed" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Clip properties")).toBeDisabled();
+
+    // Selecting a clip does NOT open its properties — selection stays in chat for AI editing.
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    expect(screen.queryByTestId("clip-properties")).not.toBeInTheDocument();
+    const clipTab = screen.getByLabelText("Clip properties"); // the tab is now enabled
+    expect(clipTab).toBeEnabled();
+
+    // Explicitly opening the tab reveals the speed controls.
+    fireEvent.click(clipTab);
+    expect(screen.getByTestId("clip-properties")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Playback speed" })).toBeInTheDocument();
+  });
+
+  it("retimes a clip from the Clip properties tab, badges it on the timeline, then resets", async () => {
+    await loadEditor();
+    fireEvent.click(screen.getByTestId("composition-clip-feature")); // feature is 4–10s (length 6)
+    fireEvent.click(screen.getByLabelText("Clip properties"));
+
+    fireEvent.click(screen.getByTestId("clip-speed-2")); // 2× → plays in half the time
+    expect(screen.getByTestId("composition-clip-speed-feature")).toHaveTextContent("2×");
+    expect(screen.getByTestId("clip-duration-readout")).toHaveTextContent("3.0s"); // 6 / 2
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset speed" }));
+    expect(screen.queryByTestId("composition-clip-speed-feature")).not.toBeInTheDocument();
+    expect(screen.getByTestId("clip-duration-readout")).toHaveTextContent("6.0s"); // restored
+  });
+
+  it("does not place speed controls in the playback bar", async () => {
+    await loadEditor();
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    fireEvent.click(screen.getByLabelText("Clip properties"));
+    // The speed presets live in the chat-side properties panel, never in the transport controls.
+    const playbackBar = screen.getByLabelText("Playback controls");
+    expect(within(playbackBar).queryByRole("group", { name: "Playback speed" })).not.toBeInTheDocument();
+    expect(within(screen.getByLabelText("Chat")).getByRole("group", { name: "Playback speed" })).toBeInTheDocument();
   });
 });

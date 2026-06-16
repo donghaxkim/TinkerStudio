@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLIP_SPEED_PRESETS,
+  DEFAULT_CLIP_SPEED,
   DEFAULT_ZOOM_EASING,
   DEFAULT_ZOOM_SCALE,
   DEFAULT_ZOOM_TARGET,
+  MAX_CLIP_SPEED,
   MAX_ZOOM_SCALE,
+  MIN_CLIP_SPEED,
   MIN_ZOOM_SCALE,
+  clipSpeed,
   readCompositionTimeline,
   zoomEasing,
   zoomScale,
   zoomTarget,
+  type CompositionClip,
   type GsapTimelineLike,
   type ZoomUnit,
 } from "./compositionTimelineModel.js";
@@ -104,5 +110,30 @@ describe("zoom property accessors", () => {
 
   it("clamps a target focal point into the [0,1] frame", () => {
     expect(zoomTarget({ ...bareUnit, target: { x: -1, y: 2 } })).toEqual({ x: 0, y: 1 });
+  });
+});
+
+const clip = (over: Partial<CompositionClip> = {}): CompositionClip => ({ id: "a", start: 0, end: 4, ...over });
+
+describe("clip speed", () => {
+  it("offers the supported presets in ascending order, including 1x", () => {
+    expect(CLIP_SPEED_PRESETS).toEqual([0.5, 0.75, 1, 1.25, 1.5, 2]);
+    expect(CLIP_SPEED_PRESETS).toContain(DEFAULT_CLIP_SPEED);
+    expect(DEFAULT_CLIP_SPEED).toBe(1);
+    expect(MIN_CLIP_SPEED).toBe(0.5);
+    expect(MAX_CLIP_SPEED).toBe(2);
+  });
+
+  it("defaults to 1x when a clip omits a speed", () => {
+    expect(clipSpeed(clip())).toBe(DEFAULT_CLIP_SPEED);
+  });
+
+  it("reads an explicit speed", () => {
+    expect(clipSpeed(clip({ speed: 1.5 }))).toBe(1.5);
+  });
+
+  it("clamps a speed into [MIN_CLIP_SPEED, MAX_CLIP_SPEED]", () => {
+    expect(clipSpeed(clip({ speed: 0.1 }))).toBe(MIN_CLIP_SPEED);
+    expect(clipSpeed(clip({ speed: 99 }))).toBe(MAX_CLIP_SPEED);
   });
 });

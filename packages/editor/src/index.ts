@@ -67,11 +67,16 @@ export type {
   ZoomUnit,
 } from "./composition/compositionTimelineModel.js";
 export {
+  CLIP_SPEED_PRESETS,
+  DEFAULT_CLIP_SPEED,
   DEFAULT_ZOOM_EASING,
   DEFAULT_ZOOM_SCALE,
   DEFAULT_ZOOM_TARGET,
+  MAX_CLIP_SPEED,
   MAX_ZOOM_SCALE,
+  MIN_CLIP_SPEED,
   MIN_ZOOM_SCALE,
+  clipSpeed,
   readCompositionTimeline,
   readSceneClipsFromDocument,
   zoomEasing,
@@ -87,6 +92,7 @@ export {
   removeClip,
   removeZoom,
   resizeZoom,
+  setClipSpeed,
   splitClipAt,
   trimClip,
   updateZoom,
@@ -104,5 +110,7 @@ export type { CompositionTimelineProps } from "./composition/CompositionTimeline
 export { CompositionTimeline } from "./composition/CompositionTimeline.js";
 export type { ZoomPropertiesProps } from "./composition/ZoomProperties.js";
 export { ZoomProperties } from "./composition/ZoomProperties.js";
+export type { ClipPropertiesProps } from "./composition/ClipProperties.js";
+export { ClipProperties } from "./composition/ClipProperties.js";
 export type { CompositionSelection } from "./composition/selection.js";
 export { rangeSelection, clipSelection } from "./composition/selection.js";

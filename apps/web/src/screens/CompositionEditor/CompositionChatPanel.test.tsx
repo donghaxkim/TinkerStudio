@@ -131,8 +131,8 @@ describe("CompositionChatPanel", () => {
     expect(screen.queryByTestId("zp-body")).not.toBeInTheDocument();
   });
 
-  it("has no Zoom tab when no zoom is selected", () => {
+  it("keeps the Zoom tab present but disabled when no zoom is selected", () => {
     render(<CompositionChatPanel {...props({ contextRefs: [], onSend: () => undefined })} />);
-    expect(screen.queryByRole("button", { name: "Zoom properties" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Zoom properties" })).toBeDisabled();
   });
 });

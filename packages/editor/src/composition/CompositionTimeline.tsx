@@ -3,6 +3,7 @@ import { createTimeScale } from "../timeline/timeScale.js";
 import { formatTimecode } from "../timeline/formatTimecode.js";
 import { clampTrim, type TrimEdge } from "./compositionEdits.js";
 import { ZoomTrack, type ZoomTrackProps } from "./ZoomTrack.js";
+import { DEFAULT_CLIP_SPEED, clipSpeed } from "./compositionTimelineModel.js";
 import type { CompositionClip, CompositionTimelineModel } from "./compositionTimelineModel.js";
 
 const DRAG_THRESHOLD_PX = 4;
@@ -37,14 +38,20 @@ export type CompositionTimelineProps = {
    * Shown above the selection band; absent = no popup. Not shown for clip selections.
    */
   selectionAction?: { label: string; hint?: string; onAct: () => void };
+  /**
+   * Contextual actions for the selected clip, shown as a small popover anchored over it.
+   * Providing this makes clip selection a *select-first* interaction: a click selects the clip
+   * (and seeks) but never changes the right panel — the popover carries the explicit choices.
+   * Double-clicking a clip is a shortcut for `onEdit`. Absent = no popover (selection only).
+   */
+  clipActions?: { onAddToChat: (clip: CompositionClip) => void; onEdit: (clip: CompositionClip) => void };
 };
 
 const trackStyle: CSSProperties = {
   position: "relative",
   width: "100%",
-  height: 58,
+  height: 72, // thicker lane; clip cards carry their own borders so the track needs none
   background: "var(--tk-timeline-bg, var(--tk-raised, #F3F1EA))",
-  border: "1px solid var(--tk-timeline-border, var(--tk-border, rgba(20,20,15,0.12)))",
   borderRadius: 8,
   overflow: "hidden",
   userSelect: "none",
@@ -87,10 +94,29 @@ const clipDurationStyle: CSSProperties = {
   color: "var(--tk-text-ter, #9D9B94)",
 };
 
+/** A compact pill marking a retimed clip (e.g. `1.5×`); shown only when speed ≠ 1×. */
+const speedBadgeStyle: CSSProperties = {
+  position: "absolute",
+  top: 4,
+  right: 4,
+  padding: "1px 5px",
+  borderRadius: 999,
+  background: "var(--tk-accent, #6C8CFF)",
+  color: "var(--tk-card, #FFFFFF)",
+  fontFamily: "var(--tk-mono)",
+  fontSize: 9,
+  fontWeight: 600,
+  lineHeight: 1.4,
+  letterSpacing: "0.02em",
+  pointerEvents: "none",
+};
+
 const selectedClipStyle: CSSProperties = {
   outline: "2px solid var(--tk-accent, #6C8CFF)",
   outlineOffset: -1,
-  borderColor: "var(--tk-accent, #6C8CFF)",
+  // Use the `border` shorthand (not `borderColor`) so toggling selection never mixes shorthand
+  // and longhand for the same property on rerender — which React warns about.
+  border: "1px solid var(--tk-accent, #6C8CFF)",
   background: "var(--tk-accent-soft, rgba(108,140,255,0.12))",
   boxShadow: "0 0 0 4px var(--tk-accent-ring, rgba(108,140,255,0.18))",
 };
@@ -208,6 +234,7 @@ export function CompositionTimeline({
   onTrimClip,
   zoom,
   selectionAction,
+  clipActions,
 }: CompositionTimelineProps) {
   const scale = createTimeScale(model.durationSeconds, 100);
 
@@ -389,6 +416,14 @@ export function CompositionTimeline({
     onSeek?.(clip.start);
   }
 
+  // Double-click is an explicit shortcut to manual editing — it opens the clip's properties
+  // directly, bypassing the popover (which exists for the select-first / add-to-chat path).
+  function handleClipDoubleClick(event: MouseEvent<HTMLDivElement>, clip: CompositionClip) {
+    if (!clipActions) return;
+    event.stopPropagation();
+    clipActions.onEdit(clip);
+  }
+
   function handleTrackKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (!onSeek) return;
     const step = event.shiftKey ? 1 : 0.25;
@@ -423,6 +458,11 @@ export function CompositionTimeline({
     if (time >= model.durationSeconds) return "translateX(-100%)";
     return "translateX(-50%)";
   }
+
+  // The clip the contextual popover anchors to. Looked up here so the popover follows the
+  // selected clip and vanishes when nothing is selected (or no actions were supplied).
+  const popoverClip =
+    clipActions && selectedClipId !== undefined ? model.clips.find((c) => c.id === selectedClipId) : undefined;
 
   return (
     <div className="tk-timeline">
@@ -469,6 +509,7 @@ export function CompositionTimeline({
         // Gated on onTrimClip so there is no trim affordance — and no trim mode — without it.
         const showHandles = !!onTrimClip && (selected || hoveredClipId === clip.id || trimming !== null);
         const name = clip.label ?? clip.id;
+        const speed = clipSpeed(clip);
         return (
           <div
             key={clip.id}
@@ -478,14 +519,24 @@ export function CompositionTimeline({
             tabIndex={0}
             aria-pressed={selected}
             style={{ ...clipStyle, ...(selected && selectedClipStyle), left: `${left}%`, width: `${width}%` }}
+            // Swallow both pointerdown and mousedown so the track underneath never starts a
+            // range-drag (and never pointer-captures, which would retarget the click to the track
+            // and seek instead of selecting). A plain click then lands on the clip and selects it.
+            onPointerDown={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => handleClipClick(event, clip)}
+            onDoubleClick={(event) => handleClipDoubleClick(event, clip)}
             onKeyDown={(event) => handleClipKeyDown(event, clip)}
             onMouseEnter={() => setHoveredClipId(clip.id)}
             onMouseLeave={() => setHoveredClipId((id) => (id === clip.id ? null : id))}
           >
             <span style={clipNameStyle}>{name}</span>
             <span style={clipDurationStyle}>{(dispEnd - dispStart).toFixed(1)}s</span>
+            {speed !== DEFAULT_CLIP_SPEED ? (
+              <span data-testid={`composition-clip-speed-${clip.id}`} style={speedBadgeStyle}>
+                {speed}×
+              </span>
+            ) : null}
             {showHandles
               ? (["start", "end"] as const).map((edge) => (
                   <span
@@ -562,6 +613,22 @@ export function CompositionTimeline({
             {selectionAction.label}
             {selectionAction.hint ? <kbd>{selectionAction.hint}</kbd> : null}
           </button>
+        </div>
+      ) : null}
+      {clipActions && popoverClip ? (
+        <div
+          data-testid="composition-clip-popup"
+          className="tk-selection-popup"
+          style={{ left: `${(scale.secondsToPixels(popoverClip.start) + scale.secondsToPixels(popoverClip.end)) / 2}%` }}
+        >
+          <div className="tk-selection-popup-row">
+            <button type="button" className="tk-selection-popup-btn" onClick={() => clipActions.onAddToChat(popoverClip)}>
+              Add to chat
+            </button>
+            <button type="button" className="tk-selection-popup-btn" onClick={() => clipActions.onEdit(popoverClip)}>
+              Edit manually
+            </button>
+          </div>
         </div>
       ) : null}
     </div>

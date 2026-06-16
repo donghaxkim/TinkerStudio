@@ -1,6 +1,9 @@
 import {
+  MAX_CLIP_SPEED,
   MAX_ZOOM_SCALE,
+  MIN_CLIP_SPEED,
   MIN_ZOOM_SCALE,
+  clipSpeed,
   type CompositionClip,
   type CompositionTimelineModel,
   type ZoomEasing,
@@ -96,6 +99,33 @@ export function trimClip(
   const { min, max } = sourceBounds(target);
   const edited: CompositionClip = { ...target, [edge]: next, sourceStart: min, sourceEnd: max };
   return { ...model, clips: model.clips.map((clip) => (clip.id === clipId ? edited : clip)) };
+}
+
+/**
+ * Set the playback speed of the clip identified by `clipId`, rescaling its on-timeline length
+ * inversely: the content stays anchored at `start`, and the `end` moves so a 2× clip plays in half
+ * the time, a 0.5× clip in double. The 1×-baseline length is recovered from the live
+ * `length × currentSpeed` (no stored base), so resetting to 1× restores the original length exactly.
+ *
+ * Speed is clamped to [MIN_CLIP_SPEED, MAX_CLIP_SPEED]. A slow-down that pushes the clip past the
+ * composition end grows `durationSeconds` to keep it readable; a speed-up never shrinks the
+ * composition (other clips / gaps remain). Returns the same model reference (a no-op) for an unknown
+ * id or an unchanged speed, keeping the undo history clean.
+ */
+export function setClipSpeed(model: CompositionTimelineModel, clipId: string, speed: number): CompositionTimelineModel {
+  const target = model.clips.find((clip) => clip.id === clipId);
+  if (!target) return model;
+  const nextSpeed = roundMicros(clamp(speed, MIN_CLIP_SPEED, MAX_CLIP_SPEED));
+  const currentSpeed = clipSpeed(target);
+  if (nextSpeed === currentSpeed) return model;
+  const baseLength = (target.end - target.start) * currentSpeed; // length at 1× (lazily recovered)
+  const end = roundMicros(target.start + baseLength / nextSpeed);
+  const edited: CompositionClip = { ...target, speed: nextSpeed, end };
+  return {
+    ...model,
+    durationSeconds: Math.max(model.durationSeconds, end),
+    clips: model.clips.map((clip) => (clip.id === clipId ? edited : clip)),
+  };
 }
 
 // --- Zoom units ----------------------------------------------------------

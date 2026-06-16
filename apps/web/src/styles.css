@@ -475,8 +475,10 @@ input::placeholder {
   box-shadow: 0 1px 2px rgba(20, 20, 15, 0.06);
 }
 .tk-composition-chat-tabs .tk-tab-icon:disabled {
-  cursor: default;
-  opacity: 1;
+  /* Greyed out / not accessible — fainter than a clickable inactive tab, so "select the
+     target to enable" reads clearly (e.g. the Zoom tab until a zoom unit is selected). */
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .tk-composition-chat-thread {
