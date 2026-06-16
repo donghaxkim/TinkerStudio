@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { DemoOutline } from "@tinker/generation-contract";
 import { buildServer } from "../server.js";
-import type { PlanningAgentRunner } from "../planning/planningRunner.js";
+import type { PlanningAgentRunner, PlanningAgentTurnResult } from "../planning/planningRunner.js";
 
 function testConfig(repoRoot: string) {
   return {
@@ -222,7 +222,7 @@ describe("planning session routes", () => {
       return {
         assistantMessage: "I drafted a one-scene outline.",
         ...(agentResumeHandle === undefined ? {} : { agentResumeHandle }),
-      };
+      } as unknown as PlanningAgentTurnResult;
     };
     const server = await buildServer({ config: testConfig(repoRoot), idGenerator: () => "plan-test", planningRunner: runner });
 

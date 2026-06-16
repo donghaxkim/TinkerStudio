@@ -25,7 +25,7 @@ export type PlanningAgentTurnInput = InitialPlanningAgentTurnInput | FollowupPla
 
 export type PlanningAgentTurnResult = {
   assistantMessage: string;
-  agentResumeHandle?: string;
+  agentResumeHandle: string;
   repoCheckoutDirectory?: string;
   websiteAnalysisPath?: string;
   repoAnalysisPath?: string;
