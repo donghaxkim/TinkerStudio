@@ -170,6 +170,79 @@ describe("CompositionPreview", () => {
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
   });
 
+  function mockBounds(el: HTMLElement, width: number, height: number) {
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+      left: 0, top: 0, width, height, right: width, bottom: height, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+  }
+
+  it("renders no zoom target overlay unless one is supplied", () => {
+    render(<CompositionPreview src={SRC} compositionId="sample" />);
+    expect(screen.queryByTestId("zoom-target")).not.toBeInTheDocument();
+  });
+
+  it("sizes and positions the zoom target box from scale + focal point", () => {
+    render(
+      <CompositionPreview
+        src={SRC}
+        compositionId="sample"
+        zoomOverlay={{ scale: 2, target: { x: 0.5, y: 0.5 } }}
+      />,
+    );
+    // scale 2 → the box shows 1/2 of the frame, centered: 50% wide/tall, inset 25%.
+    expect(screen.getByTestId("zoom-target")).toHaveStyle({
+      left: "25%", top: "25%", width: "50%", height: "50%",
+    });
+  });
+
+  it("clamps the target box so it stays inside the frame", () => {
+    render(
+      <CompositionPreview
+        src={SRC}
+        compositionId="sample"
+        zoomOverlay={{ scale: 2, target: { x: 0, y: 0 } }}
+      />,
+    );
+    expect(screen.getByTestId("zoom-target")).toHaveStyle({ left: "0%", top: "0%", width: "50%", height: "50%" });
+  });
+
+  it("moves the focal point by dragging the box, committing once on release", () => {
+    const onMoveTarget = vi.fn();
+    render(
+      <CompositionPreview
+        src={SRC}
+        compositionId="sample"
+        zoomOverlay={{ scale: 2, target: { x: 0.5, y: 0.5 }, onMoveTarget }}
+      />,
+    );
+    const overlay = screen.getByTestId("zoom-overlay");
+    mockBounds(overlay, 400, 300);
+    fireEvent.mouseDown(screen.getByTestId("zoom-target"), { clientX: 200, clientY: 150 });
+    fireEvent.mouseMove(overlay, { clientX: 300, clientY: 150 }); // +100px / 400 = +0.25 in x
+    expect(onMoveTarget).not.toHaveBeenCalled(); // dragging previews only
+    fireEvent.mouseUp(overlay, { clientX: 300, clientY: 150 });
+    expect(onMoveTarget).toHaveBeenCalledTimes(1);
+    expect(onMoveTarget).toHaveBeenCalledWith({ x: 0.75, y: 0.5 });
+  });
+
+  it("changes the scale by dragging a corner handle, committing once on release", () => {
+    const onScale = vi.fn();
+    render(
+      <CompositionPreview
+        src={SRC}
+        compositionId="sample"
+        zoomOverlay={{ scale: 2, target: { x: 0.5, y: 0.5 }, onScale }}
+      />,
+    );
+    const overlay = screen.getByTestId("zoom-overlay");
+    mockBounds(overlay, 400, 300);
+    fireEvent.mouseDown(screen.getByTestId("zoom-target-resize-se"), { clientX: 300, clientY: 225 });
+    fireEvent.mouseMove(overlay, { clientX: 280, clientY: 225 }); // 280/400 = 0.7 → 0.2 from center → scale 2.5
+    fireEvent.mouseUp(overlay, { clientX: 280, clientY: 225 });
+    expect(onScale).toHaveBeenCalledTimes(1);
+    expect(onScale).toHaveBeenCalledWith(2.5);
+  });
+
   it("reads the sole timeline when no compositionId is given", async () => {
     const handle = fakeHandle();
     const onReady = vi.fn();

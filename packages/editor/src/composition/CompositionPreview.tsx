@@ -9,6 +9,7 @@ import {
   type CompositionTimelineHandle,
   type TimelineRegistryWindow,
 } from "./compositionWindow.js";
+import { ZoomTargetOverlay, type ZoomTargetOverlayProps } from "./ZoomTargetOverlay.js";
 
 export type CompositionPreviewProps = {
   /** URL of the composition-index artifact (the index.html). */
@@ -33,6 +34,11 @@ export type CompositionPreviewProps = {
   resolveWindow?: (iframe: HTMLIFrameElement) => TimelineRegistryWindow | null | undefined;
   /** Test seam: resolve the iframe's content document (for DOM scene fallback). Default: iframe.contentDocument. */
   resolveDocument?: (iframe: HTMLIFrameElement) => Document | null | undefined;
+  /**
+   * Editable zoom-target box drawn over the frame while a zoom unit is selected. Absent = no
+   * overlay; supplying it (with the selected unit's scale/target) shows the draggable framing.
+   */
+  zoomOverlay?: ZoomTargetOverlayProps;
 };
 
 type Status = "loading" | "ready" | "error";
@@ -172,6 +178,7 @@ export function CompositionPreview({
   onLoading,
   resolveWindow = defaultResolveWindow,
   resolveDocument = (iframe) => iframe.contentDocument,
+  zoomOverlay,
 }: CompositionPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -300,6 +307,7 @@ export function CompositionPreview({
           Preview unavailable.
         </div>
       )}
+      {zoomOverlay && status !== "error" ? <ZoomTargetOverlay {...zoomOverlay} /> : null}
       </div>
     </div>
   );
