@@ -92,6 +92,8 @@ assert.match(calls[0]?.prompt ?? "", /aspectRatio/);
 assert.match(calls[0]?.prompt ?? "", /sourceGrounding/);
 assert.match(calls[0]?.prompt ?? "", /outputVideoPath/);
 const generatePrompt = JSON.parse(calls[0]?.prompt ?? "{}");
+assert.equal(generatePrompt.approvedDemoBrief, "Create a workflow demo.");
+assert.match(generatePrompt.instructions.join("\n"), /If approvedDemoBrief contains a JSON outline/);
 assert.equal(generatePrompt.requiredGenerationManifest.schema.renderer, "hyperframes");
 assert.deepEqual(generatePrompt.requiredGenerationManifest.schema.sourceGrounding, ["repo", "website-analysis"]);
 const generateComposition = generatePrompt.requiredHyperframesComposition;
