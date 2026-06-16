@@ -393,6 +393,11 @@ input::placeholder {
   border: 5px solid transparent;
   border-top-color: #1f1e1b;
 }
+/* Two-action variant (clip / zoom select-first popover): buttons sit side by side. */
+.tk-selection-popup-row {
+  display: inline-flex;
+  gap: 6px;
+}
 .tk-selection-popup-btn {
   display: inline-flex;
   align-items: center;

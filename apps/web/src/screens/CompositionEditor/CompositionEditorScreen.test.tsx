@@ -224,9 +224,9 @@ describe("CompositionEditorScreen", () => {
     return view;
   }
 
-  it("selecting a zoom opens its properties in the Zoom tab and an editable preview overlay", async () => {
+  it("creating a zoom opens its properties in the Zoom tab and an editable preview overlay", async () => {
     await createZoom();
-    // The Zoom tab is active and the properties + preview target box are shown.
+    // Creating is an explicit act, so the Zoom tab is active and the properties + preview box show.
     expect(screen.getByRole("button", { name: "Zoom properties" })).toBeInTheDocument();
     expect(screen.getByTestId("zoom-properties")).toBeInTheDocument();
     expect(screen.getByTestId("zoom-target")).toBeInTheDocument();
@@ -289,7 +289,7 @@ describe("CompositionEditorScreen", () => {
     expect(screen.getByTestId("zoom-properties")).toBeInTheDocument();
   });
 
-  it("adds a clip selection to chat as a chip", async () => {
+  it("attaches a clip to chat only via the popover's Add to chat — never on bare selection", async () => {
     const handle = fakeHandle(() => undefined);
     render(
       <CompositionEditorScreen
@@ -300,10 +300,63 @@ describe("CompositionEditorScreen", () => {
     );
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(screen.getByTestId("composition-clip-feature")).toBeInTheDocument());
+    // Selecting the clip shows the popover but does NOT attach it as a chip yet.
     fireEvent.click(screen.getByTestId("composition-clip-feature")); // selects clip "feature" (4–10)
-    // Assert via the chip's remove button — "feature" text also appears on the timeline clip,
-    // so getByText("feature") would match two nodes.
+    expect(screen.getByTestId("composition-clip-popup")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove feature from chat" })).not.toBeInTheDocument();
+    // The explicit popover action attaches it (assert via the chip's remove button — "feature"
+    // text also appears on the clip itself) and keeps chat active.
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
     expect(screen.getByRole("button", { name: "Remove feature from chat" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Edit instruction")).toBeInTheDocument();
+  });
+
+  it("clicking a clip shows a contextual popover and never opens clip properties (no auto tab switch)", async () => {
+    await loadEditor();
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    expect(screen.getByTestId("composition-clip-popup")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to chat" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit manually" })).toBeInTheDocument();
+    // The right panel stays on chat — clip properties did NOT open from selection alone.
+    expect(screen.getByLabelText("Edit instruction")).toBeInTheDocument();
+    expect(screen.queryByTestId("clip-properties")).not.toBeInTheDocument();
+  });
+
+  it("opens clip properties from the popover's Edit manually action, dismissing the popover", async () => {
+    await loadEditor();
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    fireEvent.click(screen.getByRole("button", { name: "Edit manually" }));
+    expect(screen.getByTestId("clip-properties")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Playback speed" })).toBeInTheDocument();
+    expect(screen.queryByTestId("composition-clip-popup")).not.toBeInTheDocument();
+  });
+
+  it("opens clip properties on double-clicking a clip", async () => {
+    await loadEditor();
+    fireEvent.doubleClick(screen.getByTestId("composition-clip-feature"));
+    expect(screen.getByTestId("clip-properties")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Playback speed" })).toBeInTheDocument();
+  });
+
+  it("clicking an existing zoom shows a popover without opening the Zoom tab; Edit manually opens it", async () => {
+    await createZoom(); // creating explicitly opens the Zoom tab
+    fireEvent.click(screen.getByRole("button", { name: "Chat to edit" })); // back to chat; unit stays selected
+    fireEvent.click(screen.getByTestId("zoom-unit-zoom-1")); // re-selecting shows the popover, not the tab
+    expect(screen.getByTestId("zoom-unit-popup")).toBeInTheDocument();
+    expect(screen.queryByTestId("zoom-properties")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Edit instruction")).toBeInTheDocument(); // chat still active
+    fireEvent.click(screen.getByRole("button", { name: "Edit manually" }));
+    expect(screen.getByTestId("zoom-properties")).toBeInTheDocument();
+  });
+
+  it("adds a selected zoom's range to chat from the popover and returns to chat", async () => {
+    await createZoom();
+    fireEvent.click(screen.getByRole("button", { name: "Chat to edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    // The zoom's 2s–6s window becomes a chip; the popover dismisses; chat is active.
+    expect(screen.getByRole("button", { name: "Remove 2.0s–6.0s from chat" })).toBeInTheDocument();
+    expect(screen.queryByTestId("zoom-unit-popup")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Edit instruction")).toBeInTheDocument();
   });
 
   it("offers an Add to Chat popup on a range drag and attaches the range only when confirmed", async () => {
@@ -371,6 +424,7 @@ describe("CompositionEditorScreen", () => {
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(screen.getByTestId("composition-clip-feature")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" })); // attach via the popover
     fireEvent.change(screen.getByLabelText("Edit instruction"), { target: { value: "punch in" } });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Accept edit" })).toBeInTheDocument());
