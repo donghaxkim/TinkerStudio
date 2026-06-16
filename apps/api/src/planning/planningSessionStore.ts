@@ -39,7 +39,7 @@ export type CreatePlanningSessionRecordInput = {
 
 export type MarkPlanningSessionReadyInput = {
   assistantMessage: string;
-  agentResumeHandle?: string;
+  agentResumeHandle: string;
   repoCheckoutDirectory?: string;
   websiteAnalysisPath?: string;
   repoAnalysisPath?: string;

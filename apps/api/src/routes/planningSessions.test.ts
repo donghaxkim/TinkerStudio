@@ -210,6 +210,49 @@ describe("planning session routes", () => {
     }
   });
 
+  it.each([
+    ["omits", undefined],
+    ["blanks", "   "],
+  ] as const)("returns an error instead of ready when the runner %s the resume handle", async (_label, agentResumeHandle) => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-invalid-resume-${randomUUID()}-`));
+    const calls: string[] = [];
+    const runner: PlanningAgentRunner = async (input) => {
+      calls.push(input.kind);
+      await writeFile(input.outlinePath, `${JSON.stringify(outline, null, 2)}\n`);
+      return {
+        assistantMessage: "I drafted a one-scene outline.",
+        ...(agentResumeHandle === undefined ? {} : { agentResumeHandle }),
+      };
+    };
+    const server = await buildServer({ config: testConfig(repoRoot), idGenerator: () => "plan-test", planningRunner: runner });
+
+    try {
+      const createResponse = await server.inject({
+        method: "POST",
+        url: "/api/planning-sessions",
+        payload: { productUrl: "https://product.example.com", repoUrl: "https://github.com/example/product", agent: "claude" },
+      });
+      const followupResponse = await server.inject({
+        method: "POST",
+        url: "/api/planning-sessions/plan-test/messages",
+        payload: { message: "Continue the outline." },
+      });
+
+      expect(createResponse.statusCode).toBe(500);
+      expect(JSON.parse(createResponse.body)).toMatchObject({
+        id: "plan-test",
+        status: "error",
+        messages: [],
+        outlineValid: false,
+      });
+      expect(JSON.parse(createResponse.body).lastError).toContain("resume handle");
+      expect(followupResponse.statusCode).toBe(409);
+      expect(calls).toEqual(["initial"]);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("rejects invalid create-session URLs", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-validation-${randomUUID()}-`));
     const server = await buildServer({ config: testConfig(repoRoot), planningRunner: async () => ({ assistantMessage: "unused", agentResumeHandle: "unused" }) });

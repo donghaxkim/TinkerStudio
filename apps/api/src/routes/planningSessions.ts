@@ -31,6 +31,14 @@ function errorMessage(error: unknown) {
   return error instanceof Error && error.message.trim() !== "" ? error.message : "Planning runner failed.";
 }
 
+function validatedResumeHandle(agentResumeHandle: string | undefined) {
+  const trimmed = agentResumeHandle?.trim();
+  if (trimmed === undefined || trimmed === "") {
+    throw new Error("Planning runner must return a non-empty resume handle.");
+  }
+  return trimmed;
+}
+
 export function registerPlanningSessionsRoutes(server: FastifyInstance, options: PlanningSessionsRoutesOptions) {
   server.post("/api/planning-sessions", async (request, reply) => {
     const parsed = CreatePlanningSessionRequestSchema.safeParse(request.body);
@@ -63,7 +71,7 @@ export function registerPlanningSessionsRoutes(server: FastifyInstance, options:
         outlinePath,
       });
       const outlineResult = await readValidatedOutline(outlinePath);
-      options.store.markReady(id, { ...result, ...outlineResult }, options.now());
+      options.store.markReady(id, { ...result, agentResumeHandle: validatedResumeHandle(result.agentResumeHandle), ...outlineResult }, options.now());
       return reply.status(201).send(options.store.getSnapshot(id));
     } catch (error) {
       options.store.markError(id, errorMessage(error), options.now());
@@ -106,7 +114,7 @@ export function registerPlanningSessionsRoutes(server: FastifyInstance, options:
         agentResumeHandle,
       });
       const outlineResult = await readValidatedOutline(record.outlinePath);
-      options.store.markReady(record.id, { ...result, ...outlineResult }, options.now());
+      options.store.markReady(record.id, { ...result, agentResumeHandle: validatedResumeHandle(result.agentResumeHandle), ...outlineResult }, options.now());
       return reply.status(200).send(options.store.getSnapshot(record.id));
     } catch (error) {
       options.store.markError(record.id, errorMessage(error), options.now());
