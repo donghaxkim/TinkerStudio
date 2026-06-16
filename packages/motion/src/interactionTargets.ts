@@ -64,6 +64,7 @@ export type BuildInteractionFocusCandidatesOptions = {
 
 export type SuggestInteractionZoomsOptions = BuildInteractionFocusCandidatesOptions & {
   idPrefix?: string;
+  defaultDurationSeconds?: number;
   excludeExistingZooms?: boolean;
   easing?: ZoomKeyframe["easing"];
 };
@@ -309,7 +310,7 @@ function dwellCandidate(candidate: ZoomDwellCandidate, sourceIndex: number): Int
     end: candidate.end,
     centerTime: candidate.centerTime,
     focus: candidate.focus,
-    confidence: Math.min(candidate.strength, 1),
+    confidence: candidate.strength,
     priority: 1,
     sourceIndex,
   };
@@ -447,6 +448,30 @@ function candidateZoomId(candidate: InteractionFocusCandidate, idPrefix: string,
   return nextAutoZoomId(idPrefix, usedIds);
 }
 
+function zoomRange(centerTime: number, duration: number, projectDuration: number) {
+  const boundedDuration = clamp(duration, 0, projectDuration);
+  const start = clamp(centerTime - boundedDuration / 2, 0, Math.max(0, projectDuration - boundedDuration));
+  const end = clamp(start + boundedDuration, 0, projectDuration);
+
+  return { start: cleanNumber(start), end: cleanNumber(end) };
+}
+
+function candidateZoomRange(candidate: InteractionFocusCandidate, options: SuggestInteractionZoomsOptions) {
+  if (candidate.kind !== "dwell") {
+    return { start: candidate.start, end: candidate.end };
+  }
+
+  return zoomRange(
+    candidate.centerTime,
+    safePositive(options.defaultDurationSeconds, DEFAULT_AUTO_ZOOM_DURATION_SECONDS),
+    safePositive(options.duration, 0),
+  );
+}
+
+function candidateTargetSize(candidate: InteractionFocusCandidate, options: SuggestInteractionZoomsOptions) {
+  return candidate.targetSize ?? (candidate.kind === "dwell" ? options.targetSize : undefined);
+}
+
 export function suggestInteractionZooms(
   cursorEvents: readonly CursorEvent[],
   existingZooms: readonly ZoomKeyframe[],
@@ -459,10 +484,7 @@ export function suggestInteractionZooms(
   const accepted: ZoomKeyframe[] = [];
 
   for (const candidate of buildInteractionFocusCandidates(cursorEvents, options)) {
-    const zoomRange = {
-      start: candidate.start,
-      end: candidate.end,
-    };
+    const zoomRange = candidateZoomRange(candidate, options);
 
     if (zoomRange.end <= zoomRange.start) {
       continue;
@@ -476,7 +498,7 @@ export function suggestInteractionZooms(
       id: candidateZoomId(candidate, idPrefix, usedIds),
       start: zoomRange.start,
       end: zoomRange.end,
-      target: targetRect(candidate.focus, frameAtTime(options, candidate.centerTime), candidate.targetSize),
+      target: targetRect(candidate.focus, frameAtTime(options, candidate.centerTime), candidateTargetSize(candidate, options)),
       easing,
     });
   }

@@ -217,6 +217,34 @@ describe("interaction target candidates", () => {
     expect(zooms[0]?.start).toBe(5.75);
   });
 
+  it("converts dwell candidates with the centered auto-zoom duration", () => {
+    const zooms = suggestInteractionZooms(
+      [move(4, 700, 500), move(4.5, 702, 502), move(5, 701, 501)],
+      [],
+      { duration: 8, frame: { width: 1000, height: 800 }, minSpacingSeconds: 0 },
+    );
+
+    expect(zooms).toHaveLength(1);
+    expect(zooms[0]?.start).toBe(4.1);
+    expect(zooms[0]?.end).toBe(4.9);
+  });
+
+  it("applies configured target size to dwell zoom targets", () => {
+    const zooms = suggestInteractionZooms(
+      [move(0.2, 990, 790), move(0.7, 992, 792), move(1.2, 991, 791)],
+      [],
+      {
+        duration: 8,
+        frame: { width: 1000, height: 800 },
+        targetSize: { width: 300, height: 200 },
+        minSpacingSeconds: 0,
+      },
+    );
+
+    expect(zooms).toHaveLength(1);
+    expect(zooms[0]?.target).toEqual({ x: 700, y: 600, width: 300, height: 200 });
+  });
+
   it("converts accepted candidates to deterministic zoom keyframes", () => {
     const existing: ZoomKeyframe[] = [
       { id: "auto_zoom_001", start: 5, end: 6, target: { x: 0, y: 0, width: 100, height: 100 }, easing: "linear" },
