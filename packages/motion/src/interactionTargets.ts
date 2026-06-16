@@ -481,27 +481,25 @@ export function suggestInteractionZooms(
   const idPrefix = options.idPrefix ?? "auto_zoom";
   const easing = options.easing ?? "easeInOut";
   const usedIds = new Set(existingZooms.map((zoom) => zoom.id));
-  const accepted: ZoomKeyframe[] = [];
+  const candidates = buildInteractionFocusCandidates(cursorEvents, options)
+    .map((candidate) => ({ candidate, zoomRange: candidateZoomRange(candidate, options) }))
+    .filter(({ zoomRange }) => zoomRange.end > zoomRange.start)
+    .filter(
+      ({ zoomRange }) => !excludeExistingZooms || !existingZooms.some((existing) => rangesOverlap(zoomRange, existing)),
+    );
+  const idsByCandidate = new Map<InteractionFocusCandidate, string>();
 
-  for (const candidate of buildInteractionFocusCandidates(cursorEvents, options)) {
-    const zoomRange = candidateZoomRange(candidate, options);
+  for (const { candidate } of [...candidates].sort((left, right) => compareCandidates(left.candidate, right.candidate))) {
+    idsByCandidate.set(candidate, candidateZoomId(candidate, idPrefix, usedIds));
+  }
 
-    if (zoomRange.end <= zoomRange.start) {
-      continue;
-    }
-
-    if (excludeExistingZooms && existingZooms.some((existing) => rangesOverlap(zoomRange, existing))) {
-      continue;
-    }
-
-    accepted.push({
-      id: candidateZoomId(candidate, idPrefix, usedIds),
+  return candidates
+    .map(({ candidate, zoomRange }) => ({
+      id: idsByCandidate.get(candidate) ?? candidateZoomId(candidate, idPrefix, usedIds),
       start: zoomRange.start,
       end: zoomRange.end,
       target: targetRect(candidate.focus, frameAtTime(options, candidate.centerTime), candidateTargetSize(candidate, options)),
       easing,
-    });
-  }
-
-  return accepted.sort((left, right) => left.start - right.start || left.id.localeCompare(right.id));
+    }))
+    .sort((left, right) => left.start - right.start || left.id.localeCompare(right.id));
 }
