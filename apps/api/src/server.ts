@@ -4,8 +4,9 @@ import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { ApiConfig } from "./config.js";
 import { createJobQueue } from "./jobs/jobQueue.js";
 import { createJobStore } from "./jobs/jobStore.js";
+import { createClaudePlanningAgentRunner } from "./planning/claudePlanningAgent.js";
 import { createPlanningSessionStore } from "./planning/planningSessionStore.js";
-import { unsupportedPlanningAgentRunner, type PlanningAgentRunner } from "./planning/planningRunner.js";
+import type { PlanningAgentRunner } from "./planning/planningRunner.js";
 import { registerArtifactsRoutes } from "./routes/artifacts.js";
 import { registerJobsRoutes, type ProductUrlResolver } from "./routes/jobs.js";
 import { registerPlanningSessionsRoutes } from "./routes/planningSessions.js";
@@ -76,7 +77,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     repoRoot: options.config.repoRoot,
     now,
     idGenerator,
-    runner: options.planningRunner ?? unsupportedPlanningAgentRunner(),
+    runner: options.planningRunner ?? createClaudePlanningAgentRunner(),
   });
   registerArtifactsRoutes(server, { store });
 

@@ -253,6 +253,28 @@ describe("planning session routes", () => {
     }
   });
 
+  it("rejects OpenCode planning until a real resume adapter exists", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-opencode-${randomUUID()}-`));
+    const server = await buildServer({ config: testConfig(repoRoot), idGenerator: () => "plan-test" });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/planning-sessions",
+        payload: { productUrl: "https://product.example.com", repoUrl: "https://github.com/example/product", agent: "opencode" },
+      });
+
+      expect(response.statusCode).toBe(500);
+      expect(JSON.parse(response.body)).toMatchObject({
+        id: "plan-test",
+        status: "error",
+        lastError: "OpenCode planning sessions require a resumable session adapter before they can be used.",
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("rejects invalid create-session URLs", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-validation-${randomUUID()}-`));
     const server = await buildServer({ config: testConfig(repoRoot), planningRunner: async () => ({ assistantMessage: "unused", agentResumeHandle: "unused" }) });

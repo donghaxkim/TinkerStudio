@@ -46,12 +46,3 @@ export async function readValidatedOutline(outlinePath: string): Promise<Validat
     return { outlineValid: false };
   }
 }
-
-export function unsupportedPlanningAgentRunner(): PlanningAgentRunner {
-  return async (input) => {
-    if (input.agent === "opencode") {
-      throw new Error("OpenCode planning sessions require a resumable session adapter before they can be used.");
-    }
-    throw new Error("No planning agent runner configured.");
-  };
-}
