@@ -18,6 +18,7 @@ import {
   type TrimEdge,
   type ZoomEasing,
   type ZoomTarget,
+  type ZoomUnit,
 } from "@tinker/editor";
 import { chatContextRefFromSelection, type ChatContextRef } from "../../lib/chatContext.js";
 import type { CompositionEditClient, CompositionRevision } from "../../lib/compositionEditClient.js";
@@ -53,9 +54,10 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   const { model, reset: resetEdits, split, remove: removeClipEdit, trim, setClipSpeed, addZoom, moveZoom, resizeZoom, updateZoom, removeZoom, undo, redo, canUndo, canRedo } = useTimelineEdits();
   const [selection, setSelection] = useState<CompositionSelection | undefined>(undefined);
   const [selectedZoomId, setSelectedZoomId] = useState<string | undefined>(undefined);
-  // Which surface the right panel shows. Selecting a zoom flips it to "zoom" (its properties);
-  // a clip's properties ("clip") open only on an explicit Clip-tab click — selecting a clip stays
-  // on "chat". The Chat tab returns to "chat" without losing chat state.
+  // Which surface the right panel shows. Per the UX rule, selecting a clip or zoom NEVER changes
+  // this on its own — a click selects + shows a contextual popover, and only an explicit action
+  // (the popover's "Edit manually", a double-click, a tab click, or *creating* a zoom) opens the
+  // "clip"/"zoom" properties. "chat" is the resting surface; the Chat tab returns to it intact.
   const [rightTab, setRightTab] = useState<"chat" | "zoom" | "clip">("chat");
   // Monotonic counter for unique zoom ids — keeps ids stable across undo/redo (snapshots
   // bake the id in) without colliding when a unit is created after an undo.
@@ -116,19 +118,34 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   // --- Zoom track. Units live in the model, so create/move/resize/delete are undoable via
   // the same history; zoom selection is tracked separately from clip/range selection.
   function handleCreateZoom(start: number, end: number) {
+    // Creating is an explicit "I want a zoom here" act, so it selects the new unit AND opens its
+    // properties (the Zoom tab) for immediate tuning — the one selection-adjacent path allowed to
+    // change the tab, since the drag itself is the explicit intent.
     const id = `zoom-${(zoomSeq.current += 1)}`;
     addZoom(id, start, end);
-    selectZoom(id);
-  }
-  // Selecting a zoom surfaces its properties in the right panel (the Zoom tab) — it does not touch
-  // the clip/range chat selection, so chat is undisturbed beyond the tab switch.
-  function selectZoom(id: string) {
     setSelectedZoomId(id);
     setSelection(undefined);
     setRightTab("zoom");
   }
+  // Clicking an existing unit selects it WITHOUT opening the Zoom tab (UX rule). The contextual
+  // popover carries the explicit "Add to chat" / "Edit manually" choices.
   function handleSelectZoom(id: string) {
-    selectZoom(id);
+    setSelectedZoomId(id);
+    setSelection(undefined);
+  }
+  // Explicit "edit this zoom" — the popover's Edit manually action and the double-click shortcut.
+  function handleEditZoom(unit: ZoomUnit) {
+    setSelectedZoomId(unit.id);
+    setSelection(undefined);
+    setRightTab("zoom");
+  }
+  // Explicit "add this zoom's window to chat" — attaches its time range as a chip, dismisses the
+  // popover (by deselecting the unit), and returns to chat.
+  function handleAddZoomToChat(unit: ZoomUnit) {
+    appendToChat(rangeSelection(unit.start, unit.end));
+    setSelectedZoomId(undefined);
+    setSelection(undefined);
+    setRightTab("chat");
   }
   function handleMoveZoom(id: string, start: number) {
     moveZoom(id, start);
@@ -171,33 +188,46 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
     if (selectedZoom) handleDeleteZoom(selectedZoom.id);
   }
 
-  function attachSelection(nextSelection: CompositionSelection) {
+  // Append a selection to the chat context as a chip. Every explicit "Add to chat" path routes
+  // through here (the composer button, the clip/zoom popovers, the range-drag confirm) — selecting
+  // a clip/zoom/range never attaches anything by itself.
+  function appendToChat(sel: CompositionSelection) {
     const id = `ref-${refSeq}`;
     setRefSeq((n) => n + 1);
-    setContextRefs([chatContextRefFromSelection(nextSelection, id)]);
+    setContextRefs((refs) => [...refs, chatContextRefFromSelection(sel, id)]);
   }
 
+  // Clicking a clip selects it (and seeks, in the timeline) but does nothing else: no chat attach,
+  // no tab change. The contextual popover carries the explicit "Add to chat" / "Edit manually".
   function handleSelectClip(clip: CompositionClip) {
-    const nextSelection = clipSelection(clip);
-    setSelection(nextSelection);
+    setSelection(clipSelection(clip));
+    setSelectedZoomId(undefined);
+  }
+  // Explicit "add this clip to chat" — attaches it as a chip, dismisses the popover (by
+  // deselecting), and keeps chat active. The chip carries the scope from here on.
+  function handleAddClipToChat(clip: CompositionClip) {
+    appendToChat(clipSelection(clip));
+    setSelection(undefined);
     setSelectedZoomId(undefined);
     setRightTab("chat");
-    attachSelection(nextSelection);
+  }
+  // Explicit "edit this clip" — the popover's Edit manually action and the double-click shortcut.
+  function handleEditClip(clip: CompositionClip) {
+    setSelection(clipSelection(clip));
+    setSelectedZoomId(undefined);
+    setRightTab("clip");
   }
 
   function handleSelectRange(range: { start: number; end: number }) {
     // A dragged range is NOT auto-attached — the user confirms it via the floating
-    // "Add to Chat" popup (or ⌘L), so they choose exactly which window to give the AI.
+    // "Add to Chat" popup (or ⌘L), so they choose exactly which window to give the AI. Selection
+    // alone never changes the right-panel tab.
     setSelection(rangeSelection(range.start, range.end));
     setSelectedZoomId(undefined);
-    setRightTab("chat");
   }
 
   function handleAddToChat() {
-    if (!selection) return;
-    const id = `ref-${refSeq}`;
-    setRefSeq((n) => n + 1);
-    setContextRefs((refs) => [...refs, chatContextRefFromSelection(selection, id)]);
+    if (selection) appendToChat(selection);
   }
 
   // Confirm the dragged range as chat context, then dismiss the band + popup.
@@ -391,6 +421,9 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
               onSelectClip={handleSelectClip}
               onSelectRange={handleSelectRange}
               onTrimClip={handleTrimClip}
+              // Popover actions are withheld while that surface's properties tab is already open,
+              // so the popover and the editor never show for the same item at once.
+              {...(rightTab !== "clip" ? { clipActions: { onAddToChat: handleAddClipToChat, onEdit: handleEditClip } } : {})}
               zoom={{
                 ...(selectedZoomId === undefined ? {} : { selectedId: selectedZoomId }),
                 onCreate: handleCreateZoom,
@@ -398,6 +431,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
                 onMove: handleMoveZoom,
                 onResize: handleResizeZoom,
                 onDelete: handleDeleteZoom,
+                ...(rightTab !== "zoom" ? { unitActions: { onAddToChat: handleAddZoomToChat, onEdit: handleEditZoom } } : {}),
               }}
               {...(editEnabled ? { selectionAction: { label: "Add to Chat", hint: "⌘L", onAct: handleAddRangeToChat } } : {})}
             />
