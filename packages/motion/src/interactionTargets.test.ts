@@ -174,6 +174,49 @@ describe("interaction target candidates", () => {
     ]);
   });
 
+  it("merges close overlapping explicit targets into one combined time window", () => {
+    const candidates = buildInteractionFocusCandidates([], {
+      duration: 6,
+      frame,
+      minSpacingSeconds: 0,
+      explicitTargets: [
+        explicit({ id: "zoom-a", time: 1, x: 100, y: 100, width: 100, height: 100, holdSeconds: 2.5 }),
+        explicit({ id: "zoom-b", time: 2, x: 120, y: 110, width: 100, height: 100, holdSeconds: 2 }),
+      ],
+    });
+
+    expect(candidates).toEqual<InteractionFocusCandidate[]>([
+      {
+        id: "explicit_001",
+        kind: "explicit",
+        start: 1,
+        end: 4,
+        centerTime: 1,
+        focus: { cx: 0.15, cy: 0.15 },
+        targetSize: { width: 100, height: 100 },
+        confidence: 1.5,
+        priority: 2,
+        sourceIndex: 0,
+        zoomId: "zoom-a",
+      },
+    ]);
+  });
+
+  it("does not reserve prefixed IDs for candidates skipped by existing zoom overlap", () => {
+    const existing: ZoomKeyframe[] = [
+      { id: "manual_zoom", start: 1.8, end: 2.5, target: { x: 0, y: 0, width: 100, height: 100 }, easing: "linear" },
+    ];
+    const zooms = suggestInteractionZooms([click(2, 600, 400), click(6, 600, 400)], existing, {
+      duration: 8,
+      frame,
+      idPrefix: "auto_zoom",
+      minSpacingSeconds: 0,
+    });
+
+    expect(zooms.map((zoom) => zoom.id)).toEqual(["auto_zoom_001"]);
+    expect(zooms[0]?.start).toBe(5.75);
+  });
+
   it("converts accepted candidates to deterministic zoom keyframes", () => {
     const existing: ZoomKeyframe[] = [
       { id: "auto_zoom_001", start: 5, end: 6, target: { x: 0, y: 0, width: 100, height: 100 }, easing: "linear" },

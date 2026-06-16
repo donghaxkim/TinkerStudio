@@ -459,23 +459,26 @@ export function suggestInteractionZooms(
   const accepted: ZoomKeyframe[] = [];
 
   for (const candidate of buildInteractionFocusCandidates(cursorEvents, options)) {
-    const zoom: ZoomKeyframe = {
-      id: candidateZoomId(candidate, idPrefix, usedIds),
+    const zoomRange = {
       start: candidate.start,
       end: candidate.end,
-      target: targetRect(candidate.focus, frameAtTime(options, candidate.centerTime), candidate.targetSize),
-      easing,
     };
 
-    if (zoom.end <= zoom.start) {
+    if (zoomRange.end <= zoomRange.start) {
       continue;
     }
 
-    if (excludeExistingZooms && existingZooms.some((existing) => rangesOverlap(zoom, existing))) {
+    if (excludeExistingZooms && existingZooms.some((existing) => rangesOverlap(zoomRange, existing))) {
       continue;
     }
 
-    accepted.push(zoom);
+    accepted.push({
+      id: candidateZoomId(candidate, idPrefix, usedIds),
+      start: zoomRange.start,
+      end: zoomRange.end,
+      target: targetRect(candidate.focus, frameAtTime(options, candidate.centerTime), candidate.targetSize),
+      easing,
+    });
   }
 
   return accepted.sort((left, right) => left.start - right.start || left.id.localeCompare(right.id));
