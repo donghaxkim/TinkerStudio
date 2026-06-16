@@ -10,6 +10,7 @@ const packagesToBuild = [
   "@tinker/project-schema",
   "@tinker/browser-capture",
   "@tinker/product-analysis",
+  "@tinker/motion",
 ] as const;
 
 function readArg(name: string) {

@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { DemoProjectSchema } from "@tinker/project-schema";
 import { compileProject } from "./compileProject.js";
 import type { CompileProjectInput } from "./types.js";
+
+const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+  scripts: Record<string, string>;
+};
+const generateAiUrlJobScript = readFileSync(new URL("../scripts/generateAiUrlJob.ts", import.meta.url), "utf8");
+
+assert.match(packageJson.scripts["generate:ai-url-fixture-job"] ?? "", /pnpm --filter @tinker\/motion build/);
+assert.match(generateAiUrlJobScript, /"@tinker\/motion"/);
 
 const input: CompileProjectInput = {
   projectId: "manual-demo-test",
@@ -165,6 +174,14 @@ assert.ok(
   terminalRightEdgeOutroZoom !== undefined && terminalRightEdgeOutroZoom.start >= terminalRightEdgeZoom.end,
   "clean outro crop should not overlap the interaction zoom",
 );
+assert.deepEqual(terminalRightEdgeOutroZoom, {
+  id: "zoom-1-outro",
+  start: 9.914,
+  end: 10.514,
+  target: { x: 0, y: 49.090909, width: 1745.454545, height: 981.818182 },
+  scale: 1.1,
+  easing: "easeOut",
+});
 
 const finalMomentRightEdgeTargetProject = DemoProjectSchema.parse(
   compileProject({
