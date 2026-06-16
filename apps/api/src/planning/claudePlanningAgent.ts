@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { lstat, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, relative, sep } from "node:path";
 import {
   analyzeRepo,
   analyzeWebsite,
@@ -201,6 +201,10 @@ function normalizeWorkspaceRelativePath(path: string) {
   return path.split(sep).join("/");
 }
 
+function isNotFoundError(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
 function isPathInsideDirectory(path: string, directory: string) {
   return path === directory || path.startsWith(`${directory}${sep}`);
 }
@@ -302,6 +306,41 @@ function allowedClaudeWritePaths(workspaceRoot: string, outlinePath: string) {
     normalizeWorkspaceRelativePath(relative(workspaceRoot, outlinePath)),
     CLAUDE_STDOUT_LOG_NAME,
     CLAUDE_STDERR_LOG_NAME,
+  ]);
+}
+
+async function writeFileReplacingFilesystemEntry(targetPath: string, contents: string) {
+  const tempPath = join(dirname(targetPath), `.${basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`);
+
+  try {
+    await writeFile(tempPath, contents, { flag: "wx" });
+    await rename(tempPath, targetPath);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
+}
+
+async function assertRegularFileIfPresent(path: string, label: string) {
+  try {
+    const stats = await lstat(path);
+    if (!stats.isFile()) {
+      throw new Error(`Allowed planning output path must be a regular file: ${label}`);
+    }
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
+async function assertAllowedOutputPathsAreRegular(workspaceRoot: string, outlinePath: string) {
+  await Promise.all([
+    assertRegularFileIfPresent(outlinePath, normalizeWorkspaceRelativePath(relative(workspaceRoot, outlinePath))),
+    assertRegularFileIfPresent(join(workspaceRoot, CLAUDE_STDOUT_LOG_NAME), CLAUDE_STDOUT_LOG_NAME),
+    assertRegularFileIfPresent(join(workspaceRoot, CLAUDE_STDERR_LOG_NAME), CLAUDE_STDERR_LOG_NAME),
   ]);
 }
 
@@ -533,7 +572,11 @@ export async function defaultRunClaudePlanningProcess(input: ClaudePlanningProce
   const stdoutText = retainedOutputToLog("stdout", stdout);
   const stderrText = retainedOutputToLog("stderr", stderr);
   finalizeClaudePlanningOutputCapture(capturedStdout);
-  await Promise.all([writeFile(stdoutPath, stdoutText), writeFile(stderrPath, stderrText)]);
+  await Promise.all([writeFileReplacingFilesystemEntry(stdoutPath, stdoutText), writeFileReplacingFilesystemEntry(stderrPath, stderrText)]);
+  await Promise.all([
+    assertRegularFileIfPresent(stdoutPath, CLAUDE_STDOUT_LOG_NAME),
+    assertRegularFileIfPresent(stderrPath, CLAUDE_STDERR_LOG_NAME),
+  ]);
 
   if (result.startError !== undefined) {
     throw new Error(`Claude planning process failed to start: ${result.startError.message}; see ${stderrPath}`, { cause: result.startError });
@@ -577,6 +620,7 @@ export function createClaudePlanningAgentRunner(options: ClaudePlanningAgentRunn
 
       const after = await captureWorkspaceInventory(input.workspaceRoot);
       const allowedPaths = allowedClaudeWritePaths(input.workspaceRoot, input.outlinePath);
+      await assertAllowedOutputPathsAreRegular(input.workspaceRoot, input.outlinePath);
       const unexpectedChanges = changedWorkspacePaths(before, after).filter((path) => !allowedPaths.has(path));
       if (unexpectedChanges.length > 0) {
         const originalError = runError instanceof Error && runError.message.trim() !== "" ? `; original error: ${runError.message}` : "";

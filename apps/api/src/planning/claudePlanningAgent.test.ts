@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -168,6 +168,31 @@ printf '%s\n' '{"message":{"content":[{"type":"text","text":"metadata survived"}
     const stdoutLog = await readFile(join(workspaceRoot, ".tinker-claude-planning-output.jsonl"), "utf8");
     expect(stdoutLog).toContain("stdout truncated");
   });
+
+  it("replaces an existing Claude log symlink with a real log file", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-log-symlink-${randomUUID()}-`));
+    const outsideRoot = await mkdtemp(join(tmpdir(), `tinker-claude-log-outside-${randomUUID()}-`));
+    const outsidePath = join(outsideRoot, "outside-error.log");
+    const stderrLogPath = join(workspaceRoot, ".tinker-claude-planning-error.log");
+    await writeFile(outsidePath, "do not change\n");
+    await symlink(outsidePath, stderrLogPath);
+    await createFakeClaude(
+      workspaceRoot,
+      `#!/bin/sh
+printf '%s\n' '{"session_id":"claude-log-symlink-session"}'
+printf '%s\n' '{"message":{"content":[{"type":"text","text":"log symlink safe"}]}}'
+printf '%s\n' 'stderr details' >&2
+`,
+    );
+
+    const result = await defaultRunClaudePlanningProcess({ cwd: workspaceRoot, prompt: "Plan." });
+
+    expect(parseClaudePlanningOutput(result.stdout)).toEqual({ assistantMessage: "log symlink safe", agentResumeHandle: "claude-log-symlink-session" });
+    await expect(readFile(outsidePath, "utf8")).resolves.toBe("do not change\n");
+    expect((await lstat(stderrLogPath)).isFile()).toBe(true);
+    expect((await lstat(stderrLogPath)).isSymbolicLink()).toBe(false);
+    await expect(readFile(stderrLogPath, "utf8")).resolves.toContain("stderr details");
+  });
 });
 
 describe("createClaudePlanningAgentRunner", () => {
@@ -259,6 +284,35 @@ describe("createClaudePlanningAgentRunner", () => {
         outlinePath,
       }),
     ).resolves.toMatchObject({ assistantMessage: "Outline updated.", agentResumeHandle: "claude-session-outline" });
+  });
+
+  it("rejects outline.json when Claude creates it as an external symlink", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-outline-symlink-${randomUUID()}-`));
+    const outsideRoot = await mkdtemp(join(tmpdir(), `tinker-claude-outline-outside-${randomUUID()}-`));
+    const outsidePath = join(outsideRoot, "outside-outline.json");
+    const outlinePath = join(workspaceRoot, "outline.json");
+    await writeFile(outsidePath, "{}\n");
+    const runClaude = vi.fn(async () => {
+      await symlink(outsidePath, outlinePath);
+      return {
+        stdout: [
+          JSON.stringify({ type: "system", session_id: "claude-session-outline-symlink" }),
+          JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Symlinked outline." }] } }),
+        ].join("\n"),
+      };
+    });
+    const runner = createClaudePlanningAgentRunner({ runClaude, analyzeWebsite: vi.fn(async () => websiteAnalysis), analyzeRepo: vi.fn(async () => repoAnalysis) });
+
+    await expect(
+      runner({
+        kind: "initial",
+        productUrl: "https://product.example.com",
+        repoUrl: "https://github.com/example/product",
+        agent: "claude",
+        workspaceRoot,
+        outlinePath,
+      }),
+    ).rejects.toThrow("Allowed planning output path must be a regular file: outline.json");
   });
 
   it("rejects unexpected workspace writes from Claude", async () => {
