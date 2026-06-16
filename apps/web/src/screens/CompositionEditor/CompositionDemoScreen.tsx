@@ -145,11 +145,13 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
   const productInputRef = useRef<HTMLInputElement>(null);
   const repoInputRef = useRef<HTMLInputElement>(null);
   const shakeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const planningRequestIdRef = useRef(0);
 
   const normalizedProductUrl = normalizePublicUrl(productDraft);
   const normalizedRepo = parseGithubRepo(repoDraft);
   const canPlan = !planningBusy && normalizedProductUrl !== undefined && normalizedRepo !== undefined;
-  const canGenerate = job.phase !== "running" && planningSession?.outlineValid === true && planningSession.outline !== undefined;
+  const canGenerate = !planningBusy && job.phase !== "running" && planningSession?.outlineValid === true && planningSession.outline !== undefined;
+  const canNavigateBackToUrls = !planningBusy && job.phase !== "running";
 
   useEffect(() => {
     productInputRef.current?.focus();
@@ -175,13 +177,21 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
       return;
     }
 
+    const requestId = planningRequestIdRef.current + 1;
+    planningRequestIdRef.current = requestId;
     setPlanningBusy(true);
     setPlanningError(undefined);
     void planningClient
       .createSession({ productUrl, repoUrl: `https://github.com/${repo}`, agent: "claude" })
-      .then((session) => setPlanningSession(session))
-      .catch((error: unknown) => setPlanningError(error instanceof Error ? error.message : String(error)))
-      .finally(() => setPlanningBusy(false));
+      .then((session) => {
+        if (planningRequestIdRef.current === requestId) setPlanningSession(session);
+      })
+      .catch((error: unknown) => {
+        if (planningRequestIdRef.current === requestId) setPlanningError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (planningRequestIdRef.current === requestId) setPlanningBusy(false);
+      });
   }, [planningClient, productDraft, repoDraft, requireRepo]);
 
   const sendPlanningMessage = useCallback(() => {
@@ -189,20 +199,28 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
     const message = planningMessage.trim();
     if (sessionId === undefined || message === "" || planningBusy) return;
 
+    const requestId = planningRequestIdRef.current + 1;
+    planningRequestIdRef.current = requestId;
     setPlanningBusy(true);
     setPlanningError(undefined);
     void planningClient
       .sendMessage(sessionId, message)
       .then((session) => {
+        if (planningRequestIdRef.current !== requestId) return;
         setPlanningSession(session);
         setPlanningMessage("");
       })
-      .catch((error: unknown) => setPlanningError(error instanceof Error ? error.message : String(error)))
-      .finally(() => setPlanningBusy(false));
+      .catch((error: unknown) => {
+        if (planningRequestIdRef.current === requestId) setPlanningError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (planningRequestIdRef.current === requestId) setPlanningBusy(false);
+      });
   }, [planningBusy, planningClient, planningMessage, planningSession?.id]);
 
   const startGeneration = useCallback(() => {
     const session = planningSession;
+    if (planningBusy) return;
     if (session?.outlineValid !== true || session.outline === undefined) return;
 
     const request = {
@@ -217,7 +235,7 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
     } as const;
 
     void job.start(request);
-  }, [job, planningSession]);
+  }, [job, planningBusy, planningSession]);
 
   if (showEmptyEditor) {
     return (
@@ -484,10 +502,20 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
               type="button"
               className="tk-btn"
               onClick={() => {
+                if (!canNavigateBackToUrls) return;
+                planningRequestIdRef.current += 1;
                 setPlanningSession(undefined);
+                setPlanningMessage("");
                 setPlanningError(undefined);
               }}
-              style={{ alignSelf: "flex-start", color: "var(--tk-text-sec)", background: "transparent" }}
+              disabled={!canNavigateBackToUrls}
+              style={{
+                alignSelf: "flex-start",
+                color: "var(--tk-text-sec)",
+                background: "transparent",
+                opacity: canNavigateBackToUrls ? 1 : 0.45,
+                cursor: canNavigateBackToUrls ? "pointer" : "not-allowed",
+              }}
             >
               Back to URLs
             </button>
@@ -520,7 +548,12 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
                   </p>
                 </div>
 
-                <div aria-label="Planning transcript" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div
+                  role="log"
+                  aria-label="Planning transcript"
+                  aria-live="polite"
+                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
+                >
                   {planningSession.messages.map((message, index) => (
                     <div
                       key={`${message.role}-${index}`}
@@ -609,7 +642,7 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <button
                     type="button"
-                    aria-label="Generate video"
+                    aria-busy={job.phase === "running"}
                     className="tk-btn"
                     onClick={startGeneration}
                     disabled={!canGenerate}

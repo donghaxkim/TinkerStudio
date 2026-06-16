@@ -27,6 +27,7 @@ const completed = {
     durationCapSeconds: 60,
     aspectRatio: "16:9",
     renderer: "hyperframes",
+    hyperframesAgent: "claude",
   },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",

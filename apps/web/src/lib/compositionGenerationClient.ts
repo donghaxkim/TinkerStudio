@@ -3,6 +3,7 @@ import type {
   ApiArtifactKind,
   ApiGenerationJob,
   ApiGenerationJobStatus,
+  HyperframesAgent,
 } from "@tinker/generation-contract";
 
 /** The POST /api/jobs body: an ai-url-planning request minus server-derived fields. */
@@ -15,6 +16,8 @@ export type CreateCompositionJobRequest = {
   prompt?: string;
   /** Renderer to use. Composition generation defaults this to "hyperframes". */
   renderer?: "hyperframes" | "playwright";
+  /** Agent used by the Hyperframes renderer. */
+  hyperframesAgent?: HyperframesAgent;
 };
 
 export type WaitForJobOptions = {
