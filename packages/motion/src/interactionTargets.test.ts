@@ -139,6 +139,23 @@ describe("interaction target candidates", () => {
     });
   });
 
+  it("does not borrow click target size from a temporally distant explicit target", () => {
+    const candidates = buildInteractionFocusCandidates([click(4.5, 640, 360)], {
+      duration: 8,
+      frame,
+      explicitTargets: [explicit({ time: 1, x: 600, y: 330, width: 90, height: 60, holdSeconds: 1 })],
+      targetSize: { width: 550, height: 550 },
+    });
+
+    const clickCandidate = candidates.find((candidate) => candidate.kind === "click");
+
+    expect(clickCandidate).toMatchObject<Partial<InteractionFocusCandidate>>({
+      kind: "click",
+      focus: { cx: 0.64, cy: 0.36 },
+      targetSize: { width: 550, height: 550 },
+    });
+  });
+
   it("does not merge overlapping explicit targets with distant focus points", () => {
     const zooms = suggestInteractionZooms([], [], {
       duration: 6,

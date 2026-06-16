@@ -245,6 +245,7 @@ function explicitCandidate(
 
 function clickTargetSize(
   clickPoint: NormalizedCursorPoint,
+  clickRange: { start: number; end: number },
   explicitTargets: readonly ExplicitInteractionTarget[],
   options: BuildInteractionFocusCandidatesOptions,
 ) {
@@ -253,7 +254,14 @@ function clickTargetSize(
 
   for (const target of explicitTargets) {
     const explicitSize = { width: target.width, height: target.height };
-    if (!containsPoint(target, clickPoint) || targetArea(explicitSize) >= targetArea(fallback)) {
+    const holdSeconds = safePositive(target.holdSeconds, safePositive(options.explicitHoldSeconds, DEFAULT_EXPLICIT_HOLD_SECONDS));
+    const explicitRange = boundedRange(target.time, target.time + holdSeconds, safePositive(options.duration, 0));
+
+    if (
+      !rangesOverlap(clickRange, explicitRange) ||
+      !containsPoint(target, clickPoint) ||
+      targetArea(explicitSize) >= targetArea(fallback)
+    ) {
       continue;
     }
 
@@ -286,7 +294,7 @@ function clickCandidate(
     end: range.end,
     centerTime: cleanNumber(point.time),
     focus: { cx: cleanNumber(point.cx), cy: cleanNumber(point.cy) },
-    targetSize: clickTargetSize(point, options.explicitTargets ?? [], options),
+    targetSize: clickTargetSize(point, range, options.explicitTargets ?? [], options),
     confidence: 2,
     priority: 3,
     sourceIndex,
