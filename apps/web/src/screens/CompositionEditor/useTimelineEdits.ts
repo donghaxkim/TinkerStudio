@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { addMarker, removeClip, splitClipAt, type CompositionTimelineModel } from "@tinker/editor";
+import { addMarker, removeClip, splitClipAt, trimClip, type CompositionTimelineModel, type TrimEdge } from "@tinker/editor";
 
 type History = {
   past: CompositionTimelineModel[];
@@ -17,6 +17,8 @@ export type TimelineEdits = {
   split: (time: number) => void;
   remove: (clipId: string) => void;
   mark: (time: number, name: string) => void;
+  /** Move one edge of a clip to `time` (clamped to its generated source bounds). */
+  trim: (clipId: string, edge: TrimEdge, time: number) => void;
   undo: () => void;
   redo: () => void;
 };
@@ -46,6 +48,10 @@ export function useTimelineEdits(): TimelineEdits {
   const split = useCallback((time: number) => apply((m) => splitClipAt(m, time)), [apply]);
   const remove = useCallback((clipId: string) => apply((m) => removeClip(m, clipId)), [apply]);
   const mark = useCallback((time: number, name: string) => apply((m) => addMarker(m, time, name)), [apply]);
+  const trim = useCallback(
+    (clipId: string, edge: TrimEdge, time: number) => apply((m) => trimClip(m, clipId, edge, time)),
+    [apply],
+  );
 
   const undo = useCallback(() => {
     setHist((h) => {
@@ -72,9 +78,10 @@ export function useTimelineEdits(): TimelineEdits {
       split,
       remove,
       mark,
+      trim,
       undo,
       redo,
     }),
-    [hist, reset, split, remove, mark, undo, redo],
+    [hist, reset, split, remove, mark, trim, undo, redo],
   );
 }

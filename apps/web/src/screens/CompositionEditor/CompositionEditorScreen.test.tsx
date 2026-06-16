@@ -130,6 +130,44 @@ describe("CompositionEditorScreen", () => {
     expect(screen.getByTestId("composition-label-Marker-1")).toBeInTheDocument();
   });
 
+  it("trims the selected clip by dragging its edge handle, keeps it selected, and undo restores it", async () => {
+    const handle = fakeHandle(() => undefined);
+    render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-clip-feature")).toBeInTheDocument());
+
+    const track = screen.getByTestId("composition-timeline");
+    vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
+      left: 0, width: 1000, top: 0, right: 1000, bottom: 56, height: 56, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+
+    // Select "feature" (4–10s) so its trim handles appear.
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    expect(screen.getByTestId("composition-clip-feature")).toHaveAttribute("data-selected", "true");
+
+    // Drag the end handle from 10s (1000px) inward to 8s (800px).
+    fireEvent.mouseDown(screen.getByTestId("composition-trim-feature-end"), { clientX: 1000 });
+    fireEvent.mouseMove(track, { clientX: 800 });
+    fireEvent.mouseUp(track, { clientX: 800 });
+
+    // The clip shortened to 4.0s (8 − 4) and stays selected (selection survives the trim).
+    const feature = screen.getByTestId("composition-clip-feature");
+    expect(feature).toHaveTextContent("4.0s");
+    expect(feature).toHaveAttribute("data-selected", "true");
+
+    // Undo restores the generated length; redo re-applies the trim.
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByTestId("composition-clip-feature")).toHaveTextContent("6.0s");
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    expect(screen.getByTestId("composition-clip-feature")).toHaveTextContent("4.0s");
+  });
+
   it("adds a clip selection to chat as a chip", async () => {
     const handle = fakeHandle(() => undefined);
     render(

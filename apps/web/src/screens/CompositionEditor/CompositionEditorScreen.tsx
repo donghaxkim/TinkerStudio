@@ -8,6 +8,7 @@ import {
   type CompositionClip,
   type CompositionSelection,
   type TimelineRegistryWindow,
+  type TrimEdge,
 } from "@tinker/editor";
 import { chatContextRefFromSelection, type ChatContextRef } from "../../lib/chatContext.js";
 import type { CompositionEditClient, CompositionRevision } from "../../lib/compositionEditClient.js";
@@ -40,7 +41,7 @@ const EDIT_SUGGESTIONS = ["Tighten the pacing", "Zoom in on every click", "Smoot
 export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, repo, onBack, jobId, editClient, resolveWindow }: CompositionEditorScreenProps) {
   // Local timeline-edit history (split / delete / marker, with undo/redo). Self-contained so
   // the toolbar behaves identically in the empty shell and the real generated editor.
-  const { model, reset: resetEdits, split, remove: removeClipEdit, mark, undo, redo, canUndo, canRedo } = useTimelineEdits();
+  const { model, reset: resetEdits, split, remove: removeClipEdit, mark, trim, undo, redo, canUndo, canRedo } = useTimelineEdits();
   const [selection, setSelection] = useState<CompositionSelection | undefined>(undefined);
   const [contextRefs, setContextRefs] = useState<ChatContextRef[]>([]);
   const [instruction, setInstruction] = useState("");
@@ -71,6 +72,12 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
     if (selectedClipId === undefined) return;
     removeClipEdit(selectedClipId);
     setSelection(undefined);
+  }
+  function handleTrimClip(clipId: string, edge: TrimEdge, time: number) {
+    trim(clipId, edge, time);
+    // Keep the trimmed clip selected (its id is stable) and slide the selection band's
+    // matching edge to the committed, already-clamped time so the focus stays in sync.
+    setSelection((sel) => (sel?.kind === "clip" && sel.clipId === clipId ? { ...sel, [edge]: time } : sel));
   }
   function handleAddMarker() {
     mark(playback.currentTime, `Marker ${markerCount + 1}`);
@@ -279,6 +286,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
               onSeek={playback.seek}
               onSelectClip={handleSelectClip}
               onSelectRange={handleSelectRange}
+              onTrimClip={handleTrimClip}
               {...(editEnabled ? { selectionAction: { label: "Add to Chat", hint: "⌘L", onAct: handleAddRangeToChat } } : {})}
             />
           ) : null}
