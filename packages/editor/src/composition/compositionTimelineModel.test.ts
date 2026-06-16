@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { readCompositionTimeline, type GsapTimelineLike } from "./compositionTimelineModel.js";
+import {
+  DEFAULT_ZOOM_EASING,
+  DEFAULT_ZOOM_SCALE,
+  DEFAULT_ZOOM_TARGET,
+  MAX_ZOOM_SCALE,
+  MIN_ZOOM_SCALE,
+  readCompositionTimeline,
+  zoomEasing,
+  zoomScale,
+  zoomTarget,
+  type GsapTimelineLike,
+  type ZoomUnit,
+} from "./compositionTimelineModel.js";
 
 function fakeTimeline(opts: {
   totalDuration: number;
@@ -66,5 +78,31 @@ describe("readCompositionTimeline", () => {
     );
     expect(model.clips[0]!.id).toBe("clip-0");
     expect(model.clips[0]!.label).toBeUndefined();
+  });
+});
+
+const bareUnit: ZoomUnit = { id: "z1", start: 2, end: 6 };
+
+describe("zoom property accessors", () => {
+  it("fall back to the defaults when a unit omits look properties", () => {
+    expect(zoomScale(bareUnit)).toBe(DEFAULT_ZOOM_SCALE);
+    expect(zoomEasing(bareUnit)).toBe(DEFAULT_ZOOM_EASING);
+    expect(zoomTarget(bareUnit)).toEqual(DEFAULT_ZOOM_TARGET);
+  });
+
+  it("read explicit look properties when present", () => {
+    const u: ZoomUnit = { ...bareUnit, scale: 2, easing: "linear", target: { x: 0.25, y: 0.75 } };
+    expect(zoomScale(u)).toBe(2);
+    expect(zoomEasing(u)).toBe("linear");
+    expect(zoomTarget(u)).toEqual({ x: 0.25, y: 0.75 });
+  });
+
+  it("clamps the scale into [MIN_ZOOM_SCALE, MAX_ZOOM_SCALE]", () => {
+    expect(zoomScale({ ...bareUnit, scale: 0.2 })).toBe(MIN_ZOOM_SCALE);
+    expect(zoomScale({ ...bareUnit, scale: 99 })).toBe(MAX_ZOOM_SCALE);
+  });
+
+  it("clamps a target focal point into the [0,1] frame", () => {
+    expect(zoomTarget({ ...bareUnit, target: { x: -1, y: 2 } })).toEqual({ x: 0, y: 1 });
   });
 });

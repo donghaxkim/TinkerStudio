@@ -8,8 +8,10 @@ import {
   resizeZoom,
   splitClipAt,
   trimClip,
+  updateZoom,
   type CompositionTimelineModel,
   type TrimEdge,
+  type ZoomPropsPatch,
 } from "@tinker/editor";
 
 type History = {
@@ -36,6 +38,8 @@ export type TimelineEdits = {
   moveZoom: (id: string, start: number) => void;
   /** Move one edge of a zoom unit to `time`. */
   resizeZoom: (id: string, edge: TrimEdge, time: number) => void;
+  /** Update a zoom unit's look properties (scale / easing / target). */
+  updateZoom: (id: string, patch: ZoomPropsPatch) => void;
   /** Delete a zoom unit by id. */
   removeZoom: (id: string) => void;
   undo: () => void;
@@ -80,6 +84,10 @@ export function useTimelineEdits(): TimelineEdits {
     (id: string, edge: TrimEdge, time: number) => apply((m) => resizeZoom(m, id, edge, time)),
     [apply],
   );
+  const updateZoomUnit = useCallback(
+    (id: string, patch: ZoomPropsPatch) => apply((m) => updateZoom(m, id, patch)),
+    [apply],
+  );
   const removeZoomUnit = useCallback((id: string) => apply((m) => removeZoom(m, id)), [apply]);
 
   const undo = useCallback(() => {
@@ -111,10 +119,11 @@ export function useTimelineEdits(): TimelineEdits {
       addZoom: addZoomUnit,
       moveZoom: moveZoomUnit,
       resizeZoom: resizeZoomUnit,
+      updateZoom: updateZoomUnit,
       removeZoom: removeZoomUnit,
       undo,
       redo,
     }),
-    [hist, reset, split, remove, mark, trim, addZoomUnit, moveZoomUnit, resizeZoomUnit, removeZoomUnit, undo, redo],
+    [hist, reset, split, remove, mark, trim, addZoomUnit, moveZoomUnit, resizeZoomUnit, updateZoomUnit, removeZoomUnit, undo, redo],
   );
 }

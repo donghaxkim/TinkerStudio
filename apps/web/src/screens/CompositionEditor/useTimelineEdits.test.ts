@@ -109,4 +109,28 @@ describe("useTimelineEdits", () => {
     act(() => result.current.undo()); // restore the deleted zoom
     expect(result.current.model?.zooms).toEqual([{ id: "z1", start: 4, end: 9 }]);
   });
+
+  it("updates a zoom unit's look properties as a single undoable edit", () => {
+    const { result } = renderHook(() => useTimelineEdits());
+    act(() => result.current.reset(base));
+    act(() => result.current.addZoom("z1", 2, 6));
+
+    act(() => result.current.updateZoom("z1", { scale: 2.2, easing: "ease-in", target: { x: 0.3, y: 0.4 } }));
+    expect(result.current.model?.zooms?.[0]).toMatchObject({ scale: 2.2, easing: "ease-in", target: { x: 0.3, y: 0.4 } });
+
+    act(() => result.current.undo()); // back to the freshly created (default-look) unit
+    expect(result.current.model?.zooms?.[0]).toEqual({ id: "z1", start: 2, end: 6 });
+    act(() => result.current.redo());
+    expect(result.current.model?.zooms?.[0]).toMatchObject({ scale: 2.2 });
+  });
+
+  it("does not dirty history when an update changes nothing", () => {
+    const { result } = renderHook(() => useTimelineEdits());
+    act(() => result.current.reset(base));
+    act(() => result.current.addZoom("z1", 2, 6));
+    const before = result.current.model;
+    act(() => result.current.updateZoom("z1", {})); // no-op patch
+    expect(result.current.model).toBe(before);
+    expect(result.current.canRedo).toBe(false);
+  });
 });

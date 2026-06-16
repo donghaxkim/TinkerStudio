@@ -40,16 +40,58 @@ export type CompositionTimelineLabel = {
   time: number;
 };
 
+/** How a zoom punch-in eases in and out over its window. */
+export type ZoomEasing = "linear" | "ease-in" | "ease-out" | "ease-in-out";
+
+/** A focal point within the frame, each axis a 0..1 fraction (0,0 = top-left, 1,1 = bottom-right). */
+export type ZoomTarget = { x: number; y: number };
+
 /**
  * A user-placed zoom region on its own timeline track — a time window over which the
  * preview should punch in. Editor-side overlay only (like labels); absent until the user
  * adds one, so existing compositions and fixtures need no `zooms` key.
+ *
+ * The look properties (`scale`/`easing`/`target`) are optional so a freshly created unit and
+ * older fixtures stay valid; read them through `zoomScale`/`zoomEasing`/`zoomTarget`, which
+ * apply (and clamp to) the defaults below.
  */
 export type ZoomUnit = {
   id: string;
   start: number;
   end: number;
+  /** Punch-in level (1 = no zoom). Default `DEFAULT_ZOOM_SCALE`, clamped to [MIN, MAX]. */
+  scale?: number;
+  /** Transition curve. Default `DEFAULT_ZOOM_EASING`. */
+  easing?: ZoomEasing;
+  /** Focal point in frame fractions. Default `DEFAULT_ZOOM_TARGET` (center). */
+  target?: ZoomTarget;
 };
+
+export const MIN_ZOOM_SCALE = 1;
+export const MAX_ZOOM_SCALE = 3;
+export const DEFAULT_ZOOM_SCALE = 1.6;
+export const DEFAULT_ZOOM_EASING: ZoomEasing = "ease-in-out";
+export const DEFAULT_ZOOM_TARGET: ZoomTarget = { x: 0.5, y: 0.5 };
+
+function clampUnit(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+/** The unit's scale, defaulted and clamped to the supported range. */
+export function zoomScale(unit: ZoomUnit): number {
+  return clampUnit(unit.scale ?? DEFAULT_ZOOM_SCALE, MIN_ZOOM_SCALE, MAX_ZOOM_SCALE);
+}
+
+/** The unit's easing, defaulted. */
+export function zoomEasing(unit: ZoomUnit): ZoomEasing {
+  return unit.easing ?? DEFAULT_ZOOM_EASING;
+}
+
+/** The unit's focal point, defaulted and clamped into the [0,1] frame. */
+export function zoomTarget(unit: ZoomUnit): ZoomTarget {
+  const t = unit.target ?? DEFAULT_ZOOM_TARGET;
+  return { x: clampUnit(t.x, 0, 1), y: clampUnit(t.y, 0, 1) };
+}
 
 export type CompositionTimelineModel = {
   durationSeconds: number;

@@ -1,4 +1,12 @@
-import type { CompositionClip, CompositionTimelineModel, ZoomUnit } from "./compositionTimelineModel.js";
+import {
+  MAX_ZOOM_SCALE,
+  MIN_ZOOM_SCALE,
+  type CompositionClip,
+  type CompositionTimelineModel,
+  type ZoomEasing,
+  type ZoomTarget,
+  type ZoomUnit,
+} from "./compositionTimelineModel.js";
 
 const EPSILON = 1e-6;
 
@@ -147,4 +155,39 @@ export function removeZoom(model: CompositionTimelineModel, id: string): Composi
   const zooms = model.zooms ?? [];
   if (!zooms.some((z) => z.id === id)) return model;
   return { ...model, zooms: zooms.filter((z) => z.id !== id) };
+}
+
+/** A partial edit of a zoom unit's *look* (its timing rides moveZoom/resizeZoom instead). */
+export type ZoomPropsPatch = Partial<{ scale: number; easing: ZoomEasing; target: ZoomTarget }>;
+
+function sameTarget(a: ZoomTarget | undefined, b: ZoomTarget | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.x === b.x && a.y === b.y;
+}
+
+/**
+ * Update a zoom unit's look properties (scale / easing / target). Only the keys present in
+ * `patch` change; scale is clamped to [MIN_ZOOM_SCALE, MAX_ZOOM_SCALE] and the target into the
+ * [0,1] frame. Returns the same model reference (a no-op) for an unknown id, an empty patch, or
+ * when nothing actually changes — so the undo history stays clean. Used for manual property
+ * edits and for "reset" (patch with the defaults).
+ */
+export function updateZoom(
+  model: CompositionTimelineModel,
+  id: string,
+  patch: ZoomPropsPatch,
+): CompositionTimelineModel {
+  const zooms = model.zooms ?? [];
+  const target = zooms.find((z) => z.id === id);
+  if (!target) return model;
+  const next: ZoomUnit = { ...target };
+  if (patch.scale !== undefined) next.scale = roundMicros(clamp(patch.scale, MIN_ZOOM_SCALE, MAX_ZOOM_SCALE));
+  if (patch.easing !== undefined) next.easing = patch.easing;
+  if (patch.target !== undefined) {
+    next.target = { x: roundMicros(clamp(patch.target.x, 0, 1)), y: roundMicros(clamp(patch.target.y, 0, 1)) };
+  }
+  if (next.scale === target.scale && next.easing === target.easing && sameTarget(next.target, target.target)) {
+    return model;
+  }
+  return { ...model, zooms: zooms.map((z) => (z.id === id ? next : z)) };
 }

@@ -62,9 +62,22 @@ export type {
   CompositionTimelineModel,
   GsapChildLike,
   GsapTimelineLike,
+  ZoomEasing,
+  ZoomTarget,
   ZoomUnit,
 } from "./composition/compositionTimelineModel.js";
-export { readCompositionTimeline, readSceneClipsFromDocument } from "./composition/compositionTimelineModel.js";
+export {
+  DEFAULT_ZOOM_EASING,
+  DEFAULT_ZOOM_SCALE,
+  DEFAULT_ZOOM_TARGET,
+  MAX_ZOOM_SCALE,
+  MIN_ZOOM_SCALE,
+  readCompositionTimeline,
+  readSceneClipsFromDocument,
+  zoomEasing,
+  zoomScale,
+  zoomTarget,
+} from "./composition/compositionTimelineModel.js";
 export {
   addMarker,
   addZoom,
@@ -76,8 +89,9 @@ export {
   resizeZoom,
   splitClipAt,
   trimClip,
+  updateZoom,
 } from "./composition/compositionEdits.js";
-export type { TrimEdge } from "./composition/compositionEdits.js";
+export type { TrimEdge, ZoomPropsPatch } from "./composition/compositionEdits.js";
 export type {
   CompositionTimelineHandle,
   TimelineRegistryWindow,
