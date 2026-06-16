@@ -325,10 +325,57 @@ function compareCandidates(left: InteractionFocusCandidate, right: InteractionFo
   return left.id.localeCompare(right.id);
 }
 
+function explicitCandidateContainsFocus(
+  explicit: InteractionFocusCandidate,
+  focus: InteractionFocusCandidate["focus"],
+  options: Pick<BuildInteractionFocusCandidatesOptions, "frame" | "frameAtTime">,
+) {
+  if (explicit.kind !== "explicit" || !explicit.targetSize) {
+    return false;
+  }
+
+  const frame = frameAtTime(options, explicit.centerTime);
+  const frameWidth = safePositive(frame.width, 1);
+  const frameHeight = safePositive(frame.height, 1);
+  const centerX = clamp(explicit.focus.cx, 0, 1) * frameWidth;
+  const centerY = clamp(explicit.focus.cy, 0, 1) * frameHeight;
+  const pointX = clamp(focus.cx, 0, 1) * frameWidth;
+  const pointY = clamp(focus.cy, 0, 1) * frameHeight;
+  const halfWidth = explicit.targetSize.width / 2;
+  const halfHeight = explicit.targetSize.height / 2;
+
+  return (
+    pointX >= centerX - halfWidth &&
+    pointX <= centerX + halfWidth &&
+    pointY >= centerY - halfHeight &&
+    pointY <= centerY + halfHeight
+  );
+}
+
+function clickSupersedesExplicit(
+  candidate: InteractionFocusCandidate,
+  existing: InteractionFocusCandidate,
+  options: Required<Pick<BuildInteractionFocusCandidatesOptions, "closeFocusDistance">> &
+    Pick<BuildInteractionFocusCandidatesOptions, "frame" | "frameAtTime">,
+) {
+  const click = candidate.kind === "click" ? candidate : existing.kind === "click" ? existing : undefined;
+  const explicit = candidate.kind === "explicit" ? candidate : existing.kind === "explicit" ? existing : undefined;
+
+  if (!click || !explicit) {
+    return false;
+  }
+
+  return (
+    normalizedDistance(click.focus, explicit.focus) <= options.closeFocusDistance ||
+    explicitCandidateContainsFocus(explicit, click.focus, options)
+  );
+}
+
 function shouldSkipCandidate(
   candidate: InteractionFocusCandidate,
   accepted: readonly InteractionFocusCandidate[],
-  options: Required<Pick<BuildInteractionFocusCandidatesOptions, "minSpacingSeconds" | "closeFocusDistance">>,
+  options: Required<Pick<BuildInteractionFocusCandidatesOptions, "minSpacingSeconds" | "closeFocusDistance">> &
+    Pick<BuildInteractionFocusCandidatesOptions, "frame" | "frameAtTime">,
 ) {
   for (const existing of accepted) {
     if (candidate.kind === "explicit" && existing.kind === "explicit" && rangesOverlap(candidate, existing)) {
@@ -342,6 +389,17 @@ function shouldSkipCandidate(
     }
 
     if (rangesOverlap(candidate, existing)) {
+      if (
+        (candidate.kind === "click" && existing.kind === "explicit") ||
+        (candidate.kind === "explicit" && existing.kind === "click")
+      ) {
+        if (clickSupersedesExplicit(candidate, existing, options)) {
+          return true;
+        }
+
+        continue;
+      }
+
       return true;
     }
 
@@ -394,6 +452,8 @@ export function buildInteractionFocusCandidates(
   const selectionOptions = {
     minSpacingSeconds: safeNonNegative(options.minSpacingSeconds, DEFAULT_SUGGESTION_SPACING_SECONDS),
     closeFocusDistance: safePositive(options.closeFocusDistance, DEFAULT_CLOSE_FOCUS_DISTANCE),
+    frame: options.frame,
+    frameAtTime: options.frameAtTime,
   };
   const accepted: InteractionFocusCandidate[] = [];
 

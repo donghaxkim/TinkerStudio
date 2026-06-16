@@ -107,6 +107,30 @@ describe("interaction target candidates", () => {
     ]);
   });
 
+  it("preserves a temporally overlapping explicit target when the click is spatially unrelated", () => {
+    const candidates = buildInteractionFocusCandidates([click(3, 820, 820)], {
+      duration: 6,
+      frame,
+      explicitTargets: [explicit({ id: "zoom-left", time: 2, x: 100, y: 100, width: 100, height: 100 })],
+    });
+
+    expect(candidates.map((candidate) => candidate.kind)).toEqual(["explicit", "click"]);
+    expect(candidates[0]).toMatchObject<Partial<InteractionFocusCandidate>>({
+      kind: "explicit",
+      start: 2,
+      end: 4.5,
+      focus: { cx: 0.15, cy: 0.15 },
+      targetSize: { width: 100, height: 100 },
+      zoomId: "zoom-left",
+    });
+    expect(candidates[1]).toMatchObject<Partial<InteractionFocusCandidate>>({
+      kind: "click",
+      start: 2.75,
+      end: 4.1,
+      focus: { cx: 0.82, cy: 0.82 },
+    });
+  });
+
   it("refines a broad explicit target toward a nearby click while borrowing only tighter target size", () => {
     const candidates = buildInteractionFocusCandidates([click(2.1, 640, 360)], {
       duration: 6,
