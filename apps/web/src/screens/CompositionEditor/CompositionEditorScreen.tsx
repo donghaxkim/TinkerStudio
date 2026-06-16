@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   CompositionPreview,
   CompositionTimeline,
@@ -41,8 +41,12 @@ const EDIT_SUGGESTIONS = ["Tighten the pacing", "Zoom in on every click", "Smoot
 export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, repo, onBack, jobId, editClient, resolveWindow }: CompositionEditorScreenProps) {
   // Local timeline-edit history (split / delete / marker, with undo/redo). Self-contained so
   // the toolbar behaves identically in the empty shell and the real generated editor.
-  const { model, reset: resetEdits, split, remove: removeClipEdit, mark, trim, undo, redo, canUndo, canRedo } = useTimelineEdits();
+  const { model, reset: resetEdits, split, remove: removeClipEdit, mark, trim, addZoom, moveZoom, resizeZoom, removeZoom, undo, redo, canUndo, canRedo } = useTimelineEdits();
   const [selection, setSelection] = useState<CompositionSelection | undefined>(undefined);
+  const [selectedZoomId, setSelectedZoomId] = useState<string | undefined>(undefined);
+  // Monotonic counter for unique zoom ids — keeps ids stable across undo/redo (snapshots
+  // bake the id in) without colliding when a unit is created after an undo.
+  const zoomSeq = useRef(0);
   const [contextRefs, setContextRefs] = useState<ChatContextRef[]>([]);
   const [instruction, setInstruction] = useState("");
   const [refSeq, setRefSeq] = useState(0);
@@ -79,6 +83,29 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
     // matching edge to the committed, already-clamped time so the focus stays in sync.
     setSelection((sel) => (sel?.kind === "clip" && sel.clipId === clipId ? { ...sel, [edge]: time } : sel));
   }
+
+  // --- Zoom track. Units live in the model, so create/move/resize/delete are undoable via
+  // the same history; zoom selection is tracked separately from clip/range selection.
+  function handleCreateZoom(start: number, end: number) {
+    const id = `zoom-${(zoomSeq.current += 1)}`;
+    addZoom(id, start, end);
+    setSelectedZoomId(id);
+    setSelection(undefined);
+  }
+  function handleSelectZoom(id: string) {
+    setSelectedZoomId(id);
+    setSelection(undefined);
+  }
+  function handleMoveZoom(id: string, start: number) {
+    moveZoom(id, start);
+  }
+  function handleResizeZoom(id: string, edge: TrimEdge, time: number) {
+    resizeZoom(id, edge, time);
+  }
+  function handleDeleteZoom(id: string) {
+    removeZoom(id);
+    setSelectedZoomId((cur) => (cur === id ? undefined : cur));
+  }
   function handleAddMarker() {
     mark(playback.currentTime, `Marker ${markerCount + 1}`);
   }
@@ -92,6 +119,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   function handleSelectClip(clip: CompositionClip) {
     const nextSelection = clipSelection(clip);
     setSelection(nextSelection);
+    setSelectedZoomId(undefined);
     attachSelection(nextSelection);
   }
 
@@ -99,6 +127,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
     // A dragged range is NOT auto-attached — the user confirms it via the floating
     // "Add to Chat" popup (or ⌘L), so they choose exactly which window to give the AI.
     setSelection(rangeSelection(range.start, range.end));
+    setSelectedZoomId(undefined);
   }
 
   function handleAddToChat() {
@@ -164,6 +193,8 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   const handlePreviewLoading = useCallback(() => {
     resetEdits(undefined);
     setSelection(undefined);
+    setSelectedZoomId(undefined);
+    zoomSeq.current = 0;
   }, [resetEdits]);
 
   function handleExport() {
@@ -287,6 +318,14 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
               onSelectClip={handleSelectClip}
               onSelectRange={handleSelectRange}
               onTrimClip={handleTrimClip}
+              zoom={{
+                ...(selectedZoomId === undefined ? {} : { selectedId: selectedZoomId }),
+                onCreate: handleCreateZoom,
+                onSelect: handleSelectZoom,
+                onMove: handleMoveZoom,
+                onResize: handleResizeZoom,
+                onDelete: handleDeleteZoom,
+              }}
               {...(editEnabled ? { selectionAction: { label: "Add to Chat", hint: "⌘L", onAct: handleAddRangeToChat } } : {})}
             />
           ) : null}

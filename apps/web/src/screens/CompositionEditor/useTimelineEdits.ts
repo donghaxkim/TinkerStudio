@@ -1,5 +1,16 @@
 import { useCallback, useMemo, useState } from "react";
-import { addMarker, removeClip, splitClipAt, trimClip, type CompositionTimelineModel, type TrimEdge } from "@tinker/editor";
+import {
+  addMarker,
+  addZoom,
+  moveZoom,
+  removeClip,
+  removeZoom,
+  resizeZoom,
+  splitClipAt,
+  trimClip,
+  type CompositionTimelineModel,
+  type TrimEdge,
+} from "@tinker/editor";
 
 type History = {
   past: CompositionTimelineModel[];
@@ -19,6 +30,14 @@ export type TimelineEdits = {
   mark: (time: number, name: string) => void;
   /** Move one edge of a clip to `time` (clamped to its generated source bounds). */
   trim: (clipId: string, edge: TrimEdge, time: number) => void;
+  /** Add a zoom unit `id` spanning `[start, end]` on the zoom track. */
+  addZoom: (id: string, start: number, end: number) => void;
+  /** Move a zoom unit to a new start, preserving its length. */
+  moveZoom: (id: string, start: number) => void;
+  /** Move one edge of a zoom unit to `time`. */
+  resizeZoom: (id: string, edge: TrimEdge, time: number) => void;
+  /** Delete a zoom unit by id. */
+  removeZoom: (id: string) => void;
   undo: () => void;
   redo: () => void;
 };
@@ -52,6 +71,16 @@ export function useTimelineEdits(): TimelineEdits {
     (clipId: string, edge: TrimEdge, time: number) => apply((m) => trimClip(m, clipId, edge, time)),
     [apply],
   );
+  const addZoomUnit = useCallback(
+    (id: string, start: number, end: number) => apply((m) => addZoom(m, id, start, end)),
+    [apply],
+  );
+  const moveZoomUnit = useCallback((id: string, start: number) => apply((m) => moveZoom(m, id, start)), [apply]);
+  const resizeZoomUnit = useCallback(
+    (id: string, edge: TrimEdge, time: number) => apply((m) => resizeZoom(m, id, edge, time)),
+    [apply],
+  );
+  const removeZoomUnit = useCallback((id: string) => apply((m) => removeZoom(m, id)), [apply]);
 
   const undo = useCallback(() => {
     setHist((h) => {
@@ -79,9 +108,13 @@ export function useTimelineEdits(): TimelineEdits {
       remove,
       mark,
       trim,
+      addZoom: addZoomUnit,
+      moveZoom: moveZoomUnit,
+      resizeZoom: resizeZoomUnit,
+      removeZoom: removeZoomUnit,
       undo,
       redo,
     }),
-    [hist, reset, split, remove, mark, trim, undo, redo],
+    [hist, reset, split, remove, mark, trim, addZoomUnit, moveZoomUnit, resizeZoomUnit, removeZoomUnit, undo, redo],
   );
 }

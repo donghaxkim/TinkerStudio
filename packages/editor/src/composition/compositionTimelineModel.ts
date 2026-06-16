@@ -40,10 +40,22 @@ export type CompositionTimelineLabel = {
   time: number;
 };
 
+/**
+ * A user-placed zoom region on its own timeline track — a time window over which the
+ * preview should punch in. Editor-side overlay only (like labels); absent until the user
+ * adds one, so existing compositions and fixtures need no `zooms` key.
+ */
+export type ZoomUnit = {
+  id: string;
+  start: number;
+  end: number;
+};
+
 export type CompositionTimelineModel = {
   durationSeconds: number;
   clips: CompositionClip[];
   labels: CompositionTimelineLabel[];
+  zooms?: ZoomUnit[];
 };
 
 function clampDuration(value: number): number {

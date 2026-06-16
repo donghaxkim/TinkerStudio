@@ -2,6 +2,7 @@ import { useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEve
 import { createTimeScale } from "../timeline/timeScale.js";
 import { formatTimecode } from "../timeline/formatTimecode.js";
 import { clampTrim, type TrimEdge } from "./compositionEdits.js";
+import { ZoomTrack, type ZoomTrackProps } from "./ZoomTrack.js";
 import type { CompositionClip, CompositionTimelineModel } from "./compositionTimelineModel.js";
 
 const DRAG_THRESHOLD_PX = 4;
@@ -25,6 +26,12 @@ export type CompositionTimelineProps = {
    * is what turns on the per-clip trim handles — there is no separate trim mode.
    */
   onTrimClip?: (clipId: string, edge: TrimEdge, time: number) => void;
+  /**
+   * Enables the dedicated Zoom track beneath the clip row. Units come from `model.zooms`;
+   * this carries the selection + edit callbacks. Absent = no zoom row (keeps the clip
+   * track uncluttered for read-only usages).
+   */
+  zoom?: Omit<ZoomTrackProps, "durationSeconds" | "units">;
   /**
    * Floating action offered over a committed range selection (Cursor-style popup).
    * Shown above the selection band; absent = no popup. Not shown for clip selections.
@@ -199,6 +206,7 @@ export function CompositionTimeline({
   onSelectClip,
   onSelectRange,
   onTrimClip,
+  zoom,
   selectionAction,
 }: CompositionTimelineProps) {
   const scale = createTimeScale(model.durationSeconds, 100);
@@ -540,6 +548,7 @@ export function CompositionTimeline({
         </div>
       ) : null}
       </div>
+      {zoom ? <ZoomTrack durationSeconds={model.durationSeconds} units={model.zooms ?? []} {...zoom} /> : null}
       <div data-testid="composition-playhead" style={{ ...playheadStyle, left: `${scale.secondsToPixels(currentTime)}%` }}>
         <div data-testid="composition-playhead-handle" style={playheadHandleStyle} />
       </div>
