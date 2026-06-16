@@ -272,6 +272,8 @@ describe("CompositionDemoScreen", () => {
 
     expect(screen.getByRole("heading", { name: /Tinker Studio/i })).toBeInTheDocument();
     expect(screen.getByText("github.com/owner/repo")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /HyperFrames/i })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Playwright/i })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
     fireEvent.change(screen.getByLabelText("Demo description"), { target: { value: "Show the launch flow" } });
     expect(screen.queryByLabelText("Product URL")).not.toBeInTheDocument();
@@ -284,6 +286,7 @@ describe("CompositionDemoScreen", () => {
         durationCapSeconds: 60,
         aspectRatio: "16:9",
         prompt: "Show the launch flow",
+        renderer: "hyperframes",
       }),
     );
     await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());

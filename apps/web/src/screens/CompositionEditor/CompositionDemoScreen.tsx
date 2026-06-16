@@ -107,6 +107,7 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
   const [showEmptyEditor, setShowEmptyEditor] = useState(false);
   const [repoDraft, setRepoDraft] = useState("");
   const [description, setDescription] = useState("");
+  const [renderer] = useState<"hyperframes">("hyperframes");
   const [repoFocus, setRepoFocus] = useState(false);
   const [descriptionFocus, setDescriptionFocus] = useState(false);
   const [repoShake, setRepoShake] = useState(false);
@@ -148,8 +149,9 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
       durationCapSeconds: 60,
       aspectRatio: "16:9",
       prompt,
+      renderer,
     });
-  }, [description, job, repoDraft, requireRepo]);
+  }, [description, job, renderer, repoDraft, requireRepo]);
 
   if (showEmptyEditor) {
     return (
@@ -376,6 +378,61 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
               </div>
 
               <div style={{ display: "flex", alignItems: "center", padding: "0 4px" }}>
+                <div
+                  role="radiogroup"
+                  aria-label="Generation method"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    marginRight: 10,
+                    padding: 2,
+                    border: "1px solid var(--tk-border-soft)",
+                    borderRadius: "var(--tk-radius-sm)",
+                    background: "var(--tk-raised)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={renderer === "hyperframes"}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "4px 7px",
+                      border: "none",
+                      borderRadius: "var(--tk-radius-xs)",
+                      fontSize: 11.5,
+                      color: "var(--tk-text)",
+                      background: "var(--tk-card)",
+                      boxShadow: "inset 0 0 0 1px var(--tk-border-soft)",
+                      cursor: "default",
+                    }}
+                  >
+                    HyperFrames
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={false}
+                    disabled
+                    title="Playwright pipeline will use the DemoProject editor in a later milestone"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "4px 7px",
+                      border: "none",
+                      borderRadius: "var(--tk-radius-xs)",
+                      fontSize: 11.5,
+                      color: "var(--tk-text-ter)",
+                      background: "transparent",
+                      opacity: 0.58,
+                      cursor: "not-allowed",
+                    }}
+                  >
+                    Playwright
+                  </button>
+                </div>
                 <div aria-live="polite" aria-atomic="true" style={{ flex: 1, fontSize: 12, color: "var(--tk-text-ter)" }}>
                   {job.phase === "running" ? "Generating composition..." : ""}
                 </div>
