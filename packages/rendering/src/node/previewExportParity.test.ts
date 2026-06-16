@@ -373,7 +373,7 @@ describe("preview/export cursor-settings parity (PB-006)", () => {
     // Export reflects that intent: a cursor image plus the amber click-emphasis box.
     const overlays = cursorOverlaysFor(project);
     const boxes = drawboxesFor(project);
-    expect(filterComplexFor(project)).toContain("movie='/tmp/tinker-test-cursor-arrow.png'");
+    expect(filterComplexFor(project)).toContain("movie=/tmp/tinker-test-cursor-arrow.png");
     expect(overlays.length).toBeGreaterThan(0);
     expect(boxes.some((box) => box.color === CLICK_EMPHASIS_COLOR)).toBe(true);
   });
@@ -388,7 +388,7 @@ describe("preview/export cursor-settings parity (PB-006)", () => {
       path: "/tmp/tinker\\cursor/a'b:c.png",
     });
 
-    expect(complex).toContain(String.raw`movie='/tmp/tinker\\cursor/a'\''b\:c.png'`);
+    expect(complex).toContain(String.raw`movie=/tmp/tinker\\\\cursor/a\\\'b\\:c.png`);
   });
 
   it("splits the cursor image stream for multiple cursor points", () => {

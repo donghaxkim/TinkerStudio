@@ -138,9 +138,9 @@ function appendCursorFilters(
   let currentLabel = inputLabel;
 
   if (cursorLabels.length === 1) {
-    filters.push(`movie='${ffmpegFilterPath(cursorImage.path)}',format=rgba[${cursorLabels[0]}]`);
+    filters.push(`movie=${ffmpegFilterPath(cursorImage.path)},format=rgba[${cursorLabels[0]}]`);
   } else {
-    filters.push(`movie='${ffmpegFilterPath(cursorImage.path)}',format=rgba,split=${cursorLabels.length}${cursorLabels.map((label) => `[${label}]`).join("")}`);
+    filters.push(`movie=${ffmpegFilterPath(cursorImage.path)},format=rgba,split=${cursorLabels.length}${cursorLabels.map((label) => `[${label}]`).join("")}`);
   }
 
   cursorPoints.forEach((point, index) => {
@@ -174,10 +174,9 @@ function appendCursorFilters(
 }
 
 function ffmpegFilterPath(path: string) {
-  return path
-    .split("'")
-    .map((segment) => segment.replace(/\\/g, "\\\\").replace(/:/g, "\\:"))
-    .join("'\\''");
+  const movieOptionValue = path.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
+
+  return movieOptionValue.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/[\[\];,]/g, "\\$&");
 }
 
 function appendCameraFilters(
