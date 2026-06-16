@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { TimelineRegistryWindow, CompositionTimelineHandle } from "@tinker/editor";
 import type { ApiGenerationJob } from "@tinker/generation-contract";
 import type { CompositionGenerationClient, CreateCompositionJobRequest } from "../../lib/compositionGenerationClient.js";
+import type { CompositionPlanningClient, CompositionPlanningSession } from "../../lib/compositionPlanningClient.js";
 import { CompositionDemoScreen } from "./CompositionDemoScreen.js";
 
 function completedCompositionJob(): ApiGenerationJob {
@@ -17,6 +18,7 @@ function completedCompositionJob(): ApiGenerationJob {
       durationCapSeconds: 60,
       aspectRatio: "16:9",
       renderer: "hyperframes",
+      hyperframesAgent: "claude",
     },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -68,6 +70,7 @@ function completedPlaywrightJob(): ApiGenerationJob {
       durationCapSeconds: 60,
       aspectRatio: "16:9",
       renderer: "playwright",
+      hyperframesAgent: "claude",
     },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -170,12 +173,47 @@ function createLocalCompositionGenerationClient(): CompositionGenerationClient {
   };
 }
 
+function planningSession(overrides: Partial<CompositionPlanningSession> = {}): CompositionPlanningSession {
+  return {
+    id: "plan-test",
+    productUrl: "https://driftboard.example.com",
+    repoUrl: "https://github.com/acme/driftboard",
+    agent: "claude",
+    status: "ready",
+    messages: [{ role: "assistant", content: "I drafted a grounded outline." }],
+    outline: {
+      title: "Driftboard launch demo",
+      durationCapSeconds: 60,
+      aspectRatio: "16:9",
+      summary: "Show the launch workflow from product evidence.",
+      scenes: [
+        { id: "scene-1", goal: "Open on the launch problem", visual: "Show the homepage hero.", evidence: ["website"] },
+        { id: "scene-2", goal: "Show repo-backed details", visual: "Use real component names from the repo.", evidence: ["repo", "website"] },
+      ],
+      generationNotes: ["Keep pacing concise."],
+    },
+    outlineValid: true,
+    ...overrides,
+  };
+}
+
+function createPlanningClient(session = planningSession()): CompositionPlanningClient {
+  return {
+    createSession: vi.fn(async () => session),
+    sendMessage: vi.fn(async (_sessionId: string, message: string) => ({
+      ...session,
+      messages: [...session.messages, { role: "user" as const, content: message }, { role: "assistant" as const, content: "Updated the outline." }],
+    })),
+  };
+}
+
 describe("CompositionDemoScreen", () => {
   it("opens a preloaded completed HyperFrames job in the editor", async () => {
     const client = createLocalCompositionGenerationClient();
     render(
       <CompositionDemoScreen
         client={client}
+        planningClient={createPlanningClient()}
         initialCompletedJob={completedCompositionJob()}
         resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
       />,
@@ -201,6 +239,7 @@ describe("CompositionDemoScreen", () => {
     render(
       <CompositionDemoScreen
         client={client}
+        planningClient={createPlanningClient()}
         initialCompletedJob={completedJob}
         resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
       />,
@@ -213,7 +252,13 @@ describe("CompositionDemoScreen", () => {
   });
 
   it("renders completed Playwright jobs as an artifact result view", () => {
-    render(<CompositionDemoScreen client={createLocalCompositionGenerationClient()} initialCompletedJob={completedPlaywrightJob()} />);
+    render(
+      <CompositionDemoScreen
+        client={createLocalCompositionGenerationClient()}
+        planningClient={createPlanningClient()}
+        initialCompletedJob={completedPlaywrightJob()}
+      />,
+    );
 
     expect(screen.getByRole("heading", { name: "Playwright demo ready" })).toBeInTheDocument();
     expect(screen.getByText("Generated DemoProject and capture artifacts from the Playwright pipeline.")).toBeInTheDocument();
@@ -233,6 +278,7 @@ describe("CompositionDemoScreen", () => {
     render(
       <CompositionDemoScreen
         client={client}
+        planningClient={createPlanningClient()}
         resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: emptyHandle() } })}
       />,
     );
@@ -262,6 +308,7 @@ describe("CompositionDemoScreen", () => {
     render(
       <CompositionDemoScreen
         client={client}
+        planningClient={createPlanningClient()}
         resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
       />,
     );
@@ -292,7 +339,52 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByTestId("composition-clip-scene")).toHaveTextContent("10.0s");
   });
 
-  it("generates a composition and opens it in the editor", async () => {
+  it("starts planning from Product URL and GitHub repo URL", async () => {
+    const client = createLocalCompositionGenerationClient();
+    const planningClient = createPlanningClient();
+    render(<CompositionDemoScreen client={client} planningClient={planningClient} />);
+
+    expect(screen.getByRole("heading", { name: /Tinker Studio/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Product URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("GitHub repo URL")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Demo description")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Playwright/i })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
+
+    await waitFor(() =>
+      expect(planningClient.createSession).toHaveBeenCalledWith({
+        productUrl: "https://driftboard.example.com",
+        repoUrl: "https://github.com/acme/driftboard",
+        agent: "claude",
+      }),
+    );
+    expect(await screen.findByText("I drafted a grounded outline.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Driftboard launch demo" })).toBeInTheDocument();
+    expect(screen.getByText("Open on the launch problem")).toBeInTheDocument();
+    expect(screen.getByText("Show repo-backed details")).toBeInTheDocument();
+  });
+
+  it("continues planning with the backend session id", async () => {
+    const client = createLocalCompositionGenerationClient();
+    const planningClient = createPlanningClient();
+    render(<CompositionDemoScreen client={client} planningClient={planningClient} />);
+
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
+    await screen.findByText("I drafted a grounded outline.");
+
+    fireEvent.change(screen.getByLabelText("Planning message"), { target: { value: "Make it more technical." } });
+    fireEvent.click(screen.getByRole("button", { name: "Send planning message" }));
+
+    await waitFor(() => expect(planningClient.sendMessage).toHaveBeenCalledWith("plan-test", "Make it more technical."));
+    expect(await screen.findByText("Updated the outline.")).toBeInTheDocument();
+  });
+
+  it("generates Hyperframes from the approved outline", async () => {
     const client = {
       createJob: vi.fn(async (_request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => ({
         id: "job-1",
@@ -305,6 +397,7 @@ describe("CompositionDemoScreen", () => {
           durationCapSeconds: 60,
           aspectRatio: "16:9",
           renderer: "hyperframes",
+          hyperframesAgent: "claude",
         },
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
@@ -324,6 +417,7 @@ describe("CompositionDemoScreen", () => {
           durationCapSeconds: 60,
           aspectRatio: "16:9",
           renderer: "hyperframes",
+          hyperframesAgent: "claude",
         },
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
@@ -365,29 +459,30 @@ describe("CompositionDemoScreen", () => {
     render(
       <CompositionDemoScreen
         client={client}
+        planningClient={createPlanningClient()}
         resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
       />,
     );
 
-    expect(screen.getByRole("heading", { name: /Tinker Studio/i })).toBeInTheDocument();
-    expect(screen.getByText("github.com/owner/repo")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /HyperFrames/i })).toBeChecked();
-    expect(screen.getByRole("radio", { name: /Playwright/i })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.change(screen.getByLabelText("Demo description"), { target: { value: "Show the launch flow" } });
-    expect(screen.queryByLabelText("Product URL")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
+    await screen.findByRole("heading", { name: "Driftboard launch demo" });
+    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
 
     await waitFor(() =>
-      expect(client.createJob).toHaveBeenCalledWith({
+      expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({
         mode: "ai-url-planning",
         repoUrl: "https://github.com/acme/driftboard",
+        productUrl: "https://driftboard.example.com",
         durationCapSeconds: 60,
         aspectRatio: "16:9",
-        prompt: "Show the launch flow",
+        prompt: expect.stringContaining("Use this approved video outline as the product demo brief:"),
         renderer: "hyperframes",
-      }),
+        hyperframesAgent: "claude",
+      })),
     );
+    expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("Driftboard launch demo") }));
     await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
@@ -397,67 +492,17 @@ describe("CompositionDemoScreen", () => {
     expect(repoLink).toHaveAttribute("href", "https://github.com/acme/driftboard");
   });
 
-  it("can select Playwright and submits a Playwright generation request", async () => {
-    const client = {
-      createJob: vi.fn(async (_request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => ({
-        id: "job-1",
-        status: "queued",
-        request: {
-          id: "job-1",
-          mode: "ai-url-planning",
-          repoUrl: "https://github.com/acme/driftboard",
-          productUrl: "https://driftboard.example.com",
-          durationCapSeconds: 60,
-          aspectRatio: "16:9",
-          renderer: "playwright",
-        },
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-        progressEvents: [],
-      })),
-      getJob: async () => {
-        throw new Error("not used");
-      },
-      waitForJob: async (): Promise<ApiGenerationJob> => ({
-        id: "job-1",
-        status: "failed",
-        request: {
-          id: "job-1",
-          mode: "ai-url-planning",
-          repoUrl: "https://github.com/acme/driftboard",
-          productUrl: "https://driftboard.example.com",
-          durationCapSeconds: 60,
-          aspectRatio: "16:9",
-          renderer: "playwright",
-        },
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-        progressEvents: [],
-        error: { status: "failed", stage: "unknown", message: "stop after request assertion" },
-      }),
-    } satisfies CompositionGenerationClient;
-    render(<CompositionDemoScreen client={client} />);
+  it("disables generation until the planning agent produces a valid outline", async () => {
+    const client = createLocalCompositionGenerationClient();
+    const planningClient = createPlanningClient(planningSession({ outlineValid: false }));
+    render(<CompositionDemoScreen client={client} planningClient={planningClient} />);
 
-    expect(screen.getByRole("radio", { name: /HyperFrames/i })).toBeChecked();
-    const playwrightRadio = screen.getByRole("radio", { name: /Playwright/i });
-    expect(playwrightRadio).toBeEnabled();
-    fireEvent.click(playwrightRadio);
-    expect(playwrightRadio).toBeChecked();
-
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.change(screen.getByLabelText("Demo description"), { target: { value: "Show the launch flow" } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
-    await waitFor(() =>
-      expect(client.createJob).toHaveBeenCalledWith({
-        mode: "ai-url-planning",
-        repoUrl: "https://github.com/acme/driftboard",
-        durationCapSeconds: 60,
-        aspectRatio: "16:9",
-        prompt: "Show the launch flow",
-        renderer: "playwright",
-      }),
-    );
+    expect(await screen.findByText("The agent has not produced a valid outline yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Generate video" })).toBeDisabled();
   });
 
   it("shows an error when generation fails", async () => {
@@ -466,10 +511,12 @@ describe("CompositionDemoScreen", () => {
       getJob: async () => ({ id: "j" }),
       waitForJob: async () => ({ id: "j", status: "failed", error: { message: "Server error" } }),
     } as unknown as CompositionGenerationClient;
-    render(<CompositionDemoScreen client={client} />);
+    render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
-    fireEvent.change(screen.getByLabelText("Demo description"), { target: { value: "Show the main flow" } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
+    await screen.findByText("I drafted a grounded outline.");
+    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Server error"));
   });
 
@@ -482,12 +529,14 @@ describe("CompositionDemoScreen", () => {
           opts?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
         }),
     } as unknown as CompositionGenerationClient;
-    render(<CompositionDemoScreen client={client} />);
+    render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
-    fireEvent.change(screen.getByLabelText("Demo description"), { target: { value: "Show the main flow" } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
+    await screen.findByText("I drafted a grounded outline.");
+    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
     await screen.findByTestId("composition-generating");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Generate" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Generate video" })).toBeInTheDocument());
   });
 });
