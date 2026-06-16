@@ -142,6 +142,32 @@ printf '%s\n' '{"message":{"content":[{"type":"text","text":"env ok"}]}}'
     expect(envLog).not.toContain("TINKER_SECRET_SHOULD_NOT_LEAK");
     expect(envLog).not.toContain("super-secret");
   });
+
+  it("preserves stream metadata when bounded stdout logs truncate early session output", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-stream-metadata-${randomUUID()}-`));
+    await createFakeClaude(
+      workspaceRoot,
+      `#!/bin/sh
+printf '%s\n' '{"session_id":"claude-stream-session"}'
+i=0
+while [ "$i" -lt 70000 ]; do
+  printf x
+  i=$((i + 1))
+done
+printf '\n'
+printf '%s\n' '{"message":{"content":[{"type":"text","text":"metadata survived"}]}}'
+`,
+    );
+
+    const result = await defaultRunClaudePlanningProcess({ cwd: workspaceRoot, prompt: "Plan." });
+
+    expect(parseClaudePlanningOutput(result.stdout)).toEqual({
+      assistantMessage: "metadata survived",
+      agentResumeHandle: "claude-stream-session",
+    });
+    const stdoutLog = await readFile(join(workspaceRoot, ".tinker-claude-planning-output.jsonl"), "utf8");
+    expect(stdoutLog).toContain("stdout truncated");
+  });
 });
 
 describe("createClaudePlanningAgentRunner", () => {
@@ -257,6 +283,53 @@ describe("createClaudePlanningAgentRunner", () => {
         outlinePath,
       }),
     ).rejects.toThrow("Claude planning modified files outside the allowed output boundary: unexpected.txt");
+  });
+
+  it("checks workspace boundaries when Claude throws and mentions the original error", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-boundary-throw-${randomUUID()}-`));
+    const outlinePath = join(workspaceRoot, "outline.json");
+    const runClaude = vi.fn(async () => {
+      await writeFile(join(workspaceRoot, "unexpected-after-error.txt"), "not allowed\n");
+      throw new Error("process exploded");
+    });
+    const runner = createClaudePlanningAgentRunner({ runClaude, analyzeWebsite: vi.fn(async () => websiteAnalysis), analyzeRepo: vi.fn(async () => repoAnalysis) });
+
+    await expect(
+      runner({
+        kind: "initial",
+        productUrl: "https://product.example.com",
+        repoUrl: "https://github.com/example/product",
+        agent: "claude",
+        workspaceRoot,
+        outlinePath,
+      }),
+    ).rejects.toThrow(/outside the allowed output boundary: unexpected-after-error\.txt.*process exploded/);
+  });
+
+  it("rejects newly created skipped directories", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-boundary-skipped-${randomUUID()}-`));
+    const outlinePath = join(workspaceRoot, "outline.json");
+    const runClaude = vi.fn(async () => {
+      await mkdir(join(workspaceRoot, "node_modules"), { recursive: true });
+      return {
+        stdout: [
+          JSON.stringify({ type: "system", session_id: "claude-session-skipped" }),
+          JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Created skipped dir." }] } }),
+        ].join("\n"),
+      };
+    });
+    const runner = createClaudePlanningAgentRunner({ runClaude, analyzeWebsite: vi.fn(async () => websiteAnalysis), analyzeRepo: vi.fn(async () => repoAnalysis) });
+
+    await expect(
+      runner({
+        kind: "initial",
+        productUrl: "https://product.example.com",
+        repoUrl: "https://github.com/example/product",
+        agent: "claude",
+        workspaceRoot,
+        outlinePath,
+      }),
+    ).rejects.toThrow("Claude planning modified files outside the allowed output boundary: node_modules");
   });
 
   it("runs follow-up planning with the stored resume handle and latest user message", async () => {

@@ -26,6 +26,7 @@ export const DEFAULT_CLAUDE_PLANNING_TIMEOUT_MS = 600_000;
 const TIMEOUT_KILL_GRACE_MS = 5_000;
 const TIMEOUT_CLOSE_FALLBACK_MS = 5_000;
 const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
+const STREAM_LINE_RETAIN_CHARS = 1024 * 1024;
 const CLAUDE_STDOUT_LOG_NAME = ".tinker-claude-planning-output.jsonl";
 const CLAUDE_STDERR_LOG_NAME = ".tinker-claude-planning-error.log";
 const WORKSPACE_INVENTORY_SKIP_NAMES = new Set([".git", "node_modules"]);
@@ -63,6 +64,14 @@ type RetainedOutput = {
 };
 
 type WorkspaceInventory = Map<string, string>;
+
+type ClaudePlanningOutputCapture = {
+  sessionId?: string;
+  assistantText: RetainedOutput;
+  hasAssistantText: boolean;
+  fallbackAssistantMessage?: string;
+  partialLine: string;
+};
 
 function effectiveTimeout(value: number | undefined, fallback: number) {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
@@ -118,6 +127,75 @@ function retainedOutputToLog(name: "stdout" | "stderr", output: RetainedOutput) 
   return `[${name} truncated: omitted ${output.omittedBytes} bytes; retained last ${output.retainedBytes} bytes]\n${text}`;
 }
 
+function retainedOutputText(output: RetainedOutput) {
+  return Buffer.concat(output.chunks, output.retainedBytes).toString("utf8");
+}
+
+function createClaudePlanningOutputCapture(): ClaudePlanningOutputCapture {
+  return { assistantText: createRetainedOutput(), hasAssistantText: false, partialLine: "" };
+}
+
+function appendAssistantTextCapture(capture: ClaudePlanningOutputCapture, text: string) {
+  if (capture.hasAssistantText) {
+    appendRetainedOutput(capture.assistantText, Buffer.from("\n", "utf8"));
+  }
+
+  capture.hasAssistantText = true;
+  appendRetainedOutput(capture.assistantText, Buffer.from(text, "utf8"));
+}
+
+function processClaudePlanningOutputLine(capture: ClaudePlanningOutputCapture, line: string) {
+  const trimmedLine = line.trim();
+  if (trimmedLine === "") return;
+
+  try {
+    const parsed = recordValue(JSON.parse(trimmedLine));
+    if (parsed === undefined) return;
+
+    if (typeof parsed.session_id === "string" && parsed.session_id.trim() !== "") {
+      capture.sessionId = parsed.session_id.trim();
+    }
+
+    const message = recordValue(parsed.message);
+    const assistantText = textFromClaudeContent(message?.content);
+    if (assistantText !== "") appendAssistantTextCapture(capture, assistantText);
+  } catch {
+    capture.fallbackAssistantMessage ??= trimmedLine.slice(0, LOG_STREAM_RETAIN_BYTES);
+  }
+}
+
+function appendClaudePlanningOutputCapture(capture: ClaudePlanningOutputCapture, chunk: Buffer) {
+  const lines = `${capture.partialLine}${chunk.toString("utf8")}`.split(/\r?\n/);
+  capture.partialLine = lines.pop() ?? "";
+  if (capture.partialLine.length > STREAM_LINE_RETAIN_CHARS) {
+    capture.partialLine = capture.partialLine.slice(-STREAM_LINE_RETAIN_CHARS);
+  }
+
+  for (const line of lines) {
+    processClaudePlanningOutputLine(capture, line);
+  }
+}
+
+function finalizeClaudePlanningOutputCapture(capture: ClaudePlanningOutputCapture) {
+  processClaudePlanningOutputLine(capture, capture.partialLine);
+  capture.partialLine = "";
+}
+
+function capturedClaudePlanningOutputToStdout(capture: ClaudePlanningOutputCapture) {
+  const lines: string[] = [];
+  if (capture.sessionId !== undefined) {
+    lines.push(JSON.stringify({ session_id: capture.sessionId }));
+  }
+
+  if (capture.hasAssistantText) {
+    lines.push(JSON.stringify({ message: { content: [{ type: "text", text: retainedOutputText(capture.assistantText) }] } }));
+  } else if (capture.fallbackAssistantMessage !== undefined) {
+    lines.push(capture.fallbackAssistantMessage);
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
 function normalizeWorkspaceRelativePath(path: string) {
   return path.split(sep).join("/");
 }
@@ -129,18 +207,20 @@ async function captureWorkspaceInventory(workspaceRoot: string): Promise<Workspa
     const entries = await readdir(directory, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (WORKSPACE_INVENTORY_SKIP_NAMES.has(entry.name)) {
+      const absolutePath = join(directory, entry.name);
+      const relativePath = normalizeWorkspaceRelativePath(relative(workspaceRoot, absolutePath));
+      const stats = await lstat(absolutePath);
+
+      if (WORKSPACE_INVENTORY_SKIP_NAMES.has(entry.name) && stats.isDirectory()) {
+        inventory.set(relativePath, `skipped-directory:${stats.size}:${stats.mtimeMs}`);
         continue;
       }
 
-      const absolutePath = join(directory, entry.name);
-      const relativePath = normalizeWorkspaceRelativePath(relative(workspaceRoot, absolutePath));
       if (entry.isDirectory()) {
         await visit(absolutePath);
         continue;
       }
 
-      const stats = await lstat(absolutePath);
       if (stats.isSymbolicLink()) {
         inventory.set(relativePath, `symlink:${stats.size}:${stats.mtimeMs}`);
         continue;
@@ -310,6 +390,7 @@ export async function defaultRunClaudePlanningProcess(input: ClaudePlanningProce
 
   const stdout = createRetainedOutput();
   const stderr = createRetainedOutput();
+  const capturedStdout = createClaudePlanningOutputCapture();
   const result = await new Promise<{
     code: number | null;
     signal: NodeJS.Signals | null;
@@ -391,7 +472,9 @@ export async function defaultRunClaudePlanningProcess(input: ClaudePlanningProce
     }
 
     child.stdout.on("data", (chunk) => {
-      appendRetainedOutput(stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8"));
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8");
+      appendRetainedOutput(stdout, buffer);
+      appendClaudePlanningOutputCapture(capturedStdout, buffer);
     });
 
     child.stderr.on("data", (chunk) => {
@@ -410,6 +493,7 @@ export async function defaultRunClaudePlanningProcess(input: ClaudePlanningProce
 
   const stdoutText = retainedOutputToLog("stdout", stdout);
   const stderrText = retainedOutputToLog("stderr", stderr);
+  finalizeClaudePlanningOutputCapture(capturedStdout);
   await Promise.all([writeFile(stdoutPath, stdoutText), writeFile(stderrPath, stderrText)]);
 
   if (result.startError !== undefined) {
@@ -425,7 +509,7 @@ export async function defaultRunClaudePlanningProcess(input: ClaudePlanningProce
     throw new Error(`Claude planning process failed with ${reason}; see ${stderrPath}`);
   }
 
-  return { stdout: stdoutText };
+  return { stdout: capturedClaudePlanningOutputToStdout(capturedStdout) };
 }
 
 export function createClaudePlanningAgentRunner(options: ClaudePlanningAgentRunnerOptions = {}): PlanningAgentRunner {
@@ -443,12 +527,30 @@ export function createClaudePlanningAgentRunner(options: ClaudePlanningAgentRunn
 
     async function runClaudeWithBoundary(prompt: string, resumeHandle?: string) {
       const before = await captureWorkspaceInventory(input.workspaceRoot);
-      const result = await runClaude({ cwd: input.workspaceRoot, prompt, ...(resumeHandle === undefined ? {} : { resumeHandle }) });
+      let result: ClaudePlanningProcessResult | undefined;
+      let runError: unknown;
+      try {
+        result = await runClaude({ cwd: input.workspaceRoot, prompt, ...(resumeHandle === undefined ? {} : { resumeHandle }) });
+      } catch (error) {
+        runError = error;
+      }
+
       const after = await captureWorkspaceInventory(input.workspaceRoot);
       const allowedPaths = allowedClaudeWritePaths(input.workspaceRoot, input.outlinePath);
       const unexpectedChanges = changedWorkspacePaths(before, after).filter((path) => !allowedPaths.has(path));
       if (unexpectedChanges.length > 0) {
-        throw new Error(`Claude planning modified files outside the allowed output boundary: ${unexpectedChanges.join(", ")}`);
+        const originalError = runError instanceof Error && runError.message.trim() !== "" ? `; original error: ${runError.message}` : "";
+        throw new Error(`Claude planning modified files outside the allowed output boundary: ${unexpectedChanges.join(", ")}${originalError}`, {
+          cause: runError,
+        });
+      }
+
+      if (runError !== undefined) {
+        throw runError;
+      }
+
+      if (result === undefined) {
+        throw new Error("Claude planning process returned no result.");
       }
 
       return result;
