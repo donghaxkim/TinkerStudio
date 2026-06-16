@@ -49,6 +49,28 @@ const outlineSchema = {
   generationNotes: ["non-empty string"],
 };
 
+const defaultDemoStructure = {
+  arc: "Hook -> Demo: Use Case -> End Result -> CTA",
+  scenes: [
+    { section: "Hook", purpose: "Open with the user problem, product promise, or highest-value outcome." },
+    { section: "Demo: Use Case", purpose: "Show a concrete product workflow or use case with real UI evidence." },
+    { section: "End Result", purpose: "Reveal the completed state, proof, output, or measurable result." },
+    { section: "CTA", purpose: "Close with the next action the viewer should take." },
+  ],
+  planningRule:
+    "Use this as the starting recommendation, not a hard constraint. Do not require exactly four scenes; users may delete, reorder, rename, or replace sections during planning.",
+};
+
+const initialPlanningNarrativeInstructions = [
+  `Draft outline.json with the default narrative arc: ${defaultDemoStructure.arc}.`,
+  defaultDemoStructure.planningRule,
+];
+
+const followupPlanningNarrativeInstructions = [
+  `For follow-up turns, preserve ${defaultDemoStructure.arc} unless the user asks for a different narrative structure.`,
+  "If the user asks to change the structure, update outline.json to match the user's requested structure.",
+];
+
 const planningInstructions = [
   "Maintain outline.json",
   "The only allowed write is outline.json.",
@@ -375,13 +397,14 @@ export function buildInitialPrompt(input: InitialPlanningAgentTurnInput, website
   return JSON.stringify(
     {
       task: "Plan a Hyperframes product demo by maintaining the demo outline only.",
-      instructions: planningInstructions,
+      instructions: [...planningInstructions, ...initialPlanningNarrativeInstructions],
       safetyInstructions: planningInstructions,
       productUrl: input.productUrl,
       repoUrl: input.repoUrl,
       repositoryDirectory: repoCheckoutDirectory,
       outlinePath: input.outlinePath,
       outlineSchema,
+      defaultDemoStructure,
       websiteAnalysis,
       repoAnalysis,
     },
@@ -394,7 +417,8 @@ export function buildFollowupPrompt(input: FollowupPlanningAgentTurnInput) {
   return JSON.stringify(
     {
       task: "Continue planning the Hyperframes product demo by updating outline.json when needed.",
-      instructions: planningInstructions,
+      instructions: [...planningInstructions, ...followupPlanningNarrativeInstructions],
+      defaultDemoStructure,
       userMessage: input.message,
       outlinePath: input.outlinePath,
     },
