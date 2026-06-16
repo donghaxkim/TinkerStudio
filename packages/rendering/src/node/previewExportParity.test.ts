@@ -187,14 +187,16 @@ function filterComplexWithCursorImageFor(project: DemoProject, cursorImage: type
 function cursorOverlaysFor(project: DemoProject) {
   return [
     ...filterComplexFor(project).matchAll(
-      /overlay=x=(-?\d+):y=(-?\d+):enable='between\(t\\,(\d+(?:\.\d+)?)\\,(\d+(?:\.\d+)?)\)'\[cursor\d+\]/g,
+      /\[[^\]]+\]\[cursor_icon\d+\]overlay=x='([^']+)':y='([^']+)':enable='between\(t\\,(\d+(?:\.\d+)?)\\,(\d+(?:\.\d+)?)\)'\[cursor\d+\]/g,
     ),
-  ].map((match) => ({
-    x: Number(match[1]),
-    y: Number(match[2]),
-    start: Number(match[3]),
-    end: Number(match[4]),
-  }));
+  ]
+    .map((match) => ({
+      x: Number(match[1]),
+      y: Number(match[2]),
+      start: Number(match[3]),
+      end: Number(match[4]),
+    }))
+    .filter((overlay) => Number.isFinite(overlay.x) && Number.isFinite(overlay.y));
 }
 
 function drawboxesFor(project: DemoProject) {
@@ -392,7 +394,25 @@ describe("preview/export cursor-settings parity (PB-006)", () => {
   });
 
   it("splits the cursor image stream for multiple cursor points", () => {
-    expect(filterComplexFor(cursorProject())).toContain("split=2[cursor_icon0][cursor_icon1]");
+    expect(filterComplexFor(projectWith({
+      zooms: [],
+      cursorEvents: [
+        { id: "move_start", time: 0, type: "move", x: 0, y: 0 },
+        { id: "move_end", time: 1, type: "move", x: 1920, y: 1080 },
+      ],
+    }))).toContain("split=2[cursor_icon0][cursor_icon1]");
+  });
+
+  it("animates cursor movement between adjacent points with time-based overlay coordinates", () => {
+    const complex = filterComplexFor(projectWith({
+      zooms: [],
+      cursorEvents: [
+        { id: "move_start", time: 0, type: "move", x: 0, y: 0 },
+        { id: "move_end", time: 1, type: "move", x: 1920, y: 1080 },
+      ],
+    }));
+
+    expect(complex).toMatch(/overlay=x='[^']*t[^']*':y='[^']*t[^']*':enable='between\(t\\,0\\,1\)'\[cursor\d+\]/);
   });
 
   it("omits cursor filters when no cursor image is provided", () => {

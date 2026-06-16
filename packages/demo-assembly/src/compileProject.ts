@@ -163,6 +163,8 @@ function captureFrameRate(asset: CaptureAsset) {
   return typeof frameRate === "number" && Number.isFinite(frameRate) && frameRate > 0 ? frameRate : undefined;
 }
 
+const EXPORT_FRAME_RATE = 60;
+
 function captureFrameSize(asset: CaptureAsset, fallback: CompileProjectInput["capturePlan"]["viewport"]): FrameSize | undefined {
   const width = isPositiveFinite(asset.width) ? asset.width : fallback.width;
   const height = isPositiveFinite(asset.height) ? asset.height : fallback.height;
@@ -196,7 +198,7 @@ export function compileProject(input: CompileProjectInput): DemoProject {
     id: input.projectId,
     title: input.storyboard.title,
     duration,
-    fps: captureFrameRate(videoAsset) ?? 30,
+    fps: Math.max(captureFrameRate(videoAsset) ?? EXPORT_FRAME_RATE, EXPORT_FRAME_RATE),
     aspectRatio: input.storyboard.aspectRatio,
     createdAt: input.createdAt,
     updatedAt: input.createdAt,

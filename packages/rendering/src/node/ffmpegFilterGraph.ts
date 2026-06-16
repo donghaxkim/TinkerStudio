@@ -1,6 +1,7 @@
 import { resolveCursorSettings, type DemoProject } from "@tinker/project-schema";
 import {
   type CameraTransform,
+  type NormalizedCursorPoint,
   normalizeCursorTelemetry,
   normalizeZoomRegions,
   resolveDeterministicCameraTransform,
@@ -33,6 +34,17 @@ type SourceToOutputPlacement = {
   height: number;
   padX: number;
   padY: number;
+};
+type CursorOverlayPoint = {
+  time: number;
+  x: number;
+  y: number;
+};
+type CursorOverlaySegment = {
+  start: number;
+  end: number;
+  x: string;
+  y: string;
 };
 type FfmpegFilterGraphOptions = {
   cursorImage?: CursorImage;
@@ -134,8 +146,13 @@ function appendCursorFilters(
   const placement = sourceToOutputPlacement(plan);
   const emphasizeClicks = cursorSettings.clickEffect !== "none";
   const clickDisplaySeconds = cursorSettings.clickEffectDurationMs / 1000;
-  const cursorLabels = cursorPoints.map((_, index) => `cursor_icon${index}`);
+  const cursorSegments = buildCursorOverlaySegments(cursorPoints, placement, cursorImage, plan.timeline.duration);
+  const cursorLabels = cursorSegments.map((_, index) => `cursor_icon${index}`);
   let currentLabel = inputLabel;
+
+  if (cursorSegments.length === 0) {
+    return inputLabel;
+  }
 
   if (cursorLabels.length === 1) {
     filters.push(`movie=${ffmpegFilterPath(cursorImage.path)},format=rgba[${cursorLabels[0]}]`);
@@ -147,10 +164,6 @@ function appendCursorFilters(
     const isEmphasizedClick = point.type === "click" && emphasizeClicks;
     const emphasisSize = cursorSettings.clickEffect === "ripple" ? 34 : 30;
     const position = mapSourcePointToOutput(point.cx, point.cy, placement);
-    const cursorX = Math.round(position.x - cursorImage.hotspotX);
-    const cursorY = Math.round(position.y - cursorImage.hotspotY);
-    const cursorEnd = Math.min(plan.timeline.duration, point.time + 0.25);
-    let overlayInputLabel = currentLabel;
 
     if (isEmphasizedClick) {
       const emphasisLabel = `cursor_emphasis${index}`;
@@ -160,17 +173,93 @@ function appendCursorFilters(
       filters.push(
         `[${currentLabel}]drawbox=x=${clickX}:y=${clickY}:w=${emphasisSize}:h=${emphasisSize}:color=#fbbf24@0.90:t=fill:enable='${enableBetween(point.time, clickEnd)}'[${emphasisLabel}]`,
       );
-      overlayInputLabel = emphasisLabel;
+      currentLabel = emphasisLabel;
     }
+  });
 
+  cursorSegments.forEach((segment, index) => {
     const nextLabel = `cursor${index}`;
     filters.push(
-      `[${overlayInputLabel}][${cursorLabels[index]}]overlay=x=${cursorX}:y=${cursorY}:enable='${enableBetween(point.time, cursorEnd)}'[${nextLabel}]`,
+      `[${currentLabel}][${cursorLabels[index]}]overlay=x='${segment.x}':y='${segment.y}':enable='${enableBetween(segment.start, segment.end)}'[${nextLabel}]`,
     );
     currentLabel = nextLabel;
   });
 
   return currentLabel;
+}
+
+function buildCursorOverlaySegments(
+  cursorPoints: readonly NormalizedCursorPoint[],
+  placement: SourceToOutputPlacement,
+  cursorImage: CursorImage,
+  duration: number,
+): CursorOverlaySegment[] {
+  const points = coalesceCursorOverlayPoints(cursorPoints, placement, cursorImage, duration);
+  const segments: CursorOverlaySegment[] = [];
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const left = points[index];
+    const right = points[index + 1];
+
+    if (right.time - left.time <= MIN_INTERVAL_SECONDS) {
+      continue;
+    }
+
+    segments.push({
+      start: left.time,
+      end: right.time,
+      x: overlayLinearExpression(left.x, right.x, left.time, right.time),
+      y: overlayLinearExpression(left.y, right.y, left.time, right.time),
+    });
+  }
+
+  const last = points.at(-1);
+  if (last) {
+    const end = cleanTime(Math.min(duration, last.time + 0.25));
+
+    if (end - last.time > MIN_INTERVAL_SECONDS) {
+      segments.push({ start: last.time, end, x: ffmpegNumber(last.x), y: ffmpegNumber(last.y) });
+    }
+  }
+
+  return segments;
+}
+
+function coalesceCursorOverlayPoints(
+  cursorPoints: readonly NormalizedCursorPoint[],
+  placement: SourceToOutputPlacement,
+  cursorImage: CursorImage,
+  duration: number,
+): CursorOverlayPoint[] {
+  const points: CursorOverlayPoint[] = [];
+
+  for (const point of cursorPoints) {
+    const position = mapSourcePointToOutput(point.cx, point.cy, placement);
+    const next = {
+      time: cleanTime(clampTime(point.time, duration)),
+      x: cleanTime(position.x - cursorImage.hotspotX),
+      y: cleanTime(position.y - cursorImage.hotspotY),
+    };
+    const previous = points.at(-1);
+
+    if (previous && Math.abs(previous.time - next.time) <= MIN_INTERVAL_SECONDS) {
+      points[points.length - 1] = next;
+    } else {
+      points.push(next);
+    }
+  }
+
+  return points;
+}
+
+function overlayLinearExpression(start: number, end: number, startTime: number, endTime: number) {
+  const duration = endTime - startTime;
+
+  if (duration <= MIN_INTERVAL_SECONDS || Math.abs(end - start) <= MIN_INTERVAL_SECONDS) {
+    return ffmpegNumber(start);
+  }
+
+  return `${ffmpegNumber(start)}+(${ffmpegNumber(end - start)})*(t-${ffmpegNumber(startTime)})/${ffmpegNumber(duration)}`;
 }
 
 function ffmpegFilterPath(path: string) {

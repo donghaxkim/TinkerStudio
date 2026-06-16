@@ -72,7 +72,7 @@ assert.equal(project.assets[0]?.height, 720);
 assert.equal(project.assets[0]?.mimeType, "video/webm");
 assert.equal(project.assets[0]?.sizeBytes, 1234);
 assert.deepEqual(project.assets[0]?.metadata, { recorder: "playwright", frameRate: 25 });
-assert.equal(project.fps, 25);
+assert.equal(project.fps, 60);
 assert.equal(project.tracks[0]?.clips[0]?.assetId, "capture-video-main");
 assert.equal(project.tracks[0]?.clips[0]?.end, 12);
 assert.equal(project.tracks[0]?.clips[0]?.sourceEnd, 12);
