@@ -204,6 +204,45 @@ describe("camera transform", () => {
     expect(Number.isNaN(result.state.focus.cy)).toBe(false);
   });
 
+  it("falls back from invalid safe-zone radius without disabling cursor follow", () => {
+    const state = {
+      ...createCursorFollowCameraState(),
+      initialized: true,
+      lastTime: 0.95,
+      focus: { cx: 0.5, cy: 0.5 },
+      frozenFocus: { cx: 0.5, cy: 0.5 },
+    };
+
+    const fallback = computeCursorFollowFocus(state, [point(1, 0.82, 0.2)], 1, 3, 1, { cx: 0.5, cy: 0.5 });
+    const result = computeCursorFollowFocus(state, [point(1, 0.82, 0.2)], 1, 3, 1, { cx: 0.5, cy: 0.5 }, {
+      safeZoneRadius: Number.NaN,
+    });
+
+    expect(result.focus).toEqual(fallback.focus);
+    expect(result.focus.cx).toBeGreaterThan(0.5);
+    expect(result.focus.cy).toBeLessThan(0.5);
+  });
+
+  it("falls back from invalid full-zoom threshold without disabling zoom-out freeze", () => {
+    const state = {
+      ...createCursorFollowCameraState(),
+      initialized: true,
+      focus: { cx: 0.42, cy: 0.44 },
+      wasZoomed: true,
+      reachedFullZoom: true,
+      frozenFocus: { cx: 0.42, cy: 0.44 },
+    };
+
+    const fallback = computeCursorFollowFocus(state, [point(4, 0.9, 0.9)], 4, 3, 0.4, { cx: 0.5, cy: 0.5 });
+    const result = computeCursorFollowFocus(state, [point(4, 0.9, 0.9)], 4, 3, 0.4, { cx: 0.5, cy: 0.5 }, {
+      fullZoomThreshold: Number.NaN,
+    });
+
+    expect(result.focus).toEqual(fallback.focus);
+    expect(result.focus).toEqual({ cx: 0.42, cy: 0.44 });
+    expect(result.state.frozenFocus).toEqual({ cx: 0.42, cy: 0.44 });
+  });
+
   it("holds cursor-follow focus when elapsed time is not positive", () => {
     const state = {
       ...createCursorFollowCameraState(),

@@ -283,8 +283,8 @@ export function computeCursorFollowFocus(
   regionFocus: ZoomFocus,
   options: CursorFollowOptions = {},
 ): { focus: ZoomFocus; state: CursorFollowCameraState } {
-  const fullZoomThreshold = clamp(options.fullZoomThreshold ?? DEFAULT_FULL_ZOOM_THRESHOLD, 0, 1);
-  const safeZoneRadius = clamp(options.safeZoneRadius ?? DEFAULT_SAFE_ZONE_RADIUS, 0, 1);
+  const fullZoomThreshold = clamp(safeFinite(options.fullZoomThreshold, DEFAULT_FULL_ZOOM_THRESHOLD), 0, 1);
+  const safeZoneRadius = clamp(safeFinite(options.safeZoneRadius, DEFAULT_SAFE_ZONE_RADIUS), 0, 1);
   const cursor = interpolateCursorPosition(cursorPoints, time);
   const priorState = state.initialized && time >= state.lastTime ? state : createCursorFollowCameraState();
   const wasZoomed = priorState.wasZoomed || zoomStrength > 0;

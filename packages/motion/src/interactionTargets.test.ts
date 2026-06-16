@@ -131,6 +131,30 @@ describe("interaction target candidates", () => {
     });
   });
 
+  it("preserves an adjacent explicit target when a prior click is spatially unrelated", () => {
+    const candidates = buildInteractionFocusCandidates([click(1.4, 820, 820)], {
+      duration: 6,
+      frame,
+      explicitTargets: [explicit({ id: "zoom-left", time: 2.51, x: 100, y: 100, width: 100, height: 100 })],
+    });
+
+    expect(candidates.map((candidate) => candidate.kind)).toEqual(["click", "explicit"]);
+    expect(candidates[0]).toMatchObject<Partial<InteractionFocusCandidate>>({
+      kind: "click",
+      start: 1.15,
+      end: 2.5,
+      focus: { cx: 0.82, cy: 0.82 },
+    });
+    expect(candidates[1]).toMatchObject<Partial<InteractionFocusCandidate>>({
+      kind: "explicit",
+      start: 2.51,
+      end: 5.01,
+      focus: { cx: 0.15, cy: 0.15 },
+      targetSize: { width: 100, height: 100 },
+      zoomId: "zoom-left",
+    });
+  });
+
   it("refines a broad explicit target toward a nearby click while borrowing only tighter target size", () => {
     const candidates = buildInteractionFocusCandidates([click(2.1, 640, 360)], {
       duration: 6,

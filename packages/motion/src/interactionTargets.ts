@@ -404,6 +404,17 @@ function shouldSkipCandidate(
     }
 
     if (Math.abs(existing.centerTime - candidate.centerTime) < options.minSpacingSeconds) {
+      if (
+        (candidate.kind === "click" && existing.kind === "explicit") ||
+        (candidate.kind === "explicit" && existing.kind === "click")
+      ) {
+        if (clickSupersedesExplicit(candidate, existing, options)) {
+          return true;
+        }
+
+        continue;
+      }
+
       return true;
     }
   }
