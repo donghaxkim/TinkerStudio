@@ -488,6 +488,12 @@ input::placeholder {
   align-content: flex-start;
 }
 
+/* Contextual zoom property editor, shown in place of the chat body when the Zoom tab is active. */
+.tk-composition-chat-zoom {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* Assistant greeting / messages. */
 .tk-chat-msg {
   margin: 0;

@@ -1,3 +1,4 @@
+import { type ReactNode } from "react";
 import { type ChatContextRef, formatContextLabel } from "../../lib/chatContext.js";
 
 function ChatIcon() {
@@ -43,6 +44,17 @@ function SendIcon() {
   );
 }
 
+/** A crosshair — the Zoom (target) tab. */
+function ZoomTabIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="7" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export type CompositionChatPanelProps = {
   instruction: string;
   onInstructionChange: (value: string) => void;
@@ -62,6 +74,16 @@ export type CompositionChatPanelProps = {
   onAccept?: () => void;
   onReject?: () => void;
   unavailableReason?: string;
+  /**
+   * Contextual zoom property editor for the selected zoom unit. When supplied, a Zoom tab
+   * appears in the tab strip; when `zoomTabActive` is set it replaces the chat body (so the
+   * properties live inside this panel, not a separate inspector). Chat state is preserved —
+   * the composer is simply hidden behind the tab.
+   */
+  zoomProperties?: ReactNode;
+  zoomTabActive?: boolean;
+  onSelectChatTab?: () => void;
+  onSelectZoomTab?: () => void;
 };
 
 export function CompositionChatPanel({
@@ -79,28 +101,59 @@ export function CompositionChatPanel({
   isPreviewing,
   onAccept,
   onReject,
+  zoomProperties,
+  zoomTabActive = false,
+  onSelectChatTab,
+  onSelectZoomTab,
 }: CompositionChatPanelProps) {
   const drafting = status === "drafting";
   const editingUnavailable = onSend === undefined;
   const sendDisabled = editingUnavailable || instruction.trim() === "" || drafting;
   const showSuggestions =
     !editingUnavailable && status === "idle" && !isPreviewing && instruction.trim() === "" && (suggestions?.length ?? 0) > 0;
+  // The Zoom tab only exists while a zoom unit is selected (zoomProperties supplied). When it's
+  // the active tab, the properties replace the chat body; the chat composer is unmounted, but its
+  // state lives in the parent, so switching back restores it.
+  const hasZoomTab = zoomProperties != null;
+  const showZoom = hasZoomTab && zoomTabActive;
 
   return (
     <aside aria-label="Chat" className="tk-composition-chat">
       <div className="tk-composition-chat-surface">
         <div className="tk-composition-chat-tabs">
-          <button type="button" className="tk-tab-icon tk-tab-icon-on" aria-label="Chat to edit" aria-current="page">
+          <button
+            type="button"
+            className={`tk-tab-icon${showZoom ? "" : " tk-tab-icon-on"}`}
+            aria-label="Chat to edit"
+            {...(showZoom ? {} : { "aria-current": "page" as const })}
+            onClick={onSelectChatTab}
+          >
             <ChatIcon />
           </button>
-          <button type="button" className="tk-tab-icon" aria-label="Pointer" disabled>
-            <PointerIcon />
-          </button>
+          {hasZoomTab ? (
+            <button
+              type="button"
+              className={`tk-tab-icon${showZoom ? " tk-tab-icon-on" : ""}`}
+              aria-label="Zoom properties"
+              {...(showZoom ? { "aria-current": "page" as const } : {})}
+              onClick={onSelectZoomTab}
+            >
+              <ZoomTabIcon />
+            </button>
+          ) : (
+            <button type="button" className="tk-tab-icon" aria-label="Pointer" disabled>
+              <PointerIcon />
+            </button>
+          )}
           <button type="button" className="tk-tab-icon" aria-label="Media" disabled>
             <MediaIcon />
           </button>
         </div>
 
+        {showZoom ? (
+          <div className="tk-composition-chat-zoom">{zoomProperties}</div>
+        ) : (
+        <>
         <div className="tk-composition-chat-composer">
           {contextRefs.length ? (
             <div className="tk-composition-chat-context">
@@ -185,6 +238,8 @@ export function CompositionChatPanel({
             </div>
           ) : null}
         </div>
+        </>
+        )}
       </div>
     </aside>
   );
