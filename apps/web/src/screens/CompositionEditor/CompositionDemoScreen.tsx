@@ -3,6 +3,7 @@ import type { ApiGenerationJob } from "@tinker/generation-contract";
 import type { TimelineRegistryWindow } from "@tinker/editor";
 import type { CompositionEditClient } from "../../lib/compositionEditClient.js";
 import type { CompositionGenerationClient } from "../../lib/compositionGenerationClient.js";
+import type { CompositionPlanningClient } from "../../lib/compositionPlanningClient.js";
 import { useCompositionGenerationJob } from "../../lib/useCompositionGenerationJob.js";
 import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
 
@@ -10,6 +11,7 @@ const PREVIEW_COMPOSITION_URL = "/demo-composition/index.html";
 
 export type CompositionDemoScreenProps = {
   client: CompositionGenerationClient;
+  planningClient?: CompositionPlanningClient;
   editClient?: CompositionEditClient;
   /** Optional: render a Back button that calls this. */
   onBack?: () => void;
