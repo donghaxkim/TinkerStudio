@@ -1,9 +1,11 @@
 import { spawn } from "node:child_process";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import type { DemoProject } from "@tinker/project-schema";
 import { buildFinalRenderPlan, type FinalRenderPlan } from "../renderFinal.js";
 import { preflightExportAssets } from "./assetResolution.js";
+import { writeDefaultCursorPng } from "./cursorPng.js";
 import { freezeExportProjectSnapshot } from "./exportSnapshot.js";
 import { buildRealMediaFilterGraph, type FfmpegFilterGraph } from "./ffmpegFilterGraph.js";
 import { probeMp4Artifact, type ProbeCommandRunner, type ProbedMp4Artifact } from "./probeMp4Artifact.js";
@@ -51,12 +53,30 @@ export async function renderFinalToMp4(project: DemoProject, options: RenderFina
     consumer: "export",
   });
   const plan = buildFinalRenderPlan(snapshot, { fileName: basename(outputPath) });
-  const graph = buildRealMediaFilterGraph(snapshot, plan, resolutions);
-  const args = buildFfmpegArgs(plan, graph, outputPath);
+  const renderTempRoot = await mkdtemp(join(tmpdir(), "tinker-render-"));
   const runCommand = options.runCommand ?? runSpawnedFfmpegCommand;
+  let primaryError: unknown;
 
-  await mkdir(dirname(outputPath), { recursive: true });
-  await runCommand(options.ffmpegPath ?? "ffmpeg", args);
+  try {
+    const cursorImage = await writeDefaultCursorPng(renderTempRoot);
+    const graph = buildRealMediaFilterGraph(snapshot, plan, resolutions, { cursorImage });
+    const args = buildFfmpegArgs(plan, graph, outputPath);
+
+    await mkdir(dirname(outputPath), { recursive: true });
+    await runCommand(options.ffmpegPath ?? "ffmpeg", args);
+  } catch (error) {
+    primaryError = error;
+    throw error;
+  } finally {
+    try {
+      await rm(renderTempRoot, { recursive: true, force: true });
+    } catch (cleanupError) {
+      if (!primaryError) {
+        throw cleanupError;
+      }
+    }
+  }
+
   const probe = await probeMp4Artifact(outputPath, {
     ffprobePath: options.ffprobePath,
     runCommand: options.runProbe,

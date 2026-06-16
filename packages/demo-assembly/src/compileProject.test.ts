@@ -77,7 +77,7 @@ assert.equal(project.tracks[0]?.clips[0]?.assetId, "capture-video-main");
 assert.equal(project.tracks[0]?.clips[0]?.end, 12);
 assert.equal(project.tracks[0]?.clips[0]?.sourceEnd, 12);
 assert.equal(project.cursorEvents.length, 3);
-assert.deepEqual(project.cursor, { clickEffect: "none" });
+assert.equal(project.cursor, undefined);
 assert.equal(project.zooms.length, 1);
 assert.equal(project.zooms[0]?.id, "zoom-3");
 assert.equal(project.metadata.productUrl, "http://127.0.0.1:4173/");

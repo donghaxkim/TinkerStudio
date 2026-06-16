@@ -289,8 +289,8 @@ describe("camera transform", () => {
     const full = resolveDeterministicCameraTransform(regions, [], 2.5, { transitionSeconds: 1 });
 
     expect(ramp.activeZoomId).toBe("zoom_001");
-    expect(ramp.strength).toBeCloseTo(0.02);
-    expect(ramp.scale).toBeCloseTo(1.028);
+    expect(ramp.strength).toBeCloseTo(0.00856);
+    expect(ramp.scale).toBeCloseTo(1.011984);
     expect(full.strength).toBe(1);
     expect(full.scale).toBe(2.4);
   });

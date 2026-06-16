@@ -96,7 +96,7 @@ function ease(progress: number, easing: ZoomKeyframe["easing"]) {
   if (easing === "easeIn") return t * t;
   if (easing === "easeOut") return 1 - (1 - t) * (1 - t);
 
-  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
 function rampStrength(region: NormalizedZoomRegion, time: number, fallbackTransitionSeconds: number) {

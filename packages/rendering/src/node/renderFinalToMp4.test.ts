@@ -951,6 +951,9 @@ describe("renderFinalToMp4", () => {
     });
 
     const filter = filterComplex(calls[0]?.args ?? []);
+    expect(filter).toContain("cursor-arrow.png");
+    expect(filter).toContain("movie=");
+    expect(filter).toContain("overlay=x=");
     expect(filter).toContain("drawbox=");
     expect(filter).toContain("crop=");
     expect(filter).toContain("scale=1920:1080");
