@@ -117,10 +117,11 @@ describe("camera transform", () => {
     expect(result.state).not.toBe(state);
   });
 
-  it("recenters cursor-follow focus after cursor leaves the safe zone", () => {
+  it("moves cursor-follow focus partially toward far cursor targets instead of jumping", () => {
     const state = {
       ...createCursorFollowCameraState(),
       initialized: true,
+      lastTime: 0.95,
       focus: { cx: 0.5, cy: 0.5 },
       frozenFocus: { cx: 0.5, cy: 0.5 },
     };
@@ -135,8 +136,42 @@ describe("camera transform", () => {
       { safeZoneRadius: 0.12 },
     );
 
-    expect(result.focus).toEqual({ cx: 0.82, cy: 0.2 });
-    expect(result.state.focus).toEqual({ cx: 0.82, cy: 0.2 });
+    expect(result.focus.cx).toBeGreaterThan(0.5);
+    expect(result.focus.cx).toBeLessThan(0.82);
+    expect(result.focus.cy).toBeGreaterThan(0.2);
+    expect(result.focus.cy).toBeLessThan(0.5);
+    expect(result.state.focus).toEqual(result.focus);
+  });
+
+  it("uses a larger follow step for farther cursor movement", () => {
+    const state = {
+      ...createCursorFollowCameraState(),
+      initialized: true,
+      lastTime: 0.95,
+      focus: { cx: 0.5, cy: 0.5 },
+      frozenFocus: { cx: 0.5, cy: 0.5 },
+    };
+
+    const near = computeCursorFollowFocus(
+      state,
+      [point(1, 0.65, 0.5)],
+      1,
+      3,
+      1,
+      { cx: 0.5, cy: 0.5 },
+      { safeZoneRadius: 0.12 },
+    );
+    const far = computeCursorFollowFocus(
+      state,
+      [point(1, 0.85, 0.5)],
+      1,
+      3,
+      1,
+      { cx: 0.5, cy: 0.5 },
+      { safeZoneRadius: 0.12 },
+    );
+
+    expect(far.focus.cx - 0.5).toBeGreaterThan(near.focus.cx - 0.5);
   });
 
   it("freezes cursor-follow focus during zoom-out after full zoom was reached", () => {
@@ -263,7 +298,9 @@ describe("camera transform", () => {
     });
 
     expect(second).toEqual(first);
-    expect(first.focus).toEqual({ cx: 0.791666666667, cy: 0.208333333333 });
+    expect(first.focus.cx).toBeGreaterThan(0.294117647059);
+    expect(first.focus.cx).toBeLessThanOrEqual(0.791666666667);
+    expect(first.focus.cy).toBeCloseTo(0.208333333333, 9);
     expect(first.activeZoomId).toBe("zoom_001");
   });
 
@@ -276,9 +313,12 @@ describe("camera transform", () => {
       transitionSeconds: 0,
     });
 
-    // Full zoom locks at t=2 on the cursor's in-flight position; the final
-    // cursor sample at t=2.2 lands inside the safe zone so focus holds steady.
-    expect(transform.focus).toEqual({ cx: 0.782, cy: 0.254 });
+    // Full zoom moves partially toward the cursor's in-flight position; the
+    // final cursor sample lands inside the safe zone so focus holds steady.
+    expect(transform.focus.cx).toBeGreaterThan(0.208333333333);
+    expect(transform.focus.cx).toBeLessThan(0.782);
+    expect(transform.focus.cy).toBeGreaterThan(0.208333333333);
+    expect(transform.focus.cy).toBeLessThan(0.5);
     expect(transform.scale).toBe(2.4);
   });
 
@@ -325,7 +365,7 @@ describe("camera transform", () => {
     const cursorPoints = [point(1.05, 0.82, 0.2), point(1.25, 0.25, 0.8)];
     let state = createCursorFollowCameraState();
 
-    for (const time of [1, 1.15, 1.25]) {
+    for (const time of [1, 1.05, 1.15, 1.25]) {
       state = resolveCameraTransformWithCursorFollow(regions, cursorPoints, time, state, { transitionSeconds: 1 }).state;
     }
 

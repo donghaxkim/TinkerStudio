@@ -35,6 +35,9 @@ export type CursorFollowCameraState = {
 type CursorFollowOptions = {
   safeZoneRadius?: number;
   fullZoomThreshold?: number;
+  minFollowFactor?: number;
+  maxFollowFactor?: number;
+  followTimeScaleSeconds?: number;
 };
 
 type ResolveWithCursorFollowOptions = {
@@ -56,6 +59,9 @@ const IDENTITY_FOCUS: ZoomFocus = { cx: 0.5, cy: 0.5 };
 const DEFAULT_TRANSITION_SECONDS = 0.2;
 const DEFAULT_SAFE_ZONE_RADIUS = 0.18;
 const DEFAULT_FULL_ZOOM_THRESHOLD = 0.999;
+const DEFAULT_MIN_FOLLOW_FACTOR = 0.08;
+const DEFAULT_MAX_FOLLOW_FACTOR = 0.48;
+const DEFAULT_FOLLOW_TIME_SCALE_SECONDS = 0.08;
 const POST_REGION_RESET_SAMPLE_SECONDS = 0.000001;
 const TERMINAL_ZOOM_EPSILON_SECONDS = 0.000001;
 
@@ -87,6 +93,33 @@ function clampFocus(focus: ZoomFocus, scale: number): ZoomFocus {
     cx: cleanNumber(clamp(focus.cx, bounds.min, bounds.max)),
     cy: cleanNumber(clamp(focus.cy, bounds.min, bounds.max)),
   };
+}
+
+function safeNonNegative(value: number | undefined, fallback: number) {
+  return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function distanceAdaptiveFollowFactor(
+  distance: number,
+  elapsedSeconds: number,
+  safeZoneRadius: number,
+  options: CursorFollowOptions,
+) {
+  const minFollow = clamp(options.minFollowFactor ?? DEFAULT_MIN_FOLLOW_FACTOR, 0, 1);
+  const maxFollow = clamp(options.maxFollowFactor ?? DEFAULT_MAX_FOLLOW_FACTOR, minFollow, 1);
+  const timeScale = safePositive(
+    options.followTimeScaleSeconds ?? DEFAULT_FOLLOW_TIME_SCALE_SECONDS,
+    DEFAULT_FOLLOW_TIME_SCALE_SECONDS,
+  );
+  const distanceProgress = clamp((distance - safeZoneRadius) / Math.max(0.000001, 1 - safeZoneRadius), 0, 1);
+  const baseFactor = minFollow + (maxFollow - minFollow) * distanceProgress;
+  const timeProgress = safeNonNegative(elapsedSeconds, 0) / timeScale;
+
+  return cleanNumber(clamp(1 - Math.pow(1 - baseFactor, timeProgress), 0, 1));
+}
+
+function normalizedDistance(left: ZoomFocus, right: ZoomFocus) {
+  return Math.hypot(right.cx - left.cx, right.cy - left.cy);
 }
 
 function ease(progress: number, easing: ZoomKeyframe["easing"]) {
@@ -290,12 +323,20 @@ export function computeCursorFollowFocus(
 
   if (cursor) {
     const cursorFocus = clampFocus({ cx: cursor.cx, cy: cursor.cy }, zoomScale);
-    const outsideSafeZone =
-      Math.abs(cursorFocus.cx - nextFocus.cx) > safeZoneRadius ||
-      Math.abs(cursorFocus.cy - nextFocus.cy) > safeZoneRadius;
+    const distance = normalizedDistance(nextFocus, cursorFocus);
 
-    if (outsideSafeZone) {
-      nextFocus = cursorFocus;
+    if (distance > safeZoneRadius) {
+      const elapsedSeconds = priorState.initialized
+        ? Math.max(0, time - priorState.lastTime)
+        : DEFAULT_FOLLOW_TIME_SCALE_SECONDS;
+      const followFactor = distanceAdaptiveFollowFactor(distance, elapsedSeconds, safeZoneRadius, options);
+      nextFocus = clampFocus(
+        {
+          cx: cleanNumber(nextFocus.cx + (cursorFocus.cx - nextFocus.cx) * followFactor),
+          cy: cleanNumber(nextFocus.cy + (cursorFocus.cy - nextFocus.cy) * followFactor),
+        },
+        zoomScale,
+      );
     }
   }
 
