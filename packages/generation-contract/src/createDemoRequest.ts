@@ -46,6 +46,8 @@ const PublicGithubRepoUrlSchema = z.string().url().refine((value) => {
 
 export const AiUrlRendererSchema = z.enum(["hyperframes", "playwright", "both"]);
 export type AiUrlRenderer = z.infer<typeof AiUrlRendererSchema>;
+export const HyperframesAgentSchema = z.enum(["opencode", "claude"]);
+export type HyperframesAgent = z.infer<typeof HyperframesAgentSchema>;
 
 const BaseCreateDemoRequestSchema = z.object({
   id: z.string().min(1).optional(),
@@ -64,6 +66,7 @@ export const AiUrlPlanningCreateDemoRequestSchema = BaseCreateDemoRequestSchema.
   repoUrl: PublicGithubRepoUrlSchema,
   productUrl: PublicUrlSchema,
   renderer: AiUrlRendererSchema.default("hyperframes"),
+  hyperframesAgent: HyperframesAgentSchema.default("opencode"),
 });
 
 export const AssistedCreateDemoRequestSchema = z.object({

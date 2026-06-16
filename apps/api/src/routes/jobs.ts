@@ -139,6 +139,7 @@ export function registerJobsRoutes(server: FastifyInstance, options: JobsRoutesO
       durationCapSeconds: parsed.data.durationCapSeconds,
       aspectRatio: parsed.data.aspectRatio,
       renderer,
+      hyperframesAgent: parsed.data.hyperframesAgent,
       ...(parsed.data.prompt === undefined ? {} : { prompt: parsed.data.prompt }),
     });
     if (!acceptedRequestResult.success) {

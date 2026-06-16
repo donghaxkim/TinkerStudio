@@ -455,6 +455,7 @@ const repairedResult = await runAiUrlDemo({
   productUrl,
   repoUrl,
   renderer: "hyperframes",
+  hyperframesAgent: "opencode",
   prompt,
   durationCapSeconds: 10,
   aspectRatio: "16:9",
@@ -483,6 +484,7 @@ const repairedResult = await runAiUrlDemo({
   repairHyperframes: async (input) => {
     repairCalls.push({ failureStage: input.failureStage, logText: input.logText });
     assert.equal(existsSync(input.repoCheckoutDirectory), true);
+    assert.equal(input.hyperframesAgent, "opencode");
   },
   runCapture: async () => {
     throw new Error("runCapture should not run for Hyperframes repair test");

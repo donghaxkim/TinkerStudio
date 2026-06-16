@@ -30,6 +30,7 @@ const request: AiUrlPlanningCreateDemoRequest = {
   durationCapSeconds: 12,
   aspectRatio: "16:9",
   renderer: "hyperframes",
+  hyperframesAgent: "opencode",
 };
 
 const runningEvent: ManualFixtureProgressEvent = {
@@ -224,7 +225,7 @@ describe("job routes", () => {
     aspectRatio: "16:9",
   } as const;
 
-  it("accepts explicit Hyperframes jobs, injects the server id, runs Hyperframes, and exposes completed snapshots", async () => {
+  it("accepts explicit Hyperframes jobs, preserves the selected agent, injects the server id, and exposes completed snapshots", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-${randomUUID()}-`));
     const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
     const completed = deferred<void>();
@@ -236,6 +237,7 @@ describe("job routes", () => {
           ...validBody,
           id: "job-test",
           renderer: "hyperframes",
+          hyperframesAgent: "claude",
         });
         expect(rawRequest).not.toMatchObject({ id: "client-id" });
         options?.onProgress?.(runningEvent);
@@ -270,14 +272,14 @@ describe("job routes", () => {
       const postResponse = await server.inject({
         method: "POST",
         url: "/api/jobs",
-        payload: { ...validBody, id: "client-id", renderer: "hyperframes" },
+        payload: { ...validBody, id: "client-id", renderer: "hyperframes", hyperframesAgent: "claude" },
       });
 
       expect(postResponse.statusCode).toBe(202);
       expect(JSON.parse(postResponse.body)).toMatchObject({
         id: "job-test",
         status: "queued",
-        request: { id: "job-test", renderer: "hyperframes" },
+        request: { id: "job-test", renderer: "hyperframes", hyperframesAgent: "claude" },
       });
 
       await completed.promise;
@@ -322,6 +324,7 @@ describe("job routes", () => {
           durationCapSeconds: 12,
           aspectRatio: "16:9",
           renderer: "hyperframes",
+          hyperframesAgent: "opencode",
         });
         completed.resolve();
         return {
@@ -367,6 +370,7 @@ describe("job routes", () => {
           repoUrl: "https://github.com/example/product",
           productUrl: "https://product.example.com",
           renderer: "hyperframes",
+          hyperframesAgent: "opencode",
         },
       });
       await completed.promise;

@@ -11,7 +11,7 @@ const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
 const OPENCODE_SANDBOX_DIRECTORY = ".tinker-opencode-workspace";
 const REPOSITORY_SNAPSHOT_DIRECTORY = "repository";
 const HYPERFRAMES_AGENT_VALUES = ["opencode", "claude"] as const;
-type HyperframesAgent = (typeof HYPERFRAMES_AGENT_VALUES)[number];
+export type HyperframesAgent = (typeof HYPERFRAMES_AGENT_VALUES)[number];
 type HyperframesAgentCommand = {
   executable: "opencode" | "claude";
   args: string[];
@@ -62,6 +62,7 @@ export type HyperframesOpencodeRunOptions = {
   cwd: string;
   logDir: string;
   repoCheckoutDirectory?: string;
+  hyperframesAgent?: HyperframesAgent;
 };
 
 export type HyperframesOpencodeRun = (prompt: string, options: HyperframesOpencodeRunOptions) => Promise<string>;
@@ -76,11 +77,13 @@ export type GenerateHyperframesProjectInput = {
   repoAnalysis: RepoAnalysis;
   repoCheckoutDirectory: string;
   hyperframesDir: string;
+  hyperframesAgent?: HyperframesAgent;
 };
 
 export type RepairHyperframesProjectInput = {
   repoCheckoutDirectory: string;
   hyperframesDir: string;
+  hyperframesAgent?: HyperframesAgent;
   failureStage: string;
   logText: string;
 };
@@ -548,13 +551,14 @@ export function createOpencodeHyperframesRepairer(options: OpencodeHyperframesOp
     assertRequiredPath(input.repoCheckoutDirectory, "repoCheckoutDirectory");
     assertRequiredPath(input.hyperframesDir, "hyperframesDir");
     if (runOpencode === defaultRunOpencode) {
-      selectHyperframesAgent();
+      selectHyperframesAgent(input.hyperframesAgent ?? process.env.TINKER_HYPERFRAMES_AGENT);
     }
     try {
       await runOpencode(buildRepairPrompt(input), {
         cwd: hyperframesOpencodeSandboxDirectory(input.hyperframesDir),
         logDir: input.hyperframesDir,
         repoCheckoutDirectory: input.repoCheckoutDirectory,
+        hyperframesAgent: input.hyperframesAgent,
       });
     } finally {
       await cleanupOpencodeSandbox(input.hyperframesDir);

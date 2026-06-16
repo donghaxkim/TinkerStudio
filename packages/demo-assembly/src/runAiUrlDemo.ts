@@ -24,6 +24,7 @@ import {
   createOpencodeHyperframesGenerator,
   createOpencodeHyperframesRepairer,
   type GenerateHyperframesProject,
+  type HyperframesAgent,
   type RepairHyperframesProject,
 } from "./hyperframesPlanning.js";
 import { runHyperframesRender, type RunHyperframesRenderInput, type RunHyperframesRenderResult } from "./hyperframesRender.js";
@@ -70,6 +71,7 @@ export type RunAiUrlDemoInput = {
   aspectRatio: AspectRatio;
   repoUrl?: string;
   renderer?: AiUrlRenderer;
+  hyperframesAgent?: HyperframesAgent;
   onPhase?: (phase: AiUrlDemoPhase) => void;
   analyzeWebsite?: AnalyzeWebsiteDependency;
   analyzeRepo?: AnalyzeRepoDependency;
@@ -280,6 +282,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
         await repairHyperframes({
           repoCheckoutDirectory,
           hyperframesDir,
+          hyperframesAgent: input.hyperframesAgent,
           failureStage: "validation",
           logText: formatErrorMessage(error),
         });
@@ -303,6 +306,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
         await repairHyperframes({
           repoCheckoutDirectory,
           hyperframesDir,
+          hyperframesAgent: input.hyperframesAgent,
           failureStage: failure.failureStage,
           logText: await readHyperframesFailureLog(hyperframesDir, failure.failureStage, failure.message),
         });

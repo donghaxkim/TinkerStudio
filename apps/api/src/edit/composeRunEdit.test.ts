@@ -15,7 +15,7 @@ async function seededRecord() {
   await mkdir(join(outputRoot, "hyperframes"), { recursive: true });
   await writeFile(join(outputRoot, "hyperframes", "index.html"), HTML, "utf8");
   const store = createJobStore();
-  store.create({ id: "j", request: { mode: "ai-url-planning", repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9", renderer: "hyperframes" }, outputRoot, now: "2026-06-14T00:00:00.000Z" });
+  store.create({ id: "j", request: { mode: "ai-url-planning", repoUrl: "https://github.com/a/b", productUrl: "https://a.com", durationCapSeconds: 60, aspectRatio: "16:9", renderer: "hyperframes", hyperframesAgent: "opencode" }, outputRoot, now: "2026-06-14T00:00:00.000Z" });
   store.complete("j", completedResult, "2026-06-14T00:00:00.000Z");
   return { store, outputRoot };
 }

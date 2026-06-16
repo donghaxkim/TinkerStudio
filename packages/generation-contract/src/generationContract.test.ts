@@ -36,6 +36,7 @@ const validAiUrlRequest = CreateDemoRequestSchema.parse({
 
 assert.equal("mode" in validAiUrlRequest ? validAiUrlRequest.mode : undefined, "ai-url-planning");
 assert.equal(validAiUrlRequest.productUrl, "http://127.0.0.1:3000/");
+assert.equal("hyperframesAgent" in validAiUrlRequest ? validAiUrlRequest.hyperframesAgent : undefined, "opencode");
 
 const aiUrlBaseRequest = {
   mode: "ai-url-planning",
@@ -48,11 +49,18 @@ const aiUrlBaseRequest = {
 const parsedDefaultRendererRequest = parseCreateDemoRequest(aiUrlBaseRequest);
 assert.equal("mode" in parsedDefaultRendererRequest ? parsedDefaultRendererRequest.mode : undefined, "ai-url-planning");
 assert.equal("renderer" in parsedDefaultRendererRequest ? parsedDefaultRendererRequest.renderer : undefined, "hyperframes");
+assert.equal("hyperframesAgent" in parsedDefaultRendererRequest ? parsedDefaultRendererRequest.hyperframesAgent : undefined, "opencode");
 
 for (const renderer of ["hyperframes", "playwright", "both"] as const) {
   const parsed = parseCreateDemoRequest({ ...aiUrlBaseRequest, renderer });
   assert.equal("mode" in parsed ? parsed.mode : undefined, "ai-url-planning");
   assert.equal("renderer" in parsed ? parsed.renderer : undefined, renderer);
+}
+
+for (const hyperframesAgent of ["opencode", "claude"] as const) {
+  const parsed = parseCreateDemoRequest({ ...aiUrlBaseRequest, hyperframesAgent });
+  assert.equal("mode" in parsed ? parsed.mode : undefined, "ai-url-planning");
+  assert.equal("hyperframesAgent" in parsed ? parsed.hyperframesAgent : undefined, hyperframesAgent);
 }
 
 assert.equal(
@@ -66,6 +74,7 @@ assert.equal(
 );
 
 assert.equal(safeParseCreateDemoRequest({ ...aiUrlBaseRequest, renderer: "remotion" }).success, false);
+assert.equal(safeParseCreateDemoRequest({ ...aiUrlBaseRequest, hyperframesAgent: "fable" }).success, false);
 
 for (const repoUrl of ["https://github.com/example/product", "https://github.com/example/product.git"]) {
   const request = CreateDemoRequestSchema.parse({
