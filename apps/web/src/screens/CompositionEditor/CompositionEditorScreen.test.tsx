@@ -168,6 +168,43 @@ describe("CompositionEditorScreen", () => {
     expect(screen.getByTestId("composition-clip-feature")).toHaveTextContent("4.0s");
   });
 
+  it("creates a zoom unit on the zoom track, with undo/redo and keyboard delete", async () => {
+    const handle = fakeHandle(() => undefined);
+    render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("zoom-track")).toBeInTheDocument());
+
+    const zoomTrack = screen.getByTestId("zoom-track");
+    vi.spyOn(zoomTrack, "getBoundingClientRect").mockReturnValue({
+      left: 0, width: 1000, top: 0, right: 1000, bottom: 24, height: 24, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+
+    // Drag-create a 2s–6s zoom on the 10s timeline.
+    fireEvent.mouseDown(zoomTrack, { clientX: 200 });
+    fireEvent.mouseMove(zoomTrack, { clientX: 600 });
+    fireEvent.mouseUp(zoomTrack, { clientX: 600 });
+
+    const unit = await screen.findByTestId("zoom-unit-zoom-1");
+    expect(unit).toHaveStyle({ left: "20%", width: "40%" });
+    expect(unit).toHaveAttribute("data-selected", "true");
+
+    // Undo removes it; redo restores it (shares the timeline edit history).
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.queryByTestId("zoom-unit-zoom-1")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    expect(screen.getByTestId("zoom-unit-zoom-1")).toBeInTheDocument();
+
+    // Delete the selected unit from the zoom track.
+    fireEvent.keyDown(screen.getByTestId("zoom-unit-zoom-1"), { key: "Delete" });
+    expect(screen.queryByTestId("zoom-unit-zoom-1")).not.toBeInTheDocument();
+  });
+
   it("adds a clip selection to chat as a chip", async () => {
     const handle = fakeHandle(() => undefined);
     render(

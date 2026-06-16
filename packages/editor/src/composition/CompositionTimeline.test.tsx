@@ -275,6 +275,17 @@ describe("CompositionTimeline (trim handles)", () => {
     expect(screen.queryByTestId("composition-trim-tooltip")).not.toBeInTheDocument();
   });
 
+  it("renders the Zoom track beneath the clips only when a zoom prop is provided", () => {
+    const withZoom = { ...MODEL, zooms: [{ id: "z1", start: 2, end: 6 }] };
+    const { rerender } = render(<CompositionTimeline model={withZoom} currentTime={0} />);
+    // no zoom prop → no zoom row (keeps the main clip track uncluttered for existing usages)
+    expect(screen.queryByTestId("zoom-track")).not.toBeInTheDocument();
+
+    rerender(<CompositionTimeline model={withZoom} currentTime={0} zoom={{ onCreate: () => undefined }} />);
+    expect(screen.getByTestId("zoom-track")).toBeInTheDocument();
+    expect(screen.getByTestId("zoom-unit-z1")).toHaveStyle({ left: "20%", width: "40%" });
+  });
+
   it("does not select or seek the clip when its trim handle is pressed", () => {
     const onSelectClip = vi.fn();
     const onSeek = vi.fn();

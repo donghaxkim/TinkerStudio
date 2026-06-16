@@ -1,4 +1,4 @@
-import type { CompositionClip, CompositionTimelineModel } from "./compositionTimelineModel.js";
+import type { CompositionClip, CompositionTimelineModel, ZoomUnit } from "./compositionTimelineModel.js";
 
 const EPSILON = 1e-6;
 
@@ -88,4 +88,63 @@ export function trimClip(
   const { min, max } = sourceBounds(target);
   const edited: CompositionClip = { ...target, [edge]: next, sourceStart: min, sourceEnd: max };
   return { ...model, clips: model.clips.map((clip) => (clip.id === clipId ? edited : clip)) };
+}
+
+// --- Zoom units ----------------------------------------------------------
+// Zoom units live on their own timeline track (see ZoomTrack). They are model state, so
+// create/move/resize/delete ride the same undo/redo history as clip edits.
+
+/** Smallest width a zoom unit may have — also the size a single-click create expands to. */
+const MIN_ZOOM_DURATION = 0.3;
+
+/** Add a zoom unit with id `id` spanning `[a, b]` (order-normalized, clamped, min-width). */
+export function addZoom(model: CompositionTimelineModel, id: string, a: number, b: number): CompositionTimelineModel {
+  const dur = model.durationSeconds;
+  let start = clamp(Math.min(a, b), 0, dur);
+  let end = clamp(Math.max(a, b), 0, dur);
+  if (end - start < MIN_ZOOM_DURATION) {
+    end = Math.min(start + MIN_ZOOM_DURATION, dur);
+    start = Math.max(end - MIN_ZOOM_DURATION, 0);
+  }
+  const zoom: ZoomUnit = { id, start: roundMicros(start), end: roundMicros(end) };
+  return { ...model, zooms: [...(model.zooms ?? []), zoom] };
+}
+
+/** Move a zoom unit to a new start, preserving its length and clamping it within the composition. */
+export function moveZoom(model: CompositionTimelineModel, id: string, newStart: number): CompositionTimelineModel {
+  const zooms = model.zooms ?? [];
+  const target = zooms.find((z) => z.id === id);
+  if (!target) return model;
+  const length = target.end - target.start;
+  const start = roundMicros(clamp(newStart, 0, Math.max(0, model.durationSeconds - length)));
+  if (start === target.start) return model;
+  const moved: ZoomUnit = { ...target, start, end: roundMicros(start + length) };
+  return { ...model, zooms: zooms.map((z) => (z.id === id ? moved : z)) };
+}
+
+/** Move one edge of a zoom unit, clamped to the min width and the composition bounds. */
+export function resizeZoom(
+  model: CompositionTimelineModel,
+  id: string,
+  edge: TrimEdge,
+  time: number,
+): CompositionTimelineModel {
+  const zooms = model.zooms ?? [];
+  const target = zooms.find((z) => z.id === id);
+  if (!target) return model;
+  const next =
+    edge === "end"
+      ? roundMicros(clamp(time, target.start + MIN_ZOOM_DURATION, model.durationSeconds))
+      : roundMicros(clamp(time, 0, target.end - MIN_ZOOM_DURATION));
+  const current = edge === "end" ? target.end : target.start;
+  if (next === current) return model;
+  const resized: ZoomUnit = { ...target, [edge]: next };
+  return { ...model, zooms: zooms.map((z) => (z.id === id ? resized : z)) };
+}
+
+/** Remove a zoom unit by id. No-op for an unknown id. */
+export function removeZoom(model: CompositionTimelineModel, id: string): CompositionTimelineModel {
+  const zooms = model.zooms ?? [];
+  if (!zooms.some((z) => z.id === id)) return model;
+  return { ...model, zooms: zooms.filter((z) => z.id !== id) };
 }

@@ -84,4 +84,29 @@ describe("useTimelineEdits", () => {
     act(() => result.current.trim("a", "end", 4.5));
     expect(endOf(result.current.model, "a")).toBe(4.5);
   });
+
+  it("creates, moves, resizes and deletes a zoom unit as undoable edits", () => {
+    const { result } = renderHook(() => useTimelineEdits());
+    act(() => result.current.reset(base));
+
+    act(() => result.current.addZoom("z1", 2, 6));
+    expect(result.current.model?.zooms).toEqual([{ id: "z1", start: 2, end: 6 }]);
+    expect(result.current.canUndo).toBe(true);
+
+    act(() => result.current.moveZoom("z1", 4));
+    expect(result.current.model?.zooms).toEqual([{ id: "z1", start: 4, end: 8 }]);
+
+    act(() => result.current.resizeZoom("z1", "end", 9));
+    expect(result.current.model?.zooms).toEqual([{ id: "z1", start: 4, end: 9 }]);
+
+    act(() => result.current.undo()); // undo the resize
+    expect(result.current.model?.zooms).toEqual([{ id: "z1", start: 4, end: 8 }]);
+    act(() => result.current.redo()); // redo the resize
+    expect(result.current.model?.zooms).toEqual([{ id: "z1", start: 4, end: 9 }]);
+
+    act(() => result.current.removeZoom("z1"));
+    expect(result.current.model?.zooms).toEqual([]);
+    act(() => result.current.undo()); // restore the deleted zoom
+    expect(result.current.model?.zooms).toEqual([{ id: "z1", start: 4, end: 9 }]);
+  });
 });

@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { CompositionTimelineModel } from "./compositionTimelineModel.js";
-import { addMarker, clampTrim, clipAt, removeClip, splitClipAt, trimClip } from "./compositionEdits.js";
+import {
+  addMarker,
+  addZoom,
+  clampTrim,
+  clipAt,
+  moveZoom,
+  removeClip,
+  removeZoom,
+  resizeZoom,
+  splitClipAt,
+  trimClip,
+} from "./compositionEdits.js";
 
 const model: CompositionTimelineModel = {
   durationSeconds: 12,
@@ -118,5 +129,77 @@ describe("clampTrim", () => {
   it("clamps a start trim to [source start, end - min]", () => {
     expect(clampTrim(model.clips[1]!, "start", 8)).toBe(8);
     expect(clampTrim(model.clips[1]!, "start", 0)).toBe(5);
+  });
+});
+
+const withZoom = (...zooms: { id: string; start: number; end: number }[]): CompositionTimelineModel => ({
+  ...model,
+  zooms,
+});
+
+describe("addZoom", () => {
+  it("appends a normalized zoom unit (start/end ordered)", () => {
+    const next = addZoom(model, "zoom-1", 6, 2);
+    expect(next.zooms).toEqual([{ id: "zoom-1", start: 2, end: 6 }]);
+    // the rest of the model is untouched
+    expect(next.clips).toBe(model.clips);
+  });
+
+  it("clamps the unit into the composition bounds", () => {
+    const next = addZoom(model, "zoom-1", -3, 99);
+    expect(next.zooms).toEqual([{ id: "zoom-1", start: 0, end: 12 }]);
+  });
+
+  it("gives a single-point (click) range at least the minimum width", () => {
+    const next = addZoom(model, "zoom-1", 5, 5);
+    const z = next.zooms![0]!;
+    expect(z.end - z.start).toBeCloseTo(0.3, 5);
+  });
+});
+
+describe("moveZoom", () => {
+  it("shifts the unit by setting a new start, preserving its length", () => {
+    const next = moveZoom(withZoom({ id: "z1", start: 2, end: 6 }), "z1", 5);
+    expect(next.zooms).toEqual([{ id: "z1", start: 5, end: 9 }]);
+  });
+
+  it("clamps the move so the whole unit stays inside the composition", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6 }); // length 4, duration 12
+    expect(moveZoom(m, "z1", 99).zooms).toEqual([{ id: "z1", start: 8, end: 12 }]);
+    expect(moveZoom(m, "z1", -3).zooms).toEqual([{ id: "z1", start: 0, end: 4 }]);
+  });
+
+  it("is a no-op (same model reference) for an unknown id or no movement", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6 });
+    expect(moveZoom(m, "nope", 5)).toBe(m);
+    expect(moveZoom(m, "z1", 2)).toBe(m);
+  });
+});
+
+describe("resizeZoom", () => {
+  it("moves one edge, clamped to the min width and composition bounds", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6 });
+    expect(resizeZoom(m, "z1", "end", 9).zooms).toEqual([{ id: "z1", start: 2, end: 9 }]);
+    expect(resizeZoom(m, "z1", "start", 4).zooms).toEqual([{ id: "z1", start: 4, end: 6 }]);
+    // can't invert: end clamped to start + min
+    expect(resizeZoom(m, "z1", "end", 1).zooms![0]!.end).toBeCloseTo(2.3, 5);
+  });
+
+  it("is a no-op (same model reference) for an unknown id or no movement", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6 });
+    expect(resizeZoom(m, "nope", "end", 9)).toBe(m);
+    expect(resizeZoom(m, "z1", "end", 6)).toBe(m);
+  });
+});
+
+describe("removeZoom", () => {
+  it("removes the unit by id", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6 }, { id: "z2", start: 7, end: 9 });
+    expect(removeZoom(m, "z1").zooms).toEqual([{ id: "z2", start: 7, end: 9 }]);
+  });
+
+  it("is a no-op (same model reference) for an unknown id", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6 });
+    expect(removeZoom(m, "nope")).toBe(m);
   });
 });
