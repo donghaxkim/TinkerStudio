@@ -226,7 +226,6 @@ export function compileProject(input: CompileProjectInput): DemoProject {
     ],
     zooms,
     cursorEvents,
-    cursor: { clickEffect: "none" },
     aiEditHistory: [],
     metadata: {
       ...(input.sourceRepoUrl ? { sourceRepoUrl: input.sourceRepoUrl } : {}),
