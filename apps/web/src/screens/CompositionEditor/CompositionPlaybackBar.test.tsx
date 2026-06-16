@@ -22,7 +22,54 @@ describe("CompositionPlaybackBar", () => {
   });
   it("disables prev/next per canPrev/canNext", () => {
     render(<CompositionPlaybackBar {...base} canPrev={false} canNext={false} />);
-    expect(screen.getByRole("button", { name: "Previous clip" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Next clip" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Skip to beginning" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Skip to end" })).toBeDisabled();
+  });
+
+  it("no longer shows a render-target quality label", () => {
+    render(<CompositionPlaybackBar {...base} />);
+    expect(screen.queryByText(/1080p|60fps/)).not.toBeInTheDocument();
+  });
+
+  it("always renders the edit toolbar (undo, redo, split, trash, add marker) — identical in every editor", () => {
+    render(<CompositionPlaybackBar {...base} />);
+    for (const name of ["Undo", "Redo", "Split clip", "Delete clip", "Add marker"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+  });
+
+  it("disables edit tools by their can* flags and wires handlers", () => {
+    const onUndo = vi.fn();
+    const onRedo = vi.fn();
+    const onSplit = vi.fn();
+    const onDelete = vi.fn();
+    const onAddMarker = vi.fn();
+    const { rerender } = render(<CompositionPlaybackBar {...base} />);
+    // With no handlers / can* flags, the history + clip tools are disabled.
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Split clip" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete clip" })).toBeDisabled();
+
+    rerender(
+      <CompositionPlaybackBar
+        {...base}
+        onUndo={onUndo} canUndo
+        onRedo={onRedo} canRedo
+        onSplit={onSplit} canSplit
+        onDelete={onDelete} canDelete
+        onAddMarker={onAddMarker}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Split clip" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete clip" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add marker" }));
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(onRedo).toHaveBeenCalledTimes(1);
+    expect(onSplit).toHaveBeenCalledTimes(1);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(onAddMarker).toHaveBeenCalledTimes(1);
   });
 });

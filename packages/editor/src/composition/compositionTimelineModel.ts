@@ -83,3 +83,36 @@ export function readCompositionTimeline(timeline: GsapTimelineLike): Composition
 
   return { durationSeconds, clips, labels };
 }
+
+/**
+ * Derive scene clips from a generated composition's DOM, for compositions whose GSAP
+ * master is a *flat* timeline (every scene is a tween, so `getChildren(…, timelines)`
+ * yields nothing). The pipeline already emits one `<section class="scene clip" id
+ * data-start data-duration>` per scene, so the segmentation exists in markup even when
+ * it isn't expressed as nested timelines. Used as a fallback by the preview so every
+ * generated demo shows its scenes on the timeline.
+ *
+ * @param compositionId Restrict to the `[data-composition-id]` root with this id; when
+ *   omitted, the sole composition root (or the whole document) is scanned.
+ */
+export function readSceneClipsFromDocument(doc: Document, compositionId?: string): CompositionClip[] {
+  const root =
+    compositionId !== undefined
+      ? doc.querySelector(`[data-composition-id="${CSS.escape(compositionId)}"]`)
+      : doc.querySelector("[data-composition-id]") ?? doc.body ?? doc.documentElement;
+  if (!root) return [];
+
+  const sections = Array.from(root.querySelectorAll<HTMLElement>(".scene[data-start]"));
+  const clips: CompositionClip[] = [];
+  sections.forEach((el, index) => {
+    const start = Number.parseFloat(el.getAttribute("data-start") ?? "");
+    if (!Number.isFinite(start)) return;
+    const duration = clampDuration(Number.parseFloat(el.getAttribute("data-duration") ?? ""));
+    const id = el.id.trim().length > 0 ? el.id : `clip-${index}`;
+    const dataLabel = el.getAttribute("data-label")?.trim();
+    const label = dataLabel && dataLabel.length > 0 ? dataLabel : `Scene ${index + 1}`;
+    clips.push({ id, label, start: roundMicros(start), end: roundMicros(start + duration) });
+  });
+
+  return clips.sort((a, b) => a.start - b.start);
+}

@@ -11,6 +11,7 @@ describe("App composition product flow", () => {
     expect(screen.getByLabelText("GitHub repo URL")).toBeInTheDocument();
     expect(screen.getByLabelText("Demo description")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Generate" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open empty editor shell" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Product URL")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Composition demo (beta)" })).not.toBeInTheDocument();
   });

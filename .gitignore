@@ -24,5 +24,8 @@ docs/superpowers/plans/
 # Stray Playwright/audit screenshots at repo root (scratch)
 /*.png
 
+# Code-review tool scratch output (screenshots, not committed)
+.codex-review/
+
 # local code-graph tool cache (not part of the project)
 .codegraph/

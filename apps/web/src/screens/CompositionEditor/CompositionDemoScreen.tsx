@@ -6,6 +6,8 @@ import type { CompositionGenerationClient } from "../../lib/compositionGeneratio
 import { useCompositionGenerationJob } from "../../lib/useCompositionGenerationJob.js";
 import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
 
+const PREVIEW_COMPOSITION_URL = "/demo-composition/index.html";
+
 export type CompositionDemoScreenProps = {
   client: CompositionGenerationClient;
   editClient?: CompositionEditClient;
@@ -102,6 +104,7 @@ function GhostText({ active }: { active: boolean }) {
 
 export function CompositionDemoScreen({ client, editClient, onBack, resolveWindow, initialCompletedJob }: CompositionDemoScreenProps) {
   const job = useCompositionGenerationJob(client);
+  const [showEmptyEditor, setShowEmptyEditor] = useState(false);
   const [repoDraft, setRepoDraft] = useState("");
   const [description, setDescription] = useState("");
   const [repoFocus, setRepoFocus] = useState(false);
@@ -148,17 +151,30 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
     });
   }, [description, job, repoDraft, requireRepo]);
 
+  if (showEmptyEditor) {
+    return (
+      <CompositionEditorScreen
+        compositionIndexUrl={PREVIEW_COMPOSITION_URL}
+        onBack={() => setShowEmptyEditor(false)}
+        resolveWindow={resolveWindow}
+      />
+    );
+  }
+
   const completedJob = initialCompletedJob ?? (job.phase === "completed" ? job.job : undefined);
 
   if (completedJob) {
     if (completedJob.result?.method === "hyperframes") {
       const { composition } = completedJob.result;
+      const repoUrl = "repoUrl" in completedJob.request ? completedJob.request.repoUrl : undefined;
+      const repo = typeof repoUrl === "string" ? parseGithubRepo(repoUrl) : undefined;
       return (
         <CompositionEditorScreen
           compositionIndexUrl={composition.indexArtifact.url}
           outputVideoUrl={composition.outputVideoArtifact.url}
+          {...(repo === undefined ? {} : { repo })}
           jobId={completedJob.id}
-          {...(editClient ? { editClient } : {})}
+          editClient={editClient}
           onBack={onBack}
           resolveWindow={resolveWindow}
         />
@@ -407,6 +423,23 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
             </div>
           </div>
         </div>
+
+        {job.phase !== "running" ? (
+          <button
+            type="button"
+            className="tk-btn"
+            onClick={() => setShowEmptyEditor(true)}
+            style={{
+              alignSelf: "center",
+              marginTop: 14,
+              fontSize: 12.5,
+              color: "var(--tk-text-sec)",
+              background: "transparent",
+            }}
+          >
+            Open empty editor shell
+          </button>
+        ) : null}
 
         {job.phase === "failed" ? (
           <div

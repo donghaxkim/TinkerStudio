@@ -101,6 +101,17 @@ describe("CompositionTimeline (interaction)", () => {
   it("labels the timeline track for assistive tech", () => {
     render(<CompositionTimeline model={MODEL} currentTime={0} />);
     expect(screen.getByTestId("composition-timeline")).toHaveAttribute("aria-label", "Composition timeline");
+    expect(screen.getByTestId("composition-timeline")).toHaveAttribute("role", "slider");
+  });
+
+  it("supports keyboard seeking on the timeline", () => {
+    const onSeek = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={4} onSeek={onSeek} />);
+    const track = screen.getByTestId("composition-timeline");
+    fireEvent.keyDown(track, { key: "ArrowRight" });
+    expect(onSeek).toHaveBeenCalledWith(4.25);
+    fireEvent.keyDown(track, { key: "Home" });
+    expect(onSeek).toHaveBeenCalledWith(0);
   });
 
   it("emits a normalized range when the track is dragged, and renders a band", () => {
@@ -134,5 +145,45 @@ describe("CompositionTimeline (interaction)", () => {
   it("renders a controlled selection band from the selection prop", () => {
     render(<CompositionTimeline model={MODEL} currentTime={0} selection={{ start: 2, end: 6 }} />);
     expect(screen.getByTestId("composition-selection-band")).toHaveStyle({ left: "20%", width: "40%" });
+  });
+
+  it("shows the Add to Chat popup centered over a range selection and fires its action", () => {
+    const onAct = vi.fn();
+    render(
+      <CompositionTimeline
+        model={MODEL}
+        currentTime={0}
+        selection={{ start: 2, end: 6 }}
+        selectionAction={{ label: "Add to Chat", hint: "⌘L", onAct }}
+      />,
+    );
+    const popup = screen.getByTestId("composition-selection-popup");
+    expect(popup).toHaveStyle({ left: "40%" }); // center of 2s–6s over a 10s timeline
+    const button = screen.getByRole("button", { name: /Add to Chat/ });
+    expect(button).toHaveTextContent("⌘L");
+    fireEvent.click(button);
+    expect(onAct).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show the Add to Chat popup for a clip selection", () => {
+    render(
+      <CompositionTimeline
+        model={MODEL}
+        currentTime={0}
+        selectedClipId="feature"
+        selection={{ start: 4, end: 10 }}
+        selectionAction={{ label: "Add to Chat", onAct: () => undefined }}
+      />,
+    );
+    expect(screen.queryByTestId("composition-selection-popup")).not.toBeInTheDocument();
+  });
+
+  it("supports keyboard clip selection", () => {
+    const onSeek = vi.fn();
+    const onSelectClip = vi.fn();
+    render(<CompositionTimeline model={MODEL} currentTime={0} onSeek={onSeek} onSelectClip={onSelectClip} />);
+    fireEvent.keyDown(screen.getByTestId("composition-clip-feature"), { key: "Enter" });
+    expect(onSelectClip).toHaveBeenCalledWith(MODEL.clips[1]);
+    expect(onSeek).toHaveBeenCalledWith(4);
   });
 });

@@ -16,6 +16,51 @@ function props(over = {}) {
 }
 
 describe("CompositionChatPanel", () => {
+  it("renders the chat-to-edit composer", () => {
+    render(<CompositionChatPanel {...props({ contextRefs: [], onSend: () => undefined })} />);
+    expect(screen.getByLabelText("Chat to edit")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Type something you want to change…")).toBeInTheDocument();
+  });
+
+  it("has no model selector — the composer matches the design", () => {
+    render(<CompositionChatPanel {...props({ contextRefs: [], onSend: () => undefined })} />);
+    expect(screen.queryByRole("button", { name: "Change model" })).not.toBeInTheDocument();
+    expect(screen.queryByText("GPT-5.5")).not.toBeInTheDocument();
+  });
+
+  it("renders the assistant intro message and the icon tab header", () => {
+    render(<CompositionChatPanel {...props({ contextRefs: [], onSend: () => undefined, intro: "I watched the recording — 3 scenes, 12 seconds." })} />);
+    expect(screen.getByText("I watched the recording — 3 scenes, 12 seconds.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chat to edit" })).toBeInTheDocument();
+  });
+
+  it("shows suggestion chips and fills the composer when one is clicked", () => {
+    const onInstructionChange = vi.fn();
+    render(
+      <CompositionChatPanel
+        {...props({ contextRefs: [], onSend: () => undefined, onInstructionChange, suggestions: ["Tighten the pacing", "Smooth the cursor"] })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Smooth the cursor" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tighten the pacing" }));
+    expect(onInstructionChange).toHaveBeenCalledWith("Tighten the pacing");
+  });
+
+  it("hides suggestions once the composer has text", () => {
+    render(
+      <CompositionChatPanel
+        {...props({ contextRefs: [], onSend: () => undefined, instruction: "punch in", suggestions: ["Tighten the pacing"] })}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Tighten the pacing" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the composer disabled before editing is available without extra explanatory copy", () => {
+    render(<CompositionChatPanel {...props({ contextRefs: [] })} />);
+    expect(screen.getByLabelText("Edit instruction")).toBeDisabled();
+    expect(screen.queryByText(/generate a demo/i)).not.toBeInTheDocument();
+  });
+
   it("renders a chip per context ref with its label", () => {
     render(<CompositionChatPanel {...props()} />);
     expect(screen.getByText("2.0s–6.0s")).toBeInTheDocument();
@@ -26,14 +71,6 @@ describe("CompositionChatPanel", () => {
     render(<CompositionChatPanel {...props({ onRemoveRef })} />);
     fireEvent.click(screen.getByRole("button", { name: "Remove 2.0s–6.0s from chat" }));
     expect(onRemoveRef).toHaveBeenCalledWith("a");
-  });
-  it("enables Add to chat only with a selection", () => {
-    const onAddToChat = vi.fn();
-    const { rerender } = render(<CompositionChatPanel {...props({ hasSelection: false, onAddToChat })} />);
-    expect(screen.getByRole("button", { name: "Add selection to chat" })).toBeDisabled();
-    rerender(<CompositionChatPanel {...props({ hasSelection: true, onAddToChat })} />);
-    fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
-    expect(onAddToChat).toHaveBeenCalledTimes(1);
   });
   it("disables send in 2a", () => {
     render(<CompositionChatPanel {...props()} />);
@@ -68,12 +105,5 @@ describe("CompositionChatPanel", () => {
   it("shows an error message", () => {
     render(<CompositionChatPanel {...props({ status: "error", error: "Server error" })} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Server error");
-  });
-
-  it("shows Undo when canUndo", () => {
-    const onUndo = vi.fn();
-    render(<CompositionChatPanel {...props({ canUndo: true, onUndo })} />);
-    fireEvent.click(screen.getByRole("button", { name: "Undo last edit" }));
-    expect(onUndo).toHaveBeenCalledTimes(1);
   });
 });

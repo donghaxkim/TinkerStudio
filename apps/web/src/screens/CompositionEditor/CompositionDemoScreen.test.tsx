@@ -67,6 +67,17 @@ function fakeHandle(): CompositionTimelineHandle {
   } as unknown as CompositionTimelineHandle;
 }
 
+function emptyHandle(): CompositionTimelineHandle {
+  return {
+    totalDuration: () => 12,
+    labels: [] as unknown as Record<string, number>,
+    getChildren: () => [],
+    seek: () => undefined,
+    play: () => undefined,
+    pause: () => undefined,
+  } as unknown as CompositionTimelineHandle;
+}
+
 function createLocalCompositionGenerationClient(): CompositionGenerationClient {
   return {
     createJob: async () => completedCompositionJob(),
@@ -115,6 +126,36 @@ describe("CompositionDemoScreen", () => {
       "src",
       completedJob.result.composition.indexArtifact.url,
     );
+  });
+
+  it("opens the empty editor shell shortcut without starting generation, then returns to the form", async () => {
+    const client = createLocalCompositionGenerationClient();
+    const createJob = vi.spyOn(client, "createJob");
+    render(
+      <CompositionDemoScreen
+        client={client}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: emptyHandle() } })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open empty editor shell" }));
+
+    expect(createJob).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
+    expect(screen.getByTestId("composition-frame")).toHaveAttribute("src", "/demo-composition/index.html");
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByLabelText("Editor status")).toHaveTextContent("Empty editor shell"));
+    expect(screen.getByTestId("composition-timeline")).toBeInTheDocument();
+    expect(screen.getByLabelText("Playback controls")).toBeInTheDocument();
+    // The empty shell carries the same edit toolbar as the real editor (split/marker work on
+    // the local model without a server edit session); Export stays disabled until a real render exists.
+    expect(screen.getByRole("button", { name: "Add marker" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
+    expect(screen.queryByText(/generate a demo to enable ai edits/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Edit instruction")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Back to create" }));
+    expect(screen.getByRole("heading", { name: /Tinker Studio/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open empty editor shell" })).toBeInTheDocument();
   });
 
   it("generates a composition and opens it in the editor", async () => {
@@ -213,6 +254,10 @@ describe("CompositionDemoScreen", () => {
     await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
     fireEvent.load(screen.getByTestId("composition-frame"));
     await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+    // The editor app bar shows the pasted repo as a link to the GitHub repository.
+    const repoLink = screen.getByRole("link", { name: "GitHub repository acme/driftboard" });
+    expect(repoLink).toHaveTextContent("github.com/acme/driftboard");
+    expect(repoLink).toHaveAttribute("href", "https://github.com/acme/driftboard");
   });
 
   it("shows an error when generation fails", async () => {

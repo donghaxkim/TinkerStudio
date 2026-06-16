@@ -26,8 +26,8 @@ button {
 
 :root,
 .tk-porcelain {
-  --tk-font: 'Instrument Sans', system-ui, -apple-system, sans-serif;
-  --tk-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --tk-font: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --tk-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* surfaces */
   --tk-app-bg: #F1F0ED;        /* warm page / editor shell background */
@@ -44,10 +44,13 @@ button {
   --tk-text-ter: #9D9B94;      /* tertiary / quiet labels, ghost hints */
 
   /* accent (ink blue) */
-  --tk-accent: #3B5BD9;        /* actions, playhead, selection, active tool */
+  --tk-accent: #3B5BD9;        /* actions, selection, active tool */
   --tk-accent-text: #FFFFFF;
   --tk-accent-soft: rgba(59,91,217,0.10);   /* selected-range fill, hover */
   --tk-accent-line: rgba(59,91,217,0.32);   /* selected-range / focus border */
+
+  /* playhead (warm charcoal — distinct from the accent so the position line reads on its own) */
+  --tk-playhead: #2B2926;
 
   /* lines & control surfaces */
   --tk-border: rgba(20,20,15,0.12);
@@ -111,6 +114,16 @@ input::placeholder {
 .tk-input:focus { border-color: var(--tk-accent); box-shadow: 0 0 0 3px var(--tk-accent-soft); }
 .tk-input:disabled { opacity: 0.55; cursor: default; }
 
+.tk-btn:focus-visible,
+.tk-iconbtn:focus-visible,
+.tk-play:focus-visible,
+.tk-send:focus-visible,
+.tk-railbtn:focus-visible,
+.tk-input:focus-visible {
+  outline: 2px solid var(--tk-accent);
+  outline-offset: 2px;
+}
+
 
 /* ==========================================================================
    COMPONENTS — .tk-* classes
@@ -136,7 +149,7 @@ input::placeholder {
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;
 }
 .tk-btn:hover:not(:disabled) { background: var(--tk-hover); }
-.tk-btn:disabled { opacity: 0.45; cursor: default; }
+.tk-btn:disabled { opacity: 0.58; cursor: default; }
 
 .tk-btn-accent {
   background: var(--tk-accent);
@@ -146,6 +159,14 @@ input::placeholder {
 .tk-btn-accent:hover:not(:disabled) {
   background: var(--tk-accent);
   filter: brightness(1.07);
+}
+
+.tk-btn-accent:disabled {
+  background: var(--tk-accent);
+  border-color: var(--tk-accent);
+  color: var(--tk-accent-text);
+  filter: none;
+  opacity: 0.38;
 }
 
 /* --- Icon button --- */
@@ -202,7 +223,473 @@ input::placeholder {
   transition: opacity 0.15s, filter 0.15s;
 }
 .tk-send:hover:not(:disabled) { filter: brightness(1.08); }
-.tk-send:disabled { opacity: 0.35; cursor: default; }
+.tk-send:disabled {
+  opacity: 1;
+  cursor: default;
+  background: var(--tk-subtle);
+  color: var(--tk-text-ter);
+  border: 1px solid var(--tk-border);
+}
+
+
+/* ==========================================================================
+   COMPOSITION EDITOR
+   ========================================================================== */
+
+.tk-composition-shell {
+  height: 100dvh;
+  max-height: 100dvh;
+  min-width: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  background: var(--tk-app-bg);
+  color: var(--tk-text);
+  font-family: var(--tk-font);
+}
+
+.tk-composition-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  /* Asymmetric: roomy left edge for the wordmark, but the trailing Export button gets the
+     same ~5px inset on its right as it has top/bottom, so its outer padding reads as equal. */
+  padding: 0 4px 0 12px;
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius-lg);
+  background: color-mix(in oklch, var(--tk-card) 94%, var(--tk-app-bg));
+  box-shadow: var(--tk-shadow-sm);
+}
+
+.tk-repo-link {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--tk-mono);
+  font-size: 11.5px;
+  color: var(--tk-text-sec);
+  text-decoration: none;
+  border-radius: var(--tk-radius-xs);
+}
+.tk-repo-link:hover { color: var(--tk-text); text-decoration: underline; }
+
+.tk-composition-status {
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tk-text-ter);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.tk-composition-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 10px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.tk-composition-main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  gap: 10px;
+}
+
+.tk-composition-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 220px;
+  border-radius: var(--tk-radius-lg);
+  overflow: hidden;
+  background: var(--tk-preview-bg);
+  border: 1px solid color-mix(in oklch, var(--tk-preview-bg) 76%, var(--tk-card));
+  box-shadow: var(--tk-shadow-md), inset 0 0 0 1px rgba(255,255,255,0.035);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tk-composition-playback {
+  justify-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius-lg);
+  background: color-mix(in oklch, var(--tk-card) 90%, var(--tk-raised));
+  box-shadow: var(--tk-shadow-sm);
+}
+
+.tk-composition-playback-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Edit tools (undo · redo · split · trash · marker) sit right-aligned; the divider's
+   auto margin pushes the whole cluster to the end of the playback bar. */
+.tk-composition-playback .tk-vr {
+  margin-left: auto;
+}
+
+.tk-composition-edit-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* --- Timeline (ruler + track) --- */
+
+.tk-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.tk-timeline-ruler {
+  position: relative;
+  height: 12px;
+}
+
+.tk-timeline-tick {
+  position: absolute;
+  top: 0;
+  font-family: var(--tk-mono);
+  font-size: 9.5px;
+  color: var(--tk-text-ter);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Floating "Add to Chat" popup over a range selection (Cursor-style). */
+.tk-selection-popup {
+  position: absolute;
+  bottom: 100%;
+  margin-bottom: 9px;
+  transform: translateX(-50%);
+  z-index: 50;
+  animation: tkPopIn 0.12s ease-out;
+}
+.tk-selection-popup::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1f1e1b;
+}
+.tk-selection-popup-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #1f1e1b;
+  color: #fff;
+  font-family: var(--tk-font);
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(20, 20, 15, 0.3);
+  transition: background 0.13s;
+}
+.tk-selection-popup-btn:hover { background: #2b2926; }
+.tk-selection-popup-btn:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 2px; }
+.tk-selection-popup-btn kbd {
+  font-family: var(--tk-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 2px 5px;
+  line-height: 1;
+}
+
+@keyframes tkPopIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(3px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tk-selection-popup { animation: none; }
+}
+
+.tk-composition-header .tk-btn-accent {
+  height: 32px;
+}
+
+.tk-composition-chat {
+  min-height: 0;
+  height: 100%;
+  min-width: 280px;
+}
+
+.tk-composition-chat-surface {
+  display: grid;
+  /* Tabs, then the composer (input on top), then the conversation thread below. */
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius-lg);
+  background: var(--tk-panel-bg);
+  box-shadow: var(--tk-shadow-sm);
+}
+
+/* Header: segmented icon tabs (chat active). */
+.tk-composition-chat-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--tk-radius-md);
+  background: color-mix(in oklch, var(--tk-raised) 60%, var(--tk-card));
+}
+.tk-composition-chat-tabs .tk-tab-icon {
+  height: 28px;
+}
+.tk-composition-chat-tabs .tk-tab-icon:not(.tk-tab-icon-on) {
+  color: rgba(20, 20, 15, 0.32);
+}
+.tk-composition-chat-tabs .tk-tab-icon-on {
+  background: #ffffff;
+  border-color: rgba(20, 20, 15, 0.06);
+  box-shadow: 0 1px 2px rgba(20, 20, 15, 0.06);
+}
+.tk-composition-chat-tabs .tk-tab-icon:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.tk-composition-chat-thread {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-content: flex-start;
+}
+
+/* Assistant greeting / messages. */
+.tk-chat-msg {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--tk-text);
+}
+
+.tk-composition-chat-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+}
+
+.tk-composition-chat-status {
+  font-size: 12.5px;
+  color: var(--tk-text-sec);
+}
+
+.tk-composition-chat-error {
+  font-size: 12.5px;
+  color: var(--tk-danger, #C0392B);
+}
+
+.tk-composition-chat-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Suggestion chips — quick edit prompts, stacked above the composer. */
+.tk-composition-chat-suggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tk-suggestion {
+  font-family: var(--tk-font);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--tk-text-sec);
+  background: transparent;
+  border: 1px solid var(--tk-border);
+  border-radius: var(--tk-radius-pill);
+  padding: 6px 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tk-suggestion:hover {
+  background: var(--tk-hover);
+  color: var(--tk-text);
+  border-color: var(--tk-border-strong);
+}
+
+/* Composer — compact rounded input row. */
+.tk-composition-chat-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1.5px solid color-mix(in oklch, var(--tk-border-strong) 70%, transparent);
+  border-radius: var(--tk-radius-lg);
+  background: var(--tk-card);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
+}
+
+.tk-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.tk-composer-add {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--tk-radius-pill);
+  border: none;
+  background: transparent;
+  color: var(--tk-text-sec);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.tk-composer-add:hover:not(:disabled) { background: var(--tk-hover); color: var(--tk-text); }
+.tk-composer-add[aria-disabled="true"] { cursor: default; }
+.tk-composer-add:disabled { opacity: 0.4; cursor: default; }
+
+.tk-composition-chat-textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 64px;
+  max-height: 200px;
+  resize: none;
+  border: none;
+  outline: none;
+  padding: 2px 0;
+  background: transparent;
+  color: var(--tk-text);
+  font-family: var(--tk-font);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.tk-composition-chat-textarea::placeholder {
+  color: var(--tk-text-ter);
+}
+
+.tk-composition-chat-textarea:disabled {
+  cursor: default;
+}
+
+.tk-composition-chat-composer .tk-send {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  background: color-mix(in oklch, var(--tk-accent) 30%, #ffffff);
+  border: 1px solid transparent;
+  color: #ffffff;
+}
+.tk-composition-chat-composer .tk-send:not(:disabled) {
+  background: var(--tk-accent);
+  border-color: var(--tk-accent);
+  color: var(--tk-accent-text);
+}
+
+@media (max-width: 860px) {
+  .tk-composition-shell {
+    overflow: auto;
+    max-height: none;
+    height: auto;
+    min-height: 100dvh;
+    grid-template-rows: 44px auto;
+    padding: 10px;
+  }
+
+  .tk-composition-header {
+    padding: 0 10px;
+  }
+
+  .tk-composition-status {
+    display: none;
+  }
+
+  .tk-composition-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, auto) auto;
+    gap: 10px;
+  }
+
+  .tk-composition-main {
+    gap: 10px;
+  }
+
+  .tk-composition-stage {
+    min-height: 310px;
+  }
+
+  .tk-composition-playback {
+    width: 100%;
+    max-width: 100%;
+    gap: 8px;
+    padding: 7px 10px;
+  }
+
+  .tk-composition-playback .tk-timecode {
+    display: none;
+  }
+
+  .tk-composition-chat {
+    min-height: 220px;
+    height: auto;
+  }
+
+  .tk-composition-header .tk-iconbtn,
+  .tk-composition-playback .tk-iconbtn,
+  .tk-play {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .tk-composition-chat-surface {
+    min-height: 220px;
+    padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .tk-composition-chat-composer {
+    min-height: 116px;
+  }
+
+  .tk-composition-chat-textarea {
+    min-height: 48px;
+  }
+}
 
 /* --- Tool-rail button --- */
 
