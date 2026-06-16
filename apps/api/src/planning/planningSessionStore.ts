@@ -106,20 +106,26 @@ export function createPlanningSessionStore() {
       const record = records.get(id);
       if (record === undefined) return;
 
-      record.status = "ready";
-      record.messages.push({ role: "assistant", content: input.assistantMessage });
-      record.outlineValid = input.outlineValid;
+      const nextRecord: PlanningSessionRecord = {
+        ...record,
+        status: "ready",
+        messages: [...record.messages, { role: "assistant", content: input.assistantMessage }],
+        outlineValid: input.outlineValid,
+        updatedAt: now,
+      };
       if (input.outline === undefined) {
-        delete record.outline;
+        delete nextRecord.outline;
       } else {
-        record.outline = input.outline;
+        nextRecord.outline = input.outline;
       }
-      if (input.agentResumeHandle !== undefined) record.agentResumeHandle = input.agentResumeHandle;
-      if (input.repoCheckoutDirectory !== undefined) record.repoCheckoutDirectory = input.repoCheckoutDirectory;
-      if (input.websiteAnalysisPath !== undefined) record.websiteAnalysisPath = input.websiteAnalysisPath;
-      if (input.repoAnalysisPath !== undefined) record.repoAnalysisPath = input.repoAnalysisPath;
-      delete record.lastError;
-      record.updatedAt = now;
+      if (input.agentResumeHandle !== undefined) nextRecord.agentResumeHandle = input.agentResumeHandle;
+      if (input.repoCheckoutDirectory !== undefined) nextRecord.repoCheckoutDirectory = input.repoCheckoutDirectory;
+      if (input.websiteAnalysisPath !== undefined) nextRecord.websiteAnalysisPath = input.websiteAnalysisPath;
+      if (input.repoAnalysisPath !== undefined) nextRecord.repoAnalysisPath = input.repoAnalysisPath;
+      delete nextRecord.lastError;
+
+      snapshot(nextRecord);
+      records.set(id, nextRecord);
     },
 
     appendUserMessage(id: string, message: string, now: string) {

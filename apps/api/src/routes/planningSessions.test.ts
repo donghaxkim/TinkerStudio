@@ -182,6 +182,34 @@ describe("planning session routes", () => {
     }
   });
 
+  it("returns a stable error response when the runner emits an invalid assistant message", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-invalid-message-${randomUUID()}-`));
+    const runner: PlanningAgentRunner = async (input) => {
+      await writeFile(input.outlinePath, `${JSON.stringify(outline, null, 2)}\n`);
+      return { assistantMessage: "", agentResumeHandle: "session-1" };
+    };
+    const server = await buildServer({ config: testConfig(repoRoot), idGenerator: () => "plan-test", planningRunner: runner });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/planning-sessions",
+        payload: { productUrl: "https://product.example.com", repoUrl: "https://github.com/example/product", agent: "claude" },
+      });
+
+      expect(response.statusCode).toBe(500);
+      expect(JSON.parse(response.body)).toMatchObject({
+        id: "plan-test",
+        status: "error",
+        messages: [],
+        outlineValid: false,
+      });
+      expect(JSON.parse(response.body).lastError).toEqual(expect.any(String));
+    } finally {
+      await server.close();
+    }
+  });
+
   it("rejects invalid create-session URLs", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-validation-${randomUUID()}-`));
     const server = await buildServer({ config: testConfig(repoRoot), planningRunner: async () => ({ assistantMessage: "unused", agentResumeHandle: "unused" }) });
