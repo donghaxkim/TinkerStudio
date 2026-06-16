@@ -102,12 +102,51 @@ function GhostText({ active }: { active: boolean }) {
   );
 }
 
+function PlaywrightResultView({ job }: { job: ApiGenerationJob }) {
+  const artifacts = job.result?.artifacts ?? [];
+  const projectArtifact = artifacts.find((artifact) => artifact.kind === "playwright-demo-project");
+  const videoArtifact = artifacts.find((artifact) => artifact.kind === "playwright-video");
+
+  return (
+    <section className="tk-porcelain" aria-label="Playwright result" style={{ minHeight: "100vh", padding: 24 }}>
+      <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+        <h1 style={{ margin: 0, fontSize: 26, letterSpacing: "-0.02em" }}>Playwright demo ready</h1>
+        <p style={{ margin: 0, color: "var(--tk-text-sec)", lineHeight: 1.5 }}>
+          Generated DemoProject and capture artifacts from the Playwright pipeline.
+        </p>
+        {videoArtifact ? (
+          <video
+            data-testid="playwright-result-video"
+            aria-label="Playwright capture preview"
+            src={videoArtifact.url}
+            controls
+            style={{ width: "100%", borderRadius: "var(--tk-radius-lg)", border: "1px solid var(--tk-border)" }}
+          >
+            <track kind="captions" label="No captions available" src="data:text/vtt,WEBVTT%0A" default />
+          </video>
+        ) : (
+          <output
+            style={{ padding: 12, border: "1px solid var(--tk-border)", borderRadius: "var(--tk-radius-md)", color: "var(--tk-text-sec)" }}
+          >
+            No Playwright preview video artifact was returned.
+          </output>
+        )}
+        {projectArtifact ? (
+          <a className="tk-btn" href={projectArtifact.url} target="_blank" rel="noreferrer" style={{ alignSelf: "flex-start" }}>
+            Open DemoProject JSON
+          </a>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export function CompositionDemoScreen({ client, editClient, onBack, resolveWindow, initialCompletedJob }: CompositionDemoScreenProps) {
   const job = useCompositionGenerationJob(client);
   const [showEmptyEditor, setShowEmptyEditor] = useState(false);
   const [repoDraft, setRepoDraft] = useState("");
   const [description, setDescription] = useState("");
-  const [renderer] = useState<"hyperframes">("hyperframes");
+  const [renderer, setRenderer] = useState<"hyperframes" | "playwright">("hyperframes");
   const [repoFocus, setRepoFocus] = useState(false);
   const [descriptionFocus, setDescriptionFocus] = useState(false);
   const [repoShake, setRepoShake] = useState(false);
@@ -182,9 +221,12 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
         />
       );
     }
+    if (completedJob.result?.method === "playwright") {
+      return <PlaywrightResultView job={completedJob} />;
+    }
     return (
       <div className="tk-porcelain" role="alert" style={{ padding: 24 }}>
-        Generation completed but produced no composition to open.
+        Generation completed but produced no supported result to open.
       </div>
     );
   }
@@ -396,6 +438,7 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
                     type="button"
                     role="radio"
                     aria-checked={renderer === "hyperframes"}
+                    onClick={() => setRenderer("hyperframes")}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
@@ -404,9 +447,9 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
                       borderRadius: "var(--tk-radius-xs)",
                       fontSize: 11.5,
                       color: "var(--tk-text)",
-                      background: "var(--tk-card)",
-                      boxShadow: "inset 0 0 0 1px var(--tk-border-soft)",
-                      cursor: "default",
+                      background: renderer === "hyperframes" ? "var(--tk-card)" : "transparent",
+                      boxShadow: renderer === "hyperframes" ? "inset 0 0 0 1px var(--tk-border-soft)" : "none",
+                      cursor: "pointer",
                     }}
                   >
                     HyperFrames
@@ -414,9 +457,8 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
                   <button
                     type="button"
                     role="radio"
-                    aria-checked={false}
-                    disabled
-                    title="Playwright pipeline will use the DemoProject editor in a later milestone"
+                    aria-checked={renderer === "playwright"}
+                    onClick={() => setRenderer("playwright")}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
@@ -424,10 +466,10 @@ export function CompositionDemoScreen({ client, editClient, onBack, resolveWindo
                       border: "none",
                       borderRadius: "var(--tk-radius-xs)",
                       fontSize: 11.5,
-                      color: "var(--tk-text-ter)",
-                      background: "transparent",
-                      opacity: 0.58,
-                      cursor: "not-allowed",
+                      color: "var(--tk-text)",
+                      background: renderer === "playwright" ? "var(--tk-card)" : "transparent",
+                      boxShadow: renderer === "playwright" ? "inset 0 0 0 1px var(--tk-border-soft)" : "none",
+                      cursor: "pointer",
                     }}
                   >
                     Playwright
