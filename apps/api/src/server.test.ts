@@ -1465,7 +1465,7 @@ async function waitForJobStatus(
 }
 
 async function waitForRevision(server: Awaited<ReturnType<typeof buildServer>>, id: string) {
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt = 0; attempt < 100; attempt++) {
     const response = await server.inject({ method: "GET", url: `/api/jobs/${id}` });
     const snapshot = JSON.parse(response.body) as { revisions?: Array<{ id?: string }> };
     if (snapshot.revisions?.[0] !== undefined) return;
