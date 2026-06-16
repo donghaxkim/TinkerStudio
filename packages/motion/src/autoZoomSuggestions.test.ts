@@ -119,6 +119,26 @@ describe("auto zoom suggestions", () => {
     expect(suggestions.map((zoom) => zoom.id)).toEqual(["auto_zoom_001", "auto_zoom_002"]);
   });
 
+  it("allocates dwell zoom ids by strength while returning output by start", () => {
+    const suggestions = suggestAutoZooms(
+      [
+        move(1, 200, 200),
+        move(1.3, 202, 202),
+        move(1.6, 201, 201),
+        move(3, 700, 700),
+        move(3.6, 702, 702),
+        move(4.2, 701, 701),
+      ],
+      [],
+      { duration: 6, frame: { width: 1000, height: 1000 }, minSpacingSeconds: 0 },
+    );
+
+    expect(suggestions.map((zoom) => ({ id: zoom.id, start: zoom.start }))).toEqual([
+      { id: "auto_zoom_002", start: 0.9 },
+      { id: "auto_zoom_001", start: 3.2 },
+    ]);
+  });
+
   it("does not reuse ids from existing zooms", () => {
     const existingZooms: ZoomKeyframe[] = [
       {
@@ -165,5 +185,36 @@ describe("auto zoom suggestions", () => {
     expect(suggestions.map((zoom) => zoom.id)).toEqual(["auto_zoom_001", "auto_zoom_002"]);
     expect(suggestions[0]?.target).toEqual({ x: 700, y: 600, width: 300, height: 200 });
     expect(suggestions[1]?.target).toEqual({ x: 0, y: 0, width: 300, height: 200 });
+  });
+
+  it("creates a click-first auto-zoom even while the cursor is moving", () => {
+    const suggestions = suggestAutoZooms(
+      [move(1.7, 200, 200), { type: "click", time: 2, x: 600, y: 400, label: "Open" }, move(2.2, 900, 800)],
+      [],
+      { duration: 5, frame: { width: 1000, height: 1000 }, minSpacingSeconds: 0 },
+    );
+
+    expect(suggestions).toEqual<ZoomKeyframe[]>([
+      {
+        id: "auto_zoom_001",
+        start: 1.75,
+        end: 3.1,
+        target: { x: 325, y: 125, width: 550, height: 550 },
+        easing: "easeInOut",
+      },
+    ]);
+  });
+
+  it("uses the click target instead of an overlapping dwell target", () => {
+    const suggestions = suggestAutoZooms(
+      [move(1.2, 300, 300), move(1.7, 301, 301), { type: "click", time: 1.9, x: 760, y: 240 }, move(2.1, 302, 302)],
+      [],
+      { duration: 5, frame: { width: 1000, height: 1000 }, minSpacingSeconds: 0 },
+    );
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]?.start).toBe(1.65);
+    expect(suggestions[0]?.end).toBe(3);
+    expect(suggestions[0]?.target).toEqual({ x: 450, y: 0, width: 550, height: 550 });
   });
 });

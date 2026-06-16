@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { DemoProjectSchema } from "@tinker/project-schema";
 import { compileProject } from "./compileProject.js";
 import type { CompileProjectInput } from "./types.js";
+
+const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+  scripts: Record<string, string>;
+};
+const generateAiUrlJobScript = readFileSync(new URL("../scripts/generateAiUrlJob.ts", import.meta.url), "utf8");
+
+assert.match(packageJson.scripts["generate:ai-url-fixture-job"] ?? "", /pnpm --filter @tinker\/motion build/);
+assert.match(generateAiUrlJobScript, /"@tinker\/motion"/);
 
 const input: CompileProjectInput = {
   projectId: "manual-demo-test",
@@ -79,7 +88,7 @@ assert.equal(project.tracks[0]?.clips[0]?.sourceEnd, 12);
 assert.equal(project.cursorEvents.length, 3);
 assert.equal(project.cursor, undefined);
 assert.equal(project.zooms.length, 1);
-assert.equal(project.zooms[0]?.id, "zoom-3");
+assert.equal(project.zooms[0]?.id, "zoom_001");
 assert.equal(project.metadata.productUrl, "http://127.0.0.1:4173/");
 
 const clampedProject = DemoProjectSchema.parse(
@@ -132,14 +141,14 @@ const consecutiveTargetProject = DemoProjectSchema.parse(
   }),
 );
 
-assert.equal(consecutiveTargetProject.zooms.length, 1);
-const [mergedTabsZoom] = consecutiveTargetProject.zooms;
-assert.ok(mergedTabsZoom !== undefined, "expected one merged zoom");
-assert.ok(
-  mergedTabsZoom.start <= 7.537 && mergedTabsZoom.end >= 11.548,
-  `merged zoom must cover both target windows; got ${mergedTabsZoom.start}-${mergedTabsZoom.end}`,
+assert.equal(consecutiveTargetProject.zooms.length, 2);
+assert.deepEqual(
+  consecutiveTargetProject.zooms.map((zoom) => zoom.target),
+  [
+    { x: 1451, y: 79, width: 188, height: 29 },
+    { x: 1646, y: 79, width: 188, height: 29 },
+  ],
 );
-assert.deepEqual(mergedTabsZoom.target, { x: 1451, y: 79, width: 383, height: 29 });
 
 const terminalRightEdgeTargetProject = DemoProjectSchema.parse(
   compileProject({
@@ -156,21 +165,17 @@ const terminalRightEdgeTargetProject = DemoProjectSchema.parse(
   }),
 );
 
-assert.equal(terminalRightEdgeTargetProject.zooms.length, 2);
-const [terminalRightEdgeZoom, terminalRightEdgeOutroZoom] = terminalRightEdgeTargetProject.zooms;
-assert.ok(terminalRightEdgeZoom !== undefined, "expected one terminal right-edge zoom");
-assert.deepEqual(terminalRightEdgeZoom.target, { x: 1451, y: 79, width: 383, height: 29 });
-assert.equal(terminalRightEdgeZoom.end, 9.914);
-assert.ok(
-  terminalRightEdgeTargetProject.duration - terminalRightEdgeZoom.end >= 0.599,
-  "right-edge terminal zooms should leave room before the clean end crop",
-);
+assert.equal(terminalRightEdgeTargetProject.zooms.length, 3);
+const [firstRightEdgeZoom, terminalRightEdgeZoom, terminalRightEdgeOutroZoom] = terminalRightEdgeTargetProject.zooms;
+assert.deepEqual(firstRightEdgeZoom?.target, { x: 1451, y: 79, width: 188, height: 29 });
+assert.deepEqual(terminalRightEdgeZoom?.target, { x: 1646, y: 79, width: 188, height: 29 });
+assert.ok(terminalRightEdgeZoom !== undefined && terminalRightEdgeZoom.end <= 9.914);
 assert.ok(
   terminalRightEdgeOutroZoom !== undefined && terminalRightEdgeOutroZoom.start >= terminalRightEdgeZoom.end,
   "clean outro crop should not overlap the interaction zoom",
 );
 assert.deepEqual(terminalRightEdgeOutroZoom, {
-  id: "zoom-0-outro",
+  id: "zoom-1-outro",
   start: 9.914,
   end: 10.514,
   target: { x: 0, y: 49.090909, width: 1745.454545, height: 981.818182 },
@@ -219,12 +224,14 @@ const adjacentTargetProject = DemoProjectSchema.parse(
   }),
 );
 
-assert.equal(adjacentTargetProject.zooms.length, 1);
-const [adjacentZoom] = adjacentTargetProject.zooms;
-assert.ok(adjacentZoom !== undefined, "expected adjacent zoom targets to merge");
-assert.equal(adjacentZoom.start, 1);
-assert.equal(adjacentZoom.end, 6);
-assert.deepEqual(adjacentZoom.target, { x: 100, y: 100, width: 230, height: 100 });
+assert.equal(adjacentTargetProject.zooms.length, 2);
+assert.deepEqual(
+  adjacentTargetProject.zooms.map((zoom) => zoom.target),
+  [
+    { x: 100, y: 100, width: 100, height: 100 },
+    { x: 250, y: 120, width: 80, height: 60 },
+  ],
+);
 
 const outOfOrderTargetProject = DemoProjectSchema.parse(
   compileProject({
@@ -239,12 +246,99 @@ const outOfOrderTargetProject = DemoProjectSchema.parse(
   }),
 );
 
-assert.equal(outOfOrderTargetProject.zooms.length, 1);
-const [outOfOrderZoom] = outOfOrderTargetProject.zooms;
-assert.ok(outOfOrderZoom !== undefined, "expected out-of-order overlapping zoom targets to merge");
-assert.equal(outOfOrderZoom.id, "zoom-1");
-assert.equal(outOfOrderZoom.start, 1);
-assert.equal(outOfOrderZoom.end, 5.5);
-assert.deepEqual(outOfOrderZoom.target, { x: 100, y: 100, width: 230, height: 100 });
+assert.equal(outOfOrderTargetProject.zooms.length, 2);
+assert.deepEqual(
+  outOfOrderTargetProject.zooms.map((zoom) => zoom.target),
+  [
+    { x: 100, y: 100, width: 100, height: 100 },
+    { x: 250, y: 120, width: 80, height: 60 },
+  ],
+);
+
+const clickFirstProject = DemoProjectSchema.parse(
+  compileProject({
+    ...input,
+    captureResult: {
+      ...input.captureResult,
+      events: [
+        { type: "cursor", time: 1.7, x: 200, y: 200 },
+        { type: "click", time: 2, x: 640, y: 360, label: "Open menu" },
+        { type: "cursor", time: 2.2, x: 900, y: 640 },
+      ],
+    },
+  }),
+);
+
+assert.equal(clickFirstProject.zooms.length, 1);
+assert.deepEqual(clickFirstProject.zooms[0], {
+  id: "zoom_001",
+  start: 1.75,
+  end: 3.1,
+  target: { x: 288, y: 162, width: 704, height: 396 },
+  easing: "easeInOut",
+});
+
+const explicitWithoutClickProject = DemoProjectSchema.parse(
+  compileProject({
+    ...input,
+    captureResult: {
+      ...input.captureResult,
+      events: [{ type: "zoomTarget", time: 1.3, x: 80, y: 96, width: 140, height: 48, label: "Start demo" }],
+    },
+  }),
+);
+
+assert.equal(explicitWithoutClickProject.zooms.length, 1);
+assert.deepEqual(explicitWithoutClickProject.zooms[0], {
+  id: "zoom-0",
+  start: 1.3,
+  end: 3.8,
+  target: { x: 80, y: 96, width: 140, height: 48 },
+  easing: "easeInOut",
+});
+
+const nearbyClickAndExplicitProject = DemoProjectSchema.parse(
+  compileProject({
+    ...input,
+    captureResult: {
+      ...input.captureResult,
+      events: [
+        { type: "click", time: 2.1, x: 640, y: 360, label: "Submit" },
+        { type: "zoomTarget", time: 2, x: 0, y: 0, width: 1280, height: 720, label: "Broad target" },
+      ],
+    },
+  }),
+);
+
+assert.equal(nearbyClickAndExplicitProject.zooms.length, 1);
+assert.deepEqual(nearbyClickAndExplicitProject.zooms[0], {
+  id: "zoom_001",
+  start: 1.85,
+  end: 3.2,
+  target: { x: 288, y: 162, width: 704, height: 396 },
+  easing: "easeInOut",
+});
+
+const distantOverlappingExplicitProject = DemoProjectSchema.parse(
+  compileProject({
+    ...input,
+    captureResult: {
+      ...input.captureResult,
+      events: [
+        { type: "zoomTarget", time: 1, x: 100, y: 100, width: 100, height: 100, label: "First" },
+        { type: "zoomTarget", time: 2, x: 900, y: 100, width: 100, height: 100, label: "Second" },
+      ],
+    },
+  }),
+);
+
+assert.equal(distantOverlappingExplicitProject.zooms.length, 2);
+assert.deepEqual(
+  distantOverlappingExplicitProject.zooms.map((zoom) => zoom.target),
+  [
+    { x: 100, y: 100, width: 100, height: 100 },
+    { x: 900, y: 100, width: 100, height: 100 },
+  ],
+);
 
 console.log("compileProject tests passed");

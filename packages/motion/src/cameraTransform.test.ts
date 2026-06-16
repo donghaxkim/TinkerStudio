@@ -117,10 +117,11 @@ describe("camera transform", () => {
     expect(result.state).not.toBe(state);
   });
 
-  it("recenters cursor-follow focus after cursor leaves the safe zone", () => {
+  it("moves cursor-follow focus partially toward far cursor targets instead of jumping", () => {
     const state = {
       ...createCursorFollowCameraState(),
       initialized: true,
+      lastTime: 0.95,
       focus: { cx: 0.5, cy: 0.5 },
       frozenFocus: { cx: 0.5, cy: 0.5 },
     };
@@ -135,8 +136,134 @@ describe("camera transform", () => {
       { safeZoneRadius: 0.12 },
     );
 
-    expect(result.focus).toEqual({ cx: 0.82, cy: 0.2 });
-    expect(result.state.focus).toEqual({ cx: 0.82, cy: 0.2 });
+    expect(result.focus.cx).toBeGreaterThan(0.5);
+    expect(result.focus.cx).toBeLessThan(0.82);
+    expect(result.focus.cy).toBeGreaterThan(0.2);
+    expect(result.focus.cy).toBeLessThan(0.5);
+    expect(result.state.focus).toEqual(result.focus);
+  });
+
+  it("uses a larger follow step for farther cursor movement", () => {
+    const state = {
+      ...createCursorFollowCameraState(),
+      initialized: true,
+      lastTime: 0.95,
+      focus: { cx: 0.5, cy: 0.5 },
+      frozenFocus: { cx: 0.5, cy: 0.5 },
+    };
+
+    const near = computeCursorFollowFocus(
+      state,
+      [point(1, 0.65, 0.5)],
+      1,
+      3,
+      1,
+      { cx: 0.5, cy: 0.5 },
+      { safeZoneRadius: 0.12 },
+    );
+    const far = computeCursorFollowFocus(
+      state,
+      [point(1, 0.85, 0.5)],
+      1,
+      3,
+      1,
+      { cx: 0.5, cy: 0.5 },
+      { safeZoneRadius: 0.12 },
+    );
+
+    expect(far.focus.cx - 0.5).toBeGreaterThan(near.focus.cx - 0.5);
+  });
+
+  it("falls back from invalid cursor-follow options without producing NaN focus", () => {
+    const state = {
+      ...createCursorFollowCameraState(),
+      initialized: true,
+      lastTime: 0.95,
+      focus: { cx: 0.5, cy: 0.5 },
+      frozenFocus: { cx: 0.5, cy: 0.5 },
+    };
+
+    const result = computeCursorFollowFocus(
+      state,
+      [point(1, 0.82, 0.2)],
+      1,
+      3,
+      1,
+      { cx: 0.5, cy: 0.5 },
+      {
+        safeZoneRadius: 0.12,
+        minFollowFactor: Number.NaN,
+        maxFollowFactor: Number.NaN,
+        followTimeScaleSeconds: Number.NaN,
+      },
+    );
+
+    expect(Number.isNaN(result.focus.cx)).toBe(false);
+    expect(Number.isNaN(result.focus.cy)).toBe(false);
+    expect(Number.isNaN(result.state.focus.cx)).toBe(false);
+    expect(Number.isNaN(result.state.focus.cy)).toBe(false);
+  });
+
+  it("falls back from invalid safe-zone radius without disabling cursor follow", () => {
+    const state = {
+      ...createCursorFollowCameraState(),
+      initialized: true,
+      lastTime: 0.95,
+      focus: { cx: 0.5, cy: 0.5 },
+      frozenFocus: { cx: 0.5, cy: 0.5 },
+    };
+
+    const fallback = computeCursorFollowFocus(state, [point(1, 0.82, 0.2)], 1, 3, 1, { cx: 0.5, cy: 0.5 });
+    const result = computeCursorFollowFocus(state, [point(1, 0.82, 0.2)], 1, 3, 1, { cx: 0.5, cy: 0.5 }, {
+      safeZoneRadius: Number.NaN,
+    });
+
+    expect(result.focus).toEqual(fallback.focus);
+    expect(result.focus.cx).toBeGreaterThan(0.5);
+    expect(result.focus.cy).toBeLessThan(0.5);
+  });
+
+  it("falls back from invalid full-zoom threshold without disabling zoom-out freeze", () => {
+    const state = {
+      ...createCursorFollowCameraState(),
+      initialized: true,
+      focus: { cx: 0.42, cy: 0.44 },
+      wasZoomed: true,
+      reachedFullZoom: true,
+      frozenFocus: { cx: 0.42, cy: 0.44 },
+    };
+
+    const fallback = computeCursorFollowFocus(state, [point(4, 0.9, 0.9)], 4, 3, 0.4, { cx: 0.5, cy: 0.5 });
+    const result = computeCursorFollowFocus(state, [point(4, 0.9, 0.9)], 4, 3, 0.4, { cx: 0.5, cy: 0.5 }, {
+      fullZoomThreshold: Number.NaN,
+    });
+
+    expect(result.focus).toEqual(fallback.focus);
+    expect(result.focus).toEqual({ cx: 0.42, cy: 0.44 });
+    expect(result.state.frozenFocus).toEqual({ cx: 0.42, cy: 0.44 });
+  });
+
+  it("holds cursor-follow focus when elapsed time is not positive", () => {
+    const state = {
+      ...createCursorFollowCameraState(),
+      initialized: true,
+      lastTime: 1,
+      focus: { cx: 0.5, cy: 0.5 },
+      frozenFocus: { cx: 0.5, cy: 0.5 },
+    };
+
+    const result = computeCursorFollowFocus(
+      state,
+      [point(1, 0.82, 0.2)],
+      1,
+      3,
+      1,
+      { cx: 0.5, cy: 0.5 },
+      { safeZoneRadius: 0.12 },
+    );
+
+    expect(result.focus).toEqual({ cx: 0.5, cy: 0.5 });
+    expect(result.state.focus).toEqual({ cx: 0.5, cy: 0.5 });
   });
 
   it("freezes cursor-follow focus during zoom-out after full zoom was reached", () => {
@@ -263,7 +390,8 @@ describe("camera transform", () => {
     });
 
     expect(second).toEqual(first);
-    expect(first.focus).toEqual({ cx: 0.791666666667, cy: 0.208333333333 });
+    expect(first.focus.cx).toBeCloseTo(0.783686532065, 9);
+    expect(first.focus.cy).toBeCloseTo(0.208333333333, 9);
     expect(first.activeZoomId).toBe("zoom_001");
   });
 
@@ -276,9 +404,10 @@ describe("camera transform", () => {
       transitionSeconds: 0,
     });
 
-    // Full zoom locks at t=2 on the cursor's in-flight position; the final
-    // cursor sample at t=2.2 lands inside the safe zone so focus holds steady.
-    expect(transform.focus).toEqual({ cx: 0.782, cy: 0.254 });
+    // Full zoom moves partially toward the cursor's in-flight position; the
+    // final cursor sample lands inside the safe zone so focus holds steady.
+    expect(transform.focus.cx).toBeCloseTo(0.747117985735, 9);
+    expect(transform.focus.cy).toBeCloseTo(0.265026947025, 9);
     expect(transform.scale).toBe(2.4);
   });
 
@@ -325,7 +454,7 @@ describe("camera transform", () => {
     const cursorPoints = [point(1.05, 0.82, 0.2), point(1.25, 0.25, 0.8)];
     let state = createCursorFollowCameraState();
 
-    for (const time of [1, 1.15, 1.25]) {
+    for (const time of [1, 1.05, 1.15, 1.25]) {
       state = resolveCameraTransformWithCursorFollow(regions, cursorPoints, time, state, { transitionSeconds: 1 }).state;
     }
 
