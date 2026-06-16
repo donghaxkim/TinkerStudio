@@ -285,6 +285,12 @@ assert.match(directPrompt, /Repo-aware storyboard planning/);
 assert.match(directPrompt, /Show a repo-aware hero-to-export flow/);
 assert.match(directPrompt, /README\.md/);
 assert.match(directPrompt, /Prefer actions supported by visible website analysis/);
+assert.match(directPrompt, /Hook -> Demo: Use Case -> End Result -> CTA/);
+assert.match(directPrompt, /Hook maps to hook/);
+assert.match(directPrompt, /Demo: Use Case maps to screen_capture or feature/);
+assert.match(directPrompt, /End Result maps to proof/);
+assert.match(directPrompt, /CTA maps to cta/);
+assert.match(directPrompt, /prioritize product actions that support the use case and reveal the end result/);
 
 const noRepoCalls: RequestInit[] = [];
 const noRepoPlanner = createEnvironmentAiUrlPlanner({
@@ -397,6 +403,12 @@ assert.match(opencodeCalls[0]?.prompt ?? "", /press step with key Enter/);
 assert.match(opencodeCalls[0]?.prompt ?? "", /product workflow/);
 assert.match(opencodeCalls[0]?.prompt ?? "", /homepage-only/);
 assert.match(opencodeCalls[0]?.prompt ?? "", /Generate highlight reels/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /Hook -> Demo: Use Case -> End Result -> CTA/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /Hook maps to hook/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /Demo: Use Case maps to screen_capture or feature/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /End Result maps to proof/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /CTA maps to cta/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /prioritize product actions that support the use case and reveal the end result/);
 
 await assert.rejects(
   () =>
