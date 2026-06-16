@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  CreatePlanningSessionRequestSchema,
   CreateDemoRequestSchema,
   DemoOutlineSchema,
   GenerationErrorSchema,
@@ -198,6 +199,43 @@ const planningResponse = PlanningSessionResponseSchema.parse({
   outlineValid: true,
 });
 assert.equal(planningResponse.outlineValid, true);
+
+assert.equal(
+  CreatePlanningSessionRequestSchema.safeParse({
+    productUrl: "https://example.com",
+    repoUrl: "https://github.com/example/product",
+  }).success,
+  true,
+);
+
+for (const repoUrl of [
+  "http://github.com/example/product",
+  "https://github.example.com/example/product",
+  "https://gitlab.com/example/product",
+  "https://github.com/example/product/tree/main",
+  "https://github.com/example/product/blob/main/README.md",
+  "https://github.com/example/product/commit/abcdef123456",
+  "https://github.com/example/product?tab=readme-ov-file",
+  "https://github.com/example/product#readme",
+  "https://github.com:444/example/product",
+  "https://github.com//example/product",
+  "https://github.com/example//product",
+  "https://github.com/example/product//",
+  "https://github.com/%20/product",
+  "https://github.com/example/%20",
+  "https://user:token@github.com/example/product",
+  "file:///tmp/product",
+  "../product",
+]) {
+  assert.equal(
+    CreatePlanningSessionRequestSchema.safeParse({
+      productUrl: "https://example.com",
+      repoUrl,
+    }).success,
+    false,
+    `Expected planning repoUrl to reject ${repoUrl}`,
+  );
+}
 
 const validAssistedRequest = CreateDemoRequestSchema.parse({
   durationCapSeconds: 10,

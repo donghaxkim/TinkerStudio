@@ -72,7 +72,21 @@ export const CreatePlanningSessionRequestSchema = z
     repoUrl: z.string().url().refine((value) => {
       try {
         const url = new URL(value);
-        return url.protocol === "https:" && url.hostname === "github.com" && /^\/[^/]+\/[^/]+$/.test(url.pathname);
+        const pathSegments = url.pathname.slice(1).split("/");
+        return (
+          url.protocol === "https:" &&
+          url.hostname === "github.com" &&
+          url.username === "" &&
+          url.password === "" &&
+          url.port === "" &&
+          url.search === "" &&
+          url.hash === "" &&
+          pathSegments.length === 2 &&
+          pathSegments.every((segment) => {
+            const decodedSegment = decodeURIComponent(segment);
+            return decodedSegment.trim().length > 0 && !decodedSegment.includes("/");
+          })
+        );
       } catch {
         return false;
       }
@@ -98,6 +112,8 @@ export const PlanningSessionResponseSchema = z
   .strict();
 
 export type DemoOutline = z.infer<typeof DemoOutlineSchema>;
+export type DemoOutlineEvidence = z.infer<typeof DemoOutlineEvidenceSchema>;
+export type DemoOutlineScene = z.infer<typeof DemoOutlineSceneSchema>;
 export type PlanningAgent = z.infer<typeof PlanningAgentSchema>;
 export type PlanningMessage = z.infer<typeof PlanningMessageSchema>;
 export type PlanningSessionStatus = z.infer<typeof PlanningSessionStatusSchema>;
