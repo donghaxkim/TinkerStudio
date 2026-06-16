@@ -29,7 +29,6 @@ const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
 const STREAM_LINE_RETAIN_CHARS = 1024 * 1024;
 const CLAUDE_STDOUT_LOG_NAME = ".tinker-claude-planning-output.jsonl";
 const CLAUDE_STDERR_LOG_NAME = ".tinker-claude-planning-error.log";
-const WORKSPACE_INVENTORY_SKIP_NAMES = new Set([".git", "node_modules"]);
 
 const outlineSchema = {
   title: "non-empty string",
@@ -211,12 +210,8 @@ async function captureWorkspaceInventory(workspaceRoot: string): Promise<Workspa
       const relativePath = normalizeWorkspaceRelativePath(relative(workspaceRoot, absolutePath));
       const stats = await lstat(absolutePath);
 
-      if (WORKSPACE_INVENTORY_SKIP_NAMES.has(entry.name) && stats.isDirectory()) {
-        inventory.set(relativePath, `skipped-directory:${stats.size}:${stats.mtimeMs}`);
-        continue;
-      }
-
       if (entry.isDirectory()) {
+        inventory.set(relativePath, `directory:${stats.size}:${stats.mtimeMs}`);
         await visit(absolutePath);
         continue;
       }

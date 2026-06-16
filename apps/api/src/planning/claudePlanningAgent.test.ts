@@ -332,6 +332,35 @@ describe("createClaudePlanningAgentRunner", () => {
     ).rejects.toThrow("Claude planning modified files outside the allowed output boundary: node_modules");
   });
 
+  it("rejects edits inside pre-existing skipped directories", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-boundary-nested-skipped-${randomUUID()}-`));
+    const outlinePath = join(workspaceRoot, "outline.json");
+    const packagePath = join(workspaceRoot, "node_modules", "fixture", "package.json");
+    await mkdir(join(workspaceRoot, "node_modules", "fixture"), { recursive: true });
+    await writeFile(packagePath, "{\"version\":\"1.0.0\"}\n");
+    const runClaude = vi.fn(async () => {
+      await writeFile(packagePath, "{\"version\":\"2.0.0\"}\n");
+      return {
+        stdout: [
+          JSON.stringify({ type: "system", session_id: "claude-session-nested-skipped" }),
+          JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Edited nested skipped file." }] } }),
+        ].join("\n"),
+      };
+    });
+    const runner = createClaudePlanningAgentRunner({ runClaude, analyzeWebsite: vi.fn(async () => websiteAnalysis), analyzeRepo: vi.fn(async () => repoAnalysis) });
+
+    await expect(
+      runner({
+        kind: "initial",
+        productUrl: "https://product.example.com",
+        repoUrl: "https://github.com/example/product",
+        agent: "claude",
+        workspaceRoot,
+        outlinePath,
+      }),
+    ).rejects.toThrow("Claude planning modified files outside the allowed output boundary: node_modules/fixture/package.json");
+  });
+
   it("runs follow-up planning with the stored resume handle and latest user message", async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-planning-followup-${randomUUID()}-`));
     const outlinePath = join(workspaceRoot, "outline.json");
