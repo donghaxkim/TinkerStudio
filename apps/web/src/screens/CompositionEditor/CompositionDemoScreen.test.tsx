@@ -333,6 +333,30 @@ describe("CompositionDemoScreen", () => {
     expect(await screen.findByText("I drafted a grounded outline.")).toBeInTheDocument();
   });
 
+  it("disables the top-level Back button while initial planning is in flight", async () => {
+    const client = createLocalCompositionGenerationClient();
+    const createSession = deferred<CompositionPlanningSession>();
+    const planningClient: CompositionPlanningClient = {
+      createSession: vi.fn(async () => createSession.promise),
+      sendMessage: vi.fn(async () => planningSession()),
+    };
+    const onBack = vi.fn();
+    render(<CompositionDemoScreen client={client} planningClient={planningClient} onBack={onBack} />);
+
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
+
+    await waitFor(() => expect(planningClient.createSession).toHaveBeenCalled());
+    const topLevelBack = screen.getByRole("button", { name: "Back" });
+    expect(topLevelBack).toBeDisabled();
+    fireEvent.click(topLevelBack);
+    expect(onBack).not.toHaveBeenCalled();
+
+    createSession.resolve(planningSession());
+    expect(await screen.findByText("I drafted a grounded outline.")).toBeInTheDocument();
+  });
+
   it("trims a clip in the empty editor shell (same manual repair tools as the real editor)", async () => {
     const client = createLocalCompositionGenerationClient();
     render(
