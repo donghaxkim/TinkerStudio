@@ -154,6 +154,36 @@ function filterComplexFor(project: DemoProject) {
   return graph.filterComplex;
 }
 
+function filterComplexWithoutCursorImageFor(project: DemoProject) {
+  const plan = buildFinalRenderPlan(project);
+  const graph = buildRealMediaFilterGraph(project, plan, [
+    {
+      ok: true,
+      assetId: "asset_capture_001",
+      assetUri: "assets/capture-001.mp4",
+      consumer: "export",
+      path: "/tmp/capture-001.mp4",
+    },
+  ]);
+
+  return graph.filterComplex;
+}
+
+function filterComplexWithCursorImageFor(project: DemoProject, cursorImage: typeof TEST_CURSOR_IMAGE) {
+  const plan = buildFinalRenderPlan(project);
+  const graph = buildRealMediaFilterGraph(project, plan, [
+    {
+      ok: true,
+      assetId: "asset_capture_001",
+      assetUri: "assets/capture-001.mp4",
+      consumer: "export",
+      path: "/tmp/capture-001.mp4",
+    },
+  ], { cursorImage });
+
+  return graph.filterComplex;
+}
+
 function cursorOverlaysFor(project: DemoProject) {
   return [
     ...filterComplexFor(project).matchAll(
@@ -346,6 +376,32 @@ describe("preview/export cursor-settings parity (PB-006)", () => {
     expect(filterComplexFor(project)).toContain("movie='/tmp/tinker-test-cursor-arrow.png'");
     expect(overlays.length).toBeGreaterThan(0);
     expect(boxes.some((box) => box.color === CLICK_EMPHASIS_COLOR)).toBe(true);
+  });
+
+  it("escapes cursor image paths for FFmpeg movie filters", () => {
+    const project = projectWith({
+      zooms: [],
+      cursorEvents: [{ id: "move_escape", time: 1, type: "move", x: 960, y: 540 }],
+    });
+    const complex = filterComplexWithCursorImageFor(project, {
+      ...TEST_CURSOR_IMAGE,
+      path: "/tmp/tinker\\cursor/a'b:c.png",
+    });
+
+    expect(complex).toContain(String.raw`movie='/tmp/tinker\\cursor/a'\''b\:c.png'`);
+  });
+
+  it("splits the cursor image stream for multiple cursor points", () => {
+    expect(filterComplexFor(cursorProject())).toContain("split=2[cursor_icon0][cursor_icon1]");
+  });
+
+  it("omits cursor filters when no cursor image is provided", () => {
+    const complex = filterComplexWithoutCursorImageFor(cursorProject());
+
+    expect(complex).not.toContain("movie=");
+    expect(complex).not.toContain("cursor_icon");
+    expect(complex).not.toContain("cursor_emphasis");
+    expect(complex).not.toContain("drawbox");
   });
 
   it("hidden: both preview-intent and export suppress the cursor entirely", () => {

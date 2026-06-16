@@ -174,7 +174,10 @@ function appendCursorFilters(
 }
 
 function ffmpegFilterPath(path: string) {
-  return path.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
+  return path
+    .split("'")
+    .map((segment) => segment.replace(/\\/g, "\\\\").replace(/:/g, "\\:"))
+    .join("'\\''");
 }
 
 function appendCameraFilters(
