@@ -55,6 +55,7 @@ export async function renderFinalToMp4(project: DemoProject, options: RenderFina
   const plan = buildFinalRenderPlan(snapshot, { fileName: basename(outputPath) });
   const renderTempRoot = await mkdtemp(join(tmpdir(), "tinker-render-"));
   const runCommand = options.runCommand ?? runSpawnedFfmpegCommand;
+  let primaryError: unknown;
 
   try {
     const cursorImage = await writeDefaultCursorPng(renderTempRoot);
@@ -63,8 +64,17 @@ export async function renderFinalToMp4(project: DemoProject, options: RenderFina
 
     await mkdir(dirname(outputPath), { recursive: true });
     await runCommand(options.ffmpegPath ?? "ffmpeg", args);
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
-    await rm(renderTempRoot, { recursive: true, force: true });
+    try {
+      await rm(renderTempRoot, { recursive: true, force: true });
+    } catch (cleanupError) {
+      if (!primaryError) {
+        throw cleanupError;
+      }
+    }
   }
 
   const probe = await probeMp4Artifact(outputPath, {
