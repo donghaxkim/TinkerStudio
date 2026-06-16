@@ -7,10 +7,10 @@ import {
   type ZoomKeyframe,
 } from "@tinker/project-schema";
 import type { CaptureAsset, CaptureEvent } from "@tinker/browser-capture";
+import { suggestInteractionZooms, type ExplicitInteractionTarget } from "@tinker/motion";
 import type { CompileProjectInput } from "./types.js";
 
 const ZOOM_TARGET_HOLD_SECONDS = 2.5;
-const ZOOM_MERGE_EPSILON_SECONDS = 0.001;
 const RIGHT_EDGE_ZOOM_THRESHOLD_RATIO = 0.86;
 const RIGHT_EDGE_OVERVIEW_SECONDS = 0.6;
 const RIGHT_EDGE_OUTRO_SECONDS = 0.9;
@@ -65,15 +65,6 @@ function toCursorEvent(event: CaptureEvent): CursorEvent | undefined {
   return undefined;
 }
 
-function mergeRects(left: ZoomKeyframe["target"], right: ZoomKeyframe["target"]): ZoomKeyframe["target"] {
-  const x = Math.min(left.x, right.x);
-  const y = Math.min(left.y, right.y);
-  const maxX = Math.max(left.x + left.width, right.x + right.width);
-  const maxY = Math.max(left.y + left.height, right.y + right.height);
-
-  return { x, y, width: maxX - x, height: maxY - y };
-}
-
 function isRightEdgeTarget(target: ZoomKeyframe["target"], frame: FrameSize | undefined) {
   return frame !== undefined && target.x + target.width >= frame.width * RIGHT_EDGE_ZOOM_THRESHOLD_RATIO;
 }
@@ -87,6 +78,21 @@ function terminalRightEdgeOutroTarget(frame: FrameSize): ZoomKeyframe["target"] 
     y: cleanNumber((frame.height - height) / 2),
     width,
     height,
+  };
+}
+
+function cleanZoomKeyframe(zoom: ZoomKeyframe): ZoomKeyframe {
+  return {
+    ...zoom,
+    start: cleanNumber(zoom.start),
+    end: cleanNumber(zoom.end),
+    target: {
+      x: cleanNumber(zoom.target.x),
+      y: cleanNumber(zoom.target.y),
+      width: cleanNumber(zoom.target.width),
+      height: cleanNumber(zoom.target.height),
+    },
+    ...(zoom.scale !== undefined ? { scale: cleanNumber(zoom.scale) } : {}),
   };
 }
 
@@ -119,42 +125,45 @@ function frameTerminalRightEdgeZoom(
   ];
 }
 
-function toZoomKeyframes(events: readonly CaptureEvent[], duration: number, frame: FrameSize | undefined): ZoomKeyframe[] {
-  const zooms: ZoomKeyframe[] = [];
-  const zoomTargets = events
-    .map((event, index) => ({ event, index }))
-    .filter(
-      (entry): entry is { event: Extract<CaptureEvent, { type: "zoomTarget" }>; index: number } =>
-        entry.event.type === "zoomTarget",
-    )
-    .sort((left, right) => left.event.time - right.event.time || left.index - right.index);
+function toExplicitInteractionTarget(
+  event: Extract<CaptureEvent, { type: "zoomTarget" }>,
+  index: number,
+): ExplicitInteractionTarget {
+  return {
+    id: `zoom-${index}`,
+    time: event.time,
+    x: event.x,
+    y: event.y,
+    width: event.width,
+    height: event.height,
+    holdSeconds: ZOOM_TARGET_HOLD_SECONDS,
+  };
+}
 
-  zoomTargets.forEach(({ event, index }) => {
-    const end = Math.min(event.time + ZOOM_TARGET_HOLD_SECONDS, duration);
+function toZoomKeyframes(
+  events: readonly CaptureEvent[],
+  cursorEvents: readonly CursorEvent[],
+  duration: number,
+  frame: FrameSize | undefined,
+): ZoomKeyframe[] {
+  if (!frame) {
+    return [];
+  }
 
-    if (end <= event.time) {
-      return;
-    }
-
-    const target = { x: event.x, y: event.y, width: event.width, height: event.height };
-    const previous = zooms.at(-1);
-
-    if (previous && event.time <= previous.end + ZOOM_MERGE_EPSILON_SECONDS) {
-      previous.end = Math.max(previous.end, end);
-      previous.target = mergeRects(previous.target, target);
-      return;
-    }
-
-    zooms.push({
-      id: `zoom-${index}`,
-      start: event.time,
-      end,
-      target,
-      easing: "easeInOut",
-    });
+  const explicitTargets = events.flatMap((event, index) =>
+    event.type === "zoomTarget" ? [toExplicitInteractionTarget(event, index)] : [],
+  );
+  const zooms = suggestInteractionZooms(cursorEvents, [], {
+    duration,
+    frame,
+    explicitTargets,
+    idPrefix: "zoom",
+    minSpacingSeconds: 0,
+    excludeExistingZooms: false,
+    easing: "easeInOut",
   });
 
-  return zooms.flatMap((zoom) => frameTerminalRightEdgeZoom(zoom, duration, frame));
+  return zooms.flatMap((zoom) => frameTerminalRightEdgeZoom(cleanZoomKeyframe(zoom), duration, frame));
 }
 
 function captureFrameRate(asset: CaptureAsset) {
@@ -192,7 +201,8 @@ export function compileProject(input: CompileProjectInput): DemoProject {
 
     return cursorEvent && cursorEvent.time <= duration ? [cursorEvent] : [];
   });
-  const zooms = toZoomKeyframes(input.captureResult.events, duration, captureFrameSize(videoAsset, input.capturePlan.viewport));
+  const frame = captureFrameSize(videoAsset, input.capturePlan.viewport);
+  const zooms = toZoomKeyframes(input.captureResult.events, cursorEvents, duration, frame);
   const project: DemoProject = {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     id: input.projectId,

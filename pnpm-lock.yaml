@@ -159,6 +159,9 @@ importers:
       '@tinker/generation-contract':
         specifier: workspace:*
         version: link:../generation-contract
+      '@tinker/motion':
+        specifier: workspace:*
+        version: link:../motion
       '@tinker/product-analysis':
         specifier: workspace:*
         version: link:../product-analysis
