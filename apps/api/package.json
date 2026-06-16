@@ -6,15 +6,16 @@
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
   "scripts": {
-    "build": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/demo-assembly build && tsc -p tsconfig.json",
+    "build": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/demo-assembly build && tsc -p tsconfig.json",
     "dev": "tsx src/main.ts",
     "test": "vitest run",
-    "typecheck": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/demo-assembly build && tsc -p tsconfig.json --noEmit"
+    "typecheck": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/demo-assembly build && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@tinker/demo-assembly": "workspace:*",
     "@tinker/generation-contract": "workspace:*",
+    "@tinker/product-analysis": "workspace:*",
     "@tinker/project-schema": "workspace:*",
     "fastify": "^5.8.5"
   },

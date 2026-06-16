@@ -4,8 +4,12 @@ import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { ApiConfig } from "./config.js";
 import { createJobQueue } from "./jobs/jobQueue.js";
 import { createJobStore } from "./jobs/jobStore.js";
+import { createClaudePlanningAgentRunner } from "./planning/claudePlanningAgent.js";
+import { createPlanningSessionStore } from "./planning/planningSessionStore.js";
+import type { PlanningAgentRunner } from "./planning/planningRunner.js";
 import { registerArtifactsRoutes } from "./routes/artifacts.js";
 import { registerJobsRoutes, type ProductUrlResolver } from "./routes/jobs.js";
+import { registerPlanningSessionsRoutes } from "./routes/planningSessions.js";
 import { createEditWorker, type RunEdit } from "./workers/editWorker.js";
 import { createGenerationWorker, type GenerationRunner } from "./workers/generationWorker.js";
 import { createRenderWorker, type RunRender } from "./workers/renderWorker.js";
@@ -21,6 +25,7 @@ export type BuildServerOptions = {
   idGenerator?: () => string;
   maxPendingJobs?: number;
   productUrlResolver?: ProductUrlResolver;
+  planningRunner?: PlanningAgentRunner;
 };
 
 function defaultIdGenerator() {
@@ -32,6 +37,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   const now = options.now ?? (() => new Date().toISOString());
   const idGenerator = options.idGenerator ?? defaultIdGenerator;
   const store = createJobStore();
+  const planningStore = createPlanningSessionStore();
   const generationWorker = createGenerationWorker({ store, runner: options.runner, now });
   const editWorker = options.runEdit ? createEditWorker({ store, runEdit: options.runEdit, now }) : undefined;
   const renderWorker = options.runRender ? createRenderWorker({ store, runRender: options.runRender, now }) : undefined;
@@ -65,6 +71,13 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     now,
     idGenerator,
     productUrlResolver: options.productUrlResolver,
+  });
+  registerPlanningSessionsRoutes(server, {
+    store: planningStore,
+    repoRoot: options.config.repoRoot,
+    now,
+    idGenerator,
+    runner: options.planningRunner ?? createClaudePlanningAgentRunner(),
   });
   registerArtifactsRoutes(server, { store });
 

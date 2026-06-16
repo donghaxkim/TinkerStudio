@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import {
+  CreatePlanningSessionRequestSchema,
   CreateDemoRequestSchema,
+  DemoOutlineSchema,
   GenerationErrorSchema,
   GenerationJobSchema,
   GenerationProgressEventSchema,
   GenerationResultSchema,
+  PlanningSessionResponseSchema,
+  parseDemoOutline,
+  safeParseDemoOutline,
 } from "./index.js";
 import { parseCreateDemoRequest, safeParseCreateDemoRequest } from "./createDemoRequest.js";
 import sampleProject from "../../project-schema/fixtures/demo-project.sample.json";
@@ -123,6 +128,134 @@ for (const repoUrl of [
     `Expected AI URL repoUrl to reject ${repoUrl}`,
   );
 }
+
+const validDemoOutline = {
+  title: "Driftboard launch demo",
+  durationCapSeconds: 60,
+  aspectRatio: "16:9",
+  summary: "Show how teams turn scattered work into a polished launch board.",
+  scenes: [
+    {
+      id: "scene-1",
+      goal: "Introduce the launch problem",
+      visual: "Show the product homepage and hero promise.",
+      narration: "Launch work gets scattered fast.",
+      startHint: 0,
+      endHint: 12,
+      evidence: ["website"],
+    },
+    {
+      id: "scene-2",
+      goal: "Prove the repo-backed workflow",
+      visual: "Reference real repo routes and components in a clean UI walkthrough.",
+      evidence: ["repo", "website"],
+    },
+  ],
+  generationNotes: ["Keep the pacing crisp and avoid invented dashboards."],
+} as const;
+
+assert.deepEqual(DemoOutlineSchema.parse(validDemoOutline), validDemoOutline);
+assert.deepEqual(parseDemoOutline(validDemoOutline), validDemoOutline);
+assert.equal(safeParseDemoOutline(validDemoOutline).success, true);
+
+assert.equal(
+  DemoOutlineSchema.safeParse({
+    ...validDemoOutline,
+    scenes: [],
+  }).success,
+  false,
+);
+
+assert.equal(
+  DemoOutlineSchema.safeParse({
+    ...validDemoOutline,
+    scenes: [{ ...validDemoOutline.scenes[0], startHint: 20, endHint: 10 }],
+  }).success,
+  false,
+);
+
+assert.equal(
+  DemoOutlineSchema.safeParse({
+    ...validDemoOutline,
+    scenes: [{ ...validDemoOutline.scenes[0], endHint: 61 }],
+  }).success,
+  false,
+);
+
+assert.equal(
+  DemoOutlineSchema.parse({
+    ...validDemoOutline,
+    generationNotes: undefined,
+  }).generationNotes.length,
+  0,
+);
+
+const planningResponse = PlanningSessionResponseSchema.parse({
+  id: "plan-test",
+  productUrl: "https://example.com",
+  repoUrl: "https://github.com/example/product",
+  agent: "claude",
+  status: "ready",
+  messages: [{ role: "assistant", content: "I drafted an outline." }],
+  outline: validDemoOutline,
+  outlineValid: true,
+});
+assert.equal(planningResponse.outlineValid, true);
+
+assert.equal(
+  CreatePlanningSessionRequestSchema.safeParse({
+    productUrl: "https://example.com",
+    repoUrl: "https://github.com/example/product",
+  }).success,
+  true,
+);
+
+for (const repoUrl of [
+  "http://github.com/example/product",
+  "https://github.example.com/example/product",
+  "https://gitlab.com/example/product",
+  "https://github.com/example/product/tree/main",
+  "https://github.com/example/product/blob/main/README.md",
+  "https://github.com/example/product/commit/abcdef123456",
+  "https://github.com/example/product?tab=readme-ov-file",
+  "https://github.com/example/product#readme",
+  "https://github.com:444/example/product",
+  "https://github.com//example/product",
+  "https://github.com/example//product",
+  "https://github.com/example/product//",
+  "https://github.com/example_/product",
+  "https://github.com/-example/product",
+  "https://github.com/example/.",
+  "https://github.com/example/..",
+  "https://github.com/%20/product",
+  "https://github.com/example/%20",
+  "https://user:token@github.com/example/product",
+  "file:///tmp/product",
+  "../product",
+]) {
+  assert.equal(
+    CreatePlanningSessionRequestSchema.safeParse({
+      productUrl: "https://example.com",
+      repoUrl,
+    }).success,
+    false,
+    `Expected planning repoUrl to reject ${repoUrl}`,
+  );
+}
+
+assert.equal(
+  PlanningSessionResponseSchema.safeParse({
+    id: "plan-test",
+    productUrl: "https://example.com",
+    repoUrl: "https://github.com/example_/product",
+    agent: "claude",
+    status: "ready",
+    messages: [{ role: "assistant", content: "I drafted an outline." }],
+    outline: validDemoOutline,
+    outlineValid: true,
+  }).success,
+  false,
+);
 
 const validAssistedRequest = CreateDemoRequestSchema.parse({
   durationCapSeconds: 10,
