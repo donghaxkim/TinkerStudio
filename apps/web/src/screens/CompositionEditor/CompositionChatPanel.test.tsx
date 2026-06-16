@@ -106,4 +106,33 @@ describe("CompositionChatPanel", () => {
     render(<CompositionChatPanel {...props({ status: "error", error: "Server error" })} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Server error");
   });
+
+  const zp = <div data-testid="zp-body">ZP</div>;
+
+  it("renders a Zoom tab and shows the properties when it is active", () => {
+    render(<CompositionChatPanel {...props({ contextRefs: [], onSend: () => undefined, zoomProperties: zp, zoomTabActive: true })} />);
+    expect(screen.getByRole("button", { name: "Zoom properties" })).toBeInTheDocument();
+    expect(screen.getByTestId("zp-body")).toBeInTheDocument();
+    // the chat composer is replaced while editing zoom properties
+    expect(screen.queryByLabelText("Edit instruction")).not.toBeInTheDocument();
+  });
+
+  it("returns to chat from the Zoom tab", () => {
+    const onSelectChatTab = vi.fn();
+    render(<CompositionChatPanel {...props({ instruction: "punch in", onSend: () => undefined, zoomProperties: zp, zoomTabActive: true, onSelectChatTab })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chat to edit" }));
+    expect(onSelectChatTab).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the Zoom tab but keeps chat visible until it is activated", () => {
+    render(<CompositionChatPanel {...props({ contextRefs: [], onSend: () => undefined, zoomProperties: zp, zoomTabActive: false })} />);
+    expect(screen.getByRole("button", { name: "Zoom properties" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Edit instruction")).toBeInTheDocument(); // chat still shown
+    expect(screen.queryByTestId("zp-body")).not.toBeInTheDocument();
+  });
+
+  it("keeps the Zoom tab present but disabled when no zoom is selected", () => {
+    render(<CompositionChatPanel {...props({ contextRefs: [], onSend: () => undefined })} />);
+    expect(screen.getByRole("button", { name: "Zoom properties" })).toBeDisabled();
+  });
 });

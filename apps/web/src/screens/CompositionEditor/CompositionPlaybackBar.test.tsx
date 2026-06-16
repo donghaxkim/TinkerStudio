@@ -31,9 +31,9 @@ describe("CompositionPlaybackBar", () => {
     expect(screen.queryByText(/1080p|60fps/)).not.toBeInTheDocument();
   });
 
-  it("always renders the edit toolbar (undo, redo, split, trash, add marker) — identical in every editor", () => {
+  it("always renders the edit toolbar (undo, redo, split, trash) — identical in every editor", () => {
     render(<CompositionPlaybackBar {...base} />);
-    for (const name of ["Undo", "Redo", "Split clip", "Delete clip", "Add marker"]) {
+    for (const name of ["Undo", "Redo", "Split clip", "Delete clip"]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
   });
@@ -43,7 +43,6 @@ describe("CompositionPlaybackBar", () => {
     const onRedo = vi.fn();
     const onSplit = vi.fn();
     const onDelete = vi.fn();
-    const onAddMarker = vi.fn();
     const { rerender } = render(<CompositionPlaybackBar {...base} />);
     // With no handlers / can* flags, the history + clip tools are disabled.
     expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
@@ -58,18 +57,15 @@ describe("CompositionPlaybackBar", () => {
         onRedo={onRedo} canRedo
         onSplit={onSplit} canSplit
         onDelete={onDelete} canDelete
-        onAddMarker={onAddMarker}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     fireEvent.click(screen.getByRole("button", { name: "Redo" }));
     fireEvent.click(screen.getByRole("button", { name: "Split clip" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete clip" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add marker" }));
     expect(onUndo).toHaveBeenCalledTimes(1);
     expect(onRedo).toHaveBeenCalledTimes(1);
     expect(onSplit).toHaveBeenCalledTimes(1);
     expect(onDelete).toHaveBeenCalledTimes(1);
-    expect(onAddMarker).toHaveBeenCalledTimes(1);
   });
 });

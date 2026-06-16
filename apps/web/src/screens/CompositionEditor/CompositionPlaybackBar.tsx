@@ -1,3 +1,4 @@
+import { LuSquareSplitHorizontal } from "react-icons/lu";
 import { formatTimecode } from "@tinker/editor";
 
 export type CompositionPlaybackBarProps = {
@@ -23,8 +24,6 @@ export type CompositionPlaybackBarProps = {
   /** Delete the selected clip. */
   onDelete?: () => void;
   canDelete?: boolean;
-  /** Drop a marker at the playhead. */
-  onAddMarker?: () => void;
 };
 
 function SkipStartIcon() {
@@ -81,13 +80,7 @@ function RedoIcon() {
 }
 
 function SplitIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3v18" strokeDasharray="2 3" />
-      <path d="m8 8-3 4 3 4" />
-      <path d="m16 8 3 4-3 4" />
-    </svg>
-  );
+  return <LuSquareSplitHorizontal aria-hidden="true" size={16} />;
 }
 
 function TrashIcon() {
@@ -97,15 +90,6 @@ function TrashIcon() {
       <path d="M10 7V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2" />
       <path d="M6 7v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7" />
       <path d="M10 11v6M14 11v6" />
-    </svg>
-  );
-}
-
-function MarkerIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 3v18" />
-      <path d="M6 4h11l-2.5 4 2.5 4H6" />
     </svg>
   );
 }
@@ -129,7 +113,6 @@ export function CompositionPlaybackBar({
   canSplit,
   onDelete,
   canDelete,
-  onAddMarker,
 }: CompositionPlaybackBarProps) {
   return (
     <section aria-label="Playback controls" className="tk-composition-playback">
@@ -160,9 +143,6 @@ export function CompositionPlaybackBar({
         </button>
         <button type="button" className="tk-iconbtn" aria-label="Delete clip" title="Delete selected clip" disabled={!canDelete} onClick={onDelete}>
           <TrashIcon />
-        </button>
-        <button type="button" className="tk-iconbtn" aria-label="Add marker" title="Add marker at playhead" disabled={!onAddMarker} onClick={onAddMarker}>
-          <MarkerIcon />
         </button>
       </div>
     </section>

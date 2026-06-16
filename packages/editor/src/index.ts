@@ -62,9 +62,27 @@ export type {
   CompositionTimelineModel,
   GsapChildLike,
   GsapTimelineLike,
+  ZoomEasing,
+  ZoomTarget,
   ZoomUnit,
 } from "./composition/compositionTimelineModel.js";
-export { readCompositionTimeline, readSceneClipsFromDocument } from "./composition/compositionTimelineModel.js";
+export {
+  CLIP_SPEED_PRESETS,
+  DEFAULT_CLIP_SPEED,
+  DEFAULT_ZOOM_EASING,
+  DEFAULT_ZOOM_SCALE,
+  DEFAULT_ZOOM_TARGET,
+  MAX_CLIP_SPEED,
+  MAX_ZOOM_SCALE,
+  MIN_CLIP_SPEED,
+  MIN_ZOOM_SCALE,
+  clipSpeed,
+  readCompositionTimeline,
+  readSceneClipsFromDocument,
+  zoomEasing,
+  zoomScale,
+  zoomTarget,
+} from "./composition/compositionTimelineModel.js";
 export {
   addMarker,
   addZoom,
@@ -74,10 +92,12 @@ export {
   removeClip,
   removeZoom,
   resizeZoom,
+  setClipSpeed,
   splitClipAt,
   trimClip,
+  updateZoom,
 } from "./composition/compositionEdits.js";
-export type { TrimEdge } from "./composition/compositionEdits.js";
+export type { TrimEdge, ZoomPropsPatch } from "./composition/compositionEdits.js";
 export type {
   CompositionTimelineHandle,
   TimelineRegistryWindow,
@@ -88,5 +108,9 @@ export type { CompositionPreviewProps } from "./composition/CompositionPreview.j
 export { CompositionPreview } from "./composition/CompositionPreview.js";
 export type { CompositionTimelineProps } from "./composition/CompositionTimeline.js";
 export { CompositionTimeline } from "./composition/CompositionTimeline.js";
+export type { ZoomPropertiesProps } from "./composition/ZoomProperties.js";
+export { ZoomProperties } from "./composition/ZoomProperties.js";
+export type { ClipPropertiesProps } from "./composition/ClipProperties.js";
+export { ClipProperties } from "./composition/ClipProperties.js";
 export type { CompositionSelection } from "./composition/selection.js";
 export { rangeSelection, clipSelection } from "./composition/selection.js";

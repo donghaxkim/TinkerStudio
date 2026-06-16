@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CompositionTimelineHandle, TimelineRegistryWindow } from "@tinker/editor";
 import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
@@ -72,7 +72,6 @@ describe("CompositionEditorScreen", () => {
     expect(screen.getByLabelText("Playback controls")).toBeInTheDocument();
     // The edit toolbar is always present (identical in the empty shell and the real editor).
     expect(screen.getByRole("button", { name: "Split clip" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add marker" })).toBeInTheDocument();
     // The chat panel is no longer resizable — the drag handle was removed.
     expect(screen.queryByRole("separator", { name: "Resize chat panel" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Chat")).toBeInTheDocument();
@@ -105,7 +104,7 @@ describe("CompositionEditorScreen", () => {
     expect(screen.queryByTestId("composition-clip-feature")).not.toBeInTheDocument();
   });
 
-  it("splits the clip under the playhead and drops a marker", async () => {
+  it("splits the clip under the playhead", async () => {
     const handle = fakeHandle(() => undefined);
     render(
       <CompositionEditorScreen
@@ -125,9 +124,6 @@ describe("CompositionEditorScreen", () => {
     expect(screen.getByTestId("composition-clip-hook-1")).toBeInTheDocument();
     expect(screen.getByTestId("composition-clip-hook-2")).toBeInTheDocument();
     expect(screen.queryByTestId("composition-clip-hook")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Add marker" }));
-    expect(screen.getByTestId("composition-label-Marker-1")).toBeInTheDocument();
   });
 
   it("trims the selected clip by dragging its edge handle, keeps it selected, and undo restores it", async () => {
@@ -203,6 +199,94 @@ describe("CompositionEditorScreen", () => {
     // Delete the selected unit from the zoom track.
     fireEvent.keyDown(screen.getByTestId("zoom-unit-zoom-1"), { key: "Delete" });
     expect(screen.queryByTestId("zoom-unit-zoom-1")).not.toBeInTheDocument();
+  });
+
+  async function createZoom() {
+    const handle = fakeHandle(() => undefined);
+    const view = render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("zoom-track")).toBeInTheDocument());
+    const zoomTrack = screen.getByTestId("zoom-track");
+    vi.spyOn(zoomTrack, "getBoundingClientRect").mockReturnValue({
+      left: 0, width: 1000, top: 0, right: 1000, bottom: 24, height: 24, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+    // Drag-create a 2s–6s zoom on the 10s timeline.
+    fireEvent.mouseDown(zoomTrack, { clientX: 200 });
+    fireEvent.mouseMove(zoomTrack, { clientX: 600 });
+    fireEvent.mouseUp(zoomTrack, { clientX: 600 });
+    await screen.findByTestId("zoom-unit-zoom-1");
+    return view;
+  }
+
+  it("selecting a zoom opens its properties in the Zoom tab and an editable preview overlay", async () => {
+    await createZoom();
+    // The Zoom tab is active and the properties + preview target box are shown.
+    expect(screen.getByRole("button", { name: "Zoom properties" })).toBeInTheDocument();
+    expect(screen.getByTestId("zoom-properties")).toBeInTheDocument();
+    expect(screen.getByTestId("zoom-target")).toBeInTheDocument();
+    // A fresh unit shows the default scale; the target box is 1/1.6 of the frame.
+    expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("1.6×");
+    expect(screen.getByTestId("zoom-target")).toHaveStyle({ width: "62.5%" });
+  });
+
+  it("changing the zoom scale updates the timeline model and the preview overlay, and undo restores it", async () => {
+    await createZoom();
+    const slider = screen.getByLabelText("Zoom scale");
+    fireEvent.change(slider, { target: { value: "2" } });
+    fireEvent.mouseUp(slider);
+    expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("2.0×");
+    expect(screen.getByTestId("zoom-target")).toHaveStyle({ width: "50%" }); // 1/2 of the frame
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("1.6×");
+    expect(screen.getByTestId("zoom-target")).toHaveStyle({ width: "62.5%" });
+  });
+
+  it("editing the zoom duration moves the block on the timeline (undoable)", async () => {
+    await createZoom();
+    const unit = screen.getByTestId("zoom-unit-zoom-1");
+    expect(unit).toHaveStyle({ left: "20%", width: "40%" }); // 2s–6s on a 10s timeline
+
+    fireEvent.change(screen.getByLabelText("Zoom duration"), { target: { value: "2" } }); // end → 4s
+    expect(screen.getByTestId("zoom-unit-zoom-1")).toHaveStyle({ left: "20%", width: "20%" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByTestId("zoom-unit-zoom-1")).toHaveStyle({ left: "20%", width: "40%" });
+  });
+
+  it("resets the zoom look and removes the unit, closing the Zoom tab", async () => {
+    await createZoom();
+    // Bump the scale, then Reset returns it to the default.
+    const slider = screen.getByLabelText("Zoom scale");
+    fireEvent.change(slider, { target: { value: "2.4" } });
+    fireEvent.mouseUp(slider);
+    expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("2.4×");
+    fireEvent.click(screen.getByRole("button", { name: "Reset zoom" }));
+    expect(screen.getByTestId("zoom-scale-readout")).toHaveTextContent("1.6×");
+
+    // Remove deletes the unit, disables the Zoom tab (no unit selected), and drops the overlay.
+    fireEvent.click(screen.getByRole("button", { name: "Remove zoom" }));
+    expect(screen.queryByTestId("zoom-unit-zoom-1")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Zoom properties" })).toBeDisabled();
+    expect(screen.queryByTestId("zoom-target")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Edit instruction")).toBeInTheDocument(); // back to chat
+  });
+
+  it("returns to chat from the Zoom tab and back, without losing the selection", async () => {
+    await createZoom();
+    fireEvent.click(screen.getByRole("button", { name: "Chat to edit" }));
+    expect(screen.getByLabelText("Edit instruction")).toBeInTheDocument(); // chat restored
+    expect(screen.queryByTestId("zoom-properties")).not.toBeInTheDocument();
+    // The unit is still selected, and the Zoom tab can be reopened.
+    expect(screen.getByTestId("zoom-unit-zoom-1")).toHaveAttribute("data-selected", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Zoom properties" }));
+    expect(screen.getByTestId("zoom-properties")).toBeInTheDocument();
   });
 
   it("adds a clip selection to chat as a chip", async () => {
@@ -365,5 +449,61 @@ describe("CompositionEditorScreen", () => {
     fireEvent.click(exportBtn);
     expect(open).toHaveBeenCalledWith("/rev1/output.mp4", "_blank");
     open.mockRestore();
+  });
+
+  async function loadEditor() {
+    const handle = fakeHandle(() => undefined);
+    render(
+      <CompositionEditorScreen
+        compositionIndexUrl={INDEX}
+        outputVideoUrl={VIDEO}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: handle } })}
+      />,
+    );
+    fireEvent.load(screen.getByTestId("composition-frame"));
+    await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
+  }
+
+  it("keeps clip speed controls hidden until the Clip properties tab is explicitly opened", async () => {
+    await loadEditor();
+    // Nothing selected: no speed controls, and the Clip properties tab is present but disabled.
+    expect(screen.queryByTestId("clip-properties")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Playback speed" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Clip properties")).toBeDisabled();
+
+    // Selecting a clip does NOT open its properties — selection stays in chat for AI editing.
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    expect(screen.queryByTestId("clip-properties")).not.toBeInTheDocument();
+    const clipTab = screen.getByLabelText("Clip properties"); // the tab is now enabled
+    expect(clipTab).toBeEnabled();
+
+    // Explicitly opening the tab reveals the speed controls.
+    fireEvent.click(clipTab);
+    expect(screen.getByTestId("clip-properties")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Playback speed" })).toBeInTheDocument();
+  });
+
+  it("retimes a clip from the Clip properties tab, badges it on the timeline, then resets", async () => {
+    await loadEditor();
+    fireEvent.click(screen.getByTestId("composition-clip-feature")); // feature is 4–10s (length 6)
+    fireEvent.click(screen.getByLabelText("Clip properties"));
+
+    fireEvent.click(screen.getByTestId("clip-speed-2")); // 2× → plays in half the time
+    expect(screen.getByTestId("composition-clip-speed-feature")).toHaveTextContent("2×");
+    expect(screen.getByTestId("clip-duration-readout")).toHaveTextContent("3.0s"); // 6 / 2
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset speed" }));
+    expect(screen.queryByTestId("composition-clip-speed-feature")).not.toBeInTheDocument();
+    expect(screen.getByTestId("clip-duration-readout")).toHaveTextContent("6.0s"); // restored
+  });
+
+  it("does not place speed controls in the playback bar", async () => {
+    await loadEditor();
+    fireEvent.click(screen.getByTestId("composition-clip-feature"));
+    fireEvent.click(screen.getByLabelText("Clip properties"));
+    // The speed presets live in the chat-side properties panel, never in the transport controls.
+    const playbackBar = screen.getByLabelText("Playback controls");
+    expect(within(playbackBar).queryByRole("group", { name: "Playback speed" })).not.toBeInTheDocument();
+    expect(within(screen.getByLabelText("Chat")).getByRole("group", { name: "Playback speed" })).toBeInTheDocument();
   });
 });

@@ -20,6 +20,13 @@ export type ZoomTrackProps = {
   /** Move one edge of a unit to `time`. */
   onResize?: (id: string, edge: TrimEdge, time: number) => void;
   onDelete?: (id: string) => void;
+  /**
+   * Contextual actions for the selected unit, shown as a small popover anchored over it — the
+   * select-first pattern (mirrors the clip popover). When provided, clicking a unit selects it
+   * without opening the Zoom tab; the popover carries the explicit choices and double-click is an
+   * `onEdit` shortcut. Absent = clicking only selects.
+   */
+  unitActions?: { onAddToChat: (unit: ZoomUnit) => void; onEdit: (unit: ZoomUnit) => void };
 };
 
 type Drag =
@@ -27,33 +34,23 @@ type Drag =
   | { kind: "move"; id: string; length: number; grabOffset: number; startX: number; moved: boolean }
   | { kind: "resize"; id: string; edge: TrimEdge };
 
-const captionStyle: CSSProperties = {
-  fontFamily: "var(--tk-mono)",
-  fontSize: 9.5,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-  color: "var(--tk-text-ter, #9D9B94)",
-  marginBottom: 3,
-};
-
 const stripStyle: CSSProperties = {
   position: "relative",
   width: "100%",
-  height: 24,
+  height: 72, // matches the clip track height (CompositionTimeline trackStyle) — same-size lanes
   background: "var(--tk-timeline-bg, var(--tk-raised, #F3F1EA))",
-  border: "1px solid var(--tk-timeline-border, var(--tk-border, rgba(20,20,15,0.12)))",
-  borderRadius: 7,
+  borderRadius: 8,
   overflow: "hidden",
   userSelect: "none",
   cursor: "crosshair",
 };
 
-/** Thin blue block — secondary to the clip cards, but clearly a zoom region. */
+/** A zoom region, sized like a clip card (accent-filled so it still reads as a zoom, not a clip). */
 const unitStyle: CSSProperties = {
   position: "absolute",
-  top: 4,
-  bottom: 4,
-  borderRadius: 4,
+  top: 6,
+  bottom: 6,
+  borderRadius: 7,
   background: "var(--tk-accent-soft, rgba(108,140,255,0.30))",
   border: "1px solid var(--tk-accent, #6C8CFF)",
   boxSizing: "border-box",
@@ -80,9 +77,9 @@ const handleStyle: CSSProperties = {
 
 const createBandStyle: CSSProperties = {
   position: "absolute",
-  top: 4,
-  bottom: 4,
-  borderRadius: 4,
+  top: 6,
+  bottom: 6,
+  borderRadius: 7,
   background: "var(--tk-accent-soft, rgba(108,140,255,0.22))",
   border: "1px dashed var(--tk-accent, #6C8CFF)",
   pointerEvents: "none",
@@ -97,6 +94,7 @@ export function ZoomTrack({
   onMove,
   onResize,
   onDelete,
+  unitActions,
 }: ZoomTrackProps) {
   const scale = createTimeScale(durationSeconds, 100);
   const stripRef = useRef<HTMLDivElement | null>(null);
@@ -234,6 +232,13 @@ export function ZoomTrack({
     }
     onSelect?.(unit.id);
   }
+  // Double-click is the explicit shortcut to manual editing — it opens the unit's properties
+  // directly, bypassing the popover (which serves the select-first / add-to-chat path).
+  function onUnitDoubleClick(event: MouseEvent<HTMLDivElement>, unit: ZoomUnit) {
+    if (!unitActions) return;
+    event.stopPropagation();
+    unitActions.onEdit(unit);
+  }
   function onUnitKeyDown(event: KeyboardEvent<HTMLDivElement>, unit: ZoomUnit) {
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
@@ -256,9 +261,12 @@ export function ZoomTrack({
     beginResize(unit, edge);
   }
 
+  // The unit the contextual popover anchors to (select-first actions). Looked up here so it
+  // follows the selection and disappears when nothing is selected (or no actions were supplied).
+  const popoverUnit = unitActions && selectedId !== undefined ? units.find((u) => u.id === selectedId) : undefined;
+
   return (
-    <section aria-label="Zoom track">
-      <div style={captionStyle}>Zoom</div>
+    <section aria-label="Zoom track" style={{ position: "relative" }}>
       <div
         ref={stripRef}
         data-testid="zoom-track"
@@ -291,6 +299,7 @@ export function ZoomTrack({
               onPointerDown={(event) => onUnitPointerDown(event, unit)}
               onMouseDown={(event) => onUnitMouseDown(event, unit)}
               onClick={(event) => onUnitClick(event, unit)}
+              onDoubleClick={(event) => onUnitDoubleClick(event, unit)}
               onKeyDown={(event) => onUnitKeyDown(event, unit)}
               onMouseEnter={() => setHoveredId(unit.id)}
               onMouseLeave={() => setHoveredId((id) => (id === unit.id ? null : id))}
@@ -327,6 +336,22 @@ export function ZoomTrack({
           />
         ) : null}
       </div>
+      {unitActions && popoverUnit ? (
+        <div
+          data-testid="zoom-unit-popup"
+          className="tk-selection-popup"
+          style={{ left: `${(scale.secondsToPixels(popoverUnit.start) + scale.secondsToPixels(popoverUnit.end)) / 2}%` }}
+        >
+          <div className="tk-selection-popup-row">
+            <button type="button" className="tk-selection-popup-btn" onClick={() => unitActions.onAddToChat(popoverUnit)}>
+              Add to chat
+            </button>
+            <button type="button" className="tk-selection-popup-btn" onClick={() => unitActions.onEdit(popoverUnit)}>
+              Edit manually
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

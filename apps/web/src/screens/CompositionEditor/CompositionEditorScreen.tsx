@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
+  ClipProperties,
   CompositionPreview,
   CompositionTimeline,
+  DEFAULT_ZOOM_EASING,
+  DEFAULT_ZOOM_SCALE,
+  DEFAULT_ZOOM_TARGET,
+  ZoomProperties,
   clipAt,
   clipSelection,
   rangeSelection,
+  zoomScale,
+  zoomTarget,
   type CompositionClip,
   type CompositionSelection,
   type TimelineRegistryWindow,
   type TrimEdge,
+  type ZoomEasing,
+  type ZoomTarget,
 } from "@tinker/editor";
 import { chatContextRefFromSelection, type ChatContextRef } from "../../lib/chatContext.js";
 import type { CompositionEditClient, CompositionRevision } from "../../lib/compositionEditClient.js";
@@ -41,9 +50,13 @@ const EDIT_SUGGESTIONS = ["Tighten the pacing", "Zoom in on every click", "Smoot
 export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, repo, onBack, jobId, editClient, resolveWindow }: CompositionEditorScreenProps) {
   // Local timeline-edit history (split / delete / marker, with undo/redo). Self-contained so
   // the toolbar behaves identically in the empty shell and the real generated editor.
-  const { model, reset: resetEdits, split, remove: removeClipEdit, mark, trim, addZoom, moveZoom, resizeZoom, removeZoom, undo, redo, canUndo, canRedo } = useTimelineEdits();
+  const { model, reset: resetEdits, split, remove: removeClipEdit, trim, setClipSpeed, addZoom, moveZoom, resizeZoom, updateZoom, removeZoom, undo, redo, canUndo, canRedo } = useTimelineEdits();
   const [selection, setSelection] = useState<CompositionSelection | undefined>(undefined);
   const [selectedZoomId, setSelectedZoomId] = useState<string | undefined>(undefined);
+  // Which surface the right panel shows. Selecting a zoom flips it to "zoom" (its properties);
+  // a clip's properties ("clip") open only on an explicit Clip-tab click — selecting a clip stays
+  // on "chat". The Chat tab returns to "chat" without losing chat state.
+  const [rightTab, setRightTab] = useState<"chat" | "zoom" | "clip">("chat");
   // Monotonic counter for unique zoom ids — keeps ids stable across undo/redo (snapshots
   // bake the id in) without colliding when a unit is created after an undo.
   const zoomSeq = useRef(0);
@@ -64,10 +77,17 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
 
   const selectedClipId = selection?.kind === "clip" ? selection.clipId : undefined;
   const band = selection ? { start: selection.start, end: selection.end } : undefined;
+  // The live selected zoom unit (looked up each render so an undo that removes it just drops the
+  // Zoom tab — no stale unit is held). The Zoom tab is active only while one is selected.
+  const selectedZoom = selectedZoomId === undefined ? undefined : model?.zooms?.find((z) => z.id === selectedZoomId);
+  const zoomTabActive = rightTab === "zoom" && selectedZoom !== undefined;
+  // The live selected clip (looked up each render so a speed edit reflects immediately and a delete
+  // just drops the Clip tab). Its properties open only when the Clip tab is the active surface.
+  const selectedClip = selectedClipId === undefined ? undefined : clips.find((c) => c.id === selectedClipId);
+  const clipTabActive = rightTab === "clip" && selectedClip !== undefined;
 
   // Toolbar enablement: split only inside a clip; delete only with a clip selected.
   const playheadClip = model ? clipAt(model, playback.currentTime) : undefined;
-  const markerCount = model?.labels.length ?? 0;
 
   function handleSplit() {
     split(playback.currentTime);
@@ -84,17 +104,31 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
     setSelection((sel) => (sel?.kind === "clip" && sel.clipId === clipId ? { ...sel, [edge]: time } : sel));
   }
 
+  // --- Clip properties (right panel). Speed edits rescale the clip's duration and ride the shared
+  // undo/redo history; reset is just a change back to 1×.
+  function handleClipSpeed(speed: number) {
+    if (selectedClipId !== undefined) setClipSpeed(selectedClipId, speed);
+  }
+  function handleResetClipSpeed() {
+    if (selectedClipId !== undefined) setClipSpeed(selectedClipId, 1);
+  }
+
   // --- Zoom track. Units live in the model, so create/move/resize/delete are undoable via
   // the same history; zoom selection is tracked separately from clip/range selection.
   function handleCreateZoom(start: number, end: number) {
     const id = `zoom-${(zoomSeq.current += 1)}`;
     addZoom(id, start, end);
+    selectZoom(id);
+  }
+  // Selecting a zoom surfaces its properties in the right panel (the Zoom tab) — it does not touch
+  // the clip/range chat selection, so chat is undisturbed beyond the tab switch.
+  function selectZoom(id: string) {
     setSelectedZoomId(id);
     setSelection(undefined);
+    setRightTab("zoom");
   }
   function handleSelectZoom(id: string) {
-    setSelectedZoomId(id);
-    setSelection(undefined);
+    selectZoom(id);
   }
   function handleMoveZoom(id: string, start: number) {
     moveZoom(id, start);
@@ -105,9 +139,36 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   function handleDeleteZoom(id: string) {
     removeZoom(id);
     setSelectedZoomId((cur) => (cur === id ? undefined : cur));
+    setRightTab("chat");
   }
-  function handleAddMarker() {
-    mark(playback.currentTime, `Marker ${markerCount + 1}`);
+
+  // --- Zoom properties (right panel). Look edits go through updateZoom; timing reuses the clamped
+  // resizeZoom; all ride the shared undo/redo history.
+  function handleZoomScale(scale: number) {
+    if (selectedZoom) updateZoom(selectedZoom.id, { scale });
+  }
+  function handleZoomEasing(easing: ZoomEasing) {
+    if (selectedZoom) updateZoom(selectedZoom.id, { easing });
+  }
+  function handleZoomTarget(target: ZoomTarget) {
+    if (selectedZoom) updateZoom(selectedZoom.id, { target });
+  }
+  function handleZoomStart(start: number) {
+    if (selectedZoom) resizeZoom(selectedZoom.id, "start", start);
+  }
+  function handleZoomEnd(end: number) {
+    if (selectedZoom) resizeZoom(selectedZoom.id, "end", end);
+  }
+  function handleZoomDuration(duration: number) {
+    if (selectedZoom) resizeZoom(selectedZoom.id, "end", selectedZoom.start + duration);
+  }
+  function handleResetZoom() {
+    if (selectedZoom) {
+      updateZoom(selectedZoom.id, { scale: DEFAULT_ZOOM_SCALE, easing: DEFAULT_ZOOM_EASING, target: DEFAULT_ZOOM_TARGET });
+    }
+  }
+  function handleRemoveSelectedZoom() {
+    if (selectedZoom) handleDeleteZoom(selectedZoom.id);
   }
 
   function attachSelection(nextSelection: CompositionSelection) {
@@ -120,6 +181,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
     const nextSelection = clipSelection(clip);
     setSelection(nextSelection);
     setSelectedZoomId(undefined);
+    setRightTab("chat");
     attachSelection(nextSelection);
   }
 
@@ -128,6 +190,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
     // "Add to Chat" popup (or ⌘L), so they choose exactly which window to give the AI.
     setSelection(rangeSelection(range.start, range.end));
     setSelectedZoomId(undefined);
+    setRightTab("chat");
   }
 
   function handleAddToChat() {
@@ -194,6 +257,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
     resetEdits(undefined);
     setSelection(undefined);
     setSelectedZoomId(undefined);
+    setRightTab("chat");
     zoomSeq.current = 0;
   }, [resetEdits]);
 
@@ -281,6 +345,16 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
               onLoading={handlePreviewLoading}
               onReady={(readyModel) => resetEdits(readyModel)}
               resolveWindow={resolveWindow}
+              {...(selectedZoom
+                ? {
+                    zoomOverlay: {
+                      scale: zoomScale(selectedZoom),
+                      target: zoomTarget(selectedZoom),
+                      onMoveTarget: handleZoomTarget,
+                      onScale: handleZoomScale,
+                    },
+                  }
+                : {})}
             />
           </section>
 
@@ -304,7 +378,6 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
               canSplit={playheadClip !== undefined}
               onDelete={handleDeleteClip}
               canDelete={selectedClipId !== undefined}
-              onAddMarker={handleAddMarker}
             />
           ) : null}
 
@@ -338,6 +411,41 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
           onRemoveRef={handleRemoveRef}
           hasSelection={selection !== undefined}
           onAddToChat={handleAddToChat}
+          zoomTabActive={zoomTabActive}
+          onSelectChatTab={() => setRightTab("chat")}
+          onSelectZoomTab={() => setRightTab("zoom")}
+          clipTabActive={clipTabActive}
+          onSelectClipTab={() => setRightTab("clip")}
+          {...(selectedClip
+            ? {
+                clipProperties: (
+                  <ClipProperties
+                    clip={selectedClip}
+                    onSpeed={handleClipSpeed}
+                    onReset={handleResetClipSpeed}
+                    onClose={() => setRightTab("chat")}
+                  />
+                ),
+              }
+            : {})}
+          {...(selectedZoom
+            ? {
+                zoomProperties: (
+                  <ZoomProperties
+                    unit={selectedZoom}
+                    durationSeconds={duration}
+                    onScale={handleZoomScale}
+                    onEasing={handleZoomEasing}
+                    onStart={handleZoomStart}
+                    onEnd={handleZoomEnd}
+                    onDuration={handleZoomDuration}
+                    onReset={handleResetZoom}
+                    onRemove={handleRemoveSelectedZoom}
+                    onClose={() => setRightTab("chat")}
+                  />
+                ),
+              }
+            : {})}
           {...(editEnabled
             ? {
                 onSend: handleSend,

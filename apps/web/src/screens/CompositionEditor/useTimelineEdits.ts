@@ -6,10 +6,13 @@ import {
   removeClip,
   removeZoom,
   resizeZoom,
+  setClipSpeed,
   splitClipAt,
   trimClip,
+  updateZoom,
   type CompositionTimelineModel,
   type TrimEdge,
+  type ZoomPropsPatch,
 } from "@tinker/editor";
 
 type History = {
@@ -30,12 +33,16 @@ export type TimelineEdits = {
   mark: (time: number, name: string) => void;
   /** Move one edge of a clip to `time` (clamped to its generated source bounds). */
   trim: (clipId: string, edge: TrimEdge, time: number) => void;
+  /** Set a clip's playback speed (rescales its duration); pass 1 to reset to real-time. */
+  setClipSpeed: (clipId: string, speed: number) => void;
   /** Add a zoom unit `id` spanning `[start, end]` on the zoom track. */
   addZoom: (id: string, start: number, end: number) => void;
   /** Move a zoom unit to a new start, preserving its length. */
   moveZoom: (id: string, start: number) => void;
   /** Move one edge of a zoom unit to `time`. */
   resizeZoom: (id: string, edge: TrimEdge, time: number) => void;
+  /** Update a zoom unit's look properties (scale / easing / target). */
+  updateZoom: (id: string, patch: ZoomPropsPatch) => void;
   /** Delete a zoom unit by id. */
   removeZoom: (id: string) => void;
   undo: () => void;
@@ -71,6 +78,10 @@ export function useTimelineEdits(): TimelineEdits {
     (clipId: string, edge: TrimEdge, time: number) => apply((m) => trimClip(m, clipId, edge, time)),
     [apply],
   );
+  const setSpeed = useCallback(
+    (clipId: string, speed: number) => apply((m) => setClipSpeed(m, clipId, speed)),
+    [apply],
+  );
   const addZoomUnit = useCallback(
     (id: string, start: number, end: number) => apply((m) => addZoom(m, id, start, end)),
     [apply],
@@ -78,6 +89,10 @@ export function useTimelineEdits(): TimelineEdits {
   const moveZoomUnit = useCallback((id: string, start: number) => apply((m) => moveZoom(m, id, start)), [apply]);
   const resizeZoomUnit = useCallback(
     (id: string, edge: TrimEdge, time: number) => apply((m) => resizeZoom(m, id, edge, time)),
+    [apply],
+  );
+  const updateZoomUnit = useCallback(
+    (id: string, patch: ZoomPropsPatch) => apply((m) => updateZoom(m, id, patch)),
     [apply],
   );
   const removeZoomUnit = useCallback((id: string) => apply((m) => removeZoom(m, id)), [apply]);
@@ -108,13 +123,15 @@ export function useTimelineEdits(): TimelineEdits {
       remove,
       mark,
       trim,
+      setClipSpeed: setSpeed,
       addZoom: addZoomUnit,
       moveZoom: moveZoomUnit,
       resizeZoom: resizeZoomUnit,
+      updateZoom: updateZoomUnit,
       removeZoom: removeZoomUnit,
       undo,
       redo,
     }),
-    [hist, reset, split, remove, mark, trim, addZoomUnit, moveZoomUnit, resizeZoomUnit, removeZoomUnit, undo, redo],
+    [hist, reset, split, remove, mark, trim, setSpeed, addZoomUnit, moveZoomUnit, resizeZoomUnit, updateZoomUnit, removeZoomUnit, undo, redo],
   );
 }

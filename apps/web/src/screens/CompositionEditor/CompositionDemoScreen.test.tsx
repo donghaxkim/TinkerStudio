@@ -147,9 +147,9 @@ describe("CompositionDemoScreen", () => {
     await waitFor(() => expect(screen.getByLabelText("Editor status")).toHaveTextContent("Empty editor shell"));
     expect(screen.getByTestId("composition-timeline")).toBeInTheDocument();
     expect(screen.getByLabelText("Playback controls")).toBeInTheDocument();
-    // The empty shell carries the same edit toolbar as the real editor (split/marker work on
+    // The empty shell carries the same edit toolbar as the real editor (split/trim work on
     // the local model without a server edit session); Export stays disabled until a real render exists.
-    expect(screen.getByRole("button", { name: "Add marker" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Split clip" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
     expect(screen.queryByText(/generate a demo to enable ai edits/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText("Edit instruction")).toBeDisabled();

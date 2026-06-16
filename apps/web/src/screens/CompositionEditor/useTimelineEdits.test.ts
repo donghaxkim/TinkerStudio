@@ -109,4 +109,71 @@ describe("useTimelineEdits", () => {
     act(() => result.current.undo()); // restore the deleted zoom
     expect(result.current.model?.zooms).toEqual([{ id: "z1", start: 4, end: 9 }]);
   });
+
+  const speedEndOf = (m: CompositionTimelineModel | undefined, id: string) =>
+    m?.clips.find((c) => c.id === id)?.end;
+  const speedOf = (m: CompositionTimelineModel | undefined, id: string) =>
+    m?.clips.find((c) => c.id === id)?.speed ?? 1;
+
+  it("sets a clip's speed as a single undoable/redoable edit, restoring its duration on undo", () => {
+    const { result } = renderHook(() => useTimelineEdits());
+    act(() => result.current.reset(base));
+
+    act(() => result.current.setClipSpeed("a", 2)); // clip a 0–5 → plays in half the time
+    expect(speedOf(result.current.model, "a")).toBe(2);
+    expect(speedEndOf(result.current.model, "a")).toBe(2.5);
+    expect(result.current.canUndo).toBe(true);
+
+    act(() => result.current.undo());
+    expect(speedOf(result.current.model, "a")).toBe(1);
+    expect(speedEndOf(result.current.model, "a")).toBe(5); // duration restored
+
+    act(() => result.current.redo());
+    expect(speedEndOf(result.current.model, "a")).toBe(2.5);
+  });
+
+  it("resets a clip to 1x as its own undoable edit", () => {
+    const { result } = renderHook(() => useTimelineEdits());
+    act(() => result.current.reset(base));
+    act(() => result.current.setClipSpeed("a", 1.5));
+    act(() => result.current.setClipSpeed("a", 1)); // reset
+    expect(speedOf(result.current.model, "a")).toBe(1);
+    expect(speedEndOf(result.current.model, "a")).toBe(5);
+
+    act(() => result.current.undo()); // back to 1.5x
+    expect(speedOf(result.current.model, "a")).toBe(1.5);
+  });
+
+  it("does not dirty history when the speed is unchanged", () => {
+    const { result } = renderHook(() => useTimelineEdits());
+    act(() => result.current.reset(base));
+    const before = result.current.model;
+    act(() => result.current.setClipSpeed("a", 1)); // already 1x
+    expect(result.current.model).toBe(before);
+    expect(result.current.canUndo).toBe(false);
+  });
+
+  it("updates a zoom unit's look properties as a single undoable edit", () => {
+    const { result } = renderHook(() => useTimelineEdits());
+    act(() => result.current.reset(base));
+    act(() => result.current.addZoom("z1", 2, 6));
+
+    act(() => result.current.updateZoom("z1", { scale: 2.2, easing: "ease-in", target: { x: 0.3, y: 0.4 } }));
+    expect(result.current.model?.zooms?.[0]).toMatchObject({ scale: 2.2, easing: "ease-in", target: { x: 0.3, y: 0.4 } });
+
+    act(() => result.current.undo()); // back to the freshly created (default-look) unit
+    expect(result.current.model?.zooms?.[0]).toEqual({ id: "z1", start: 2, end: 6 });
+    act(() => result.current.redo());
+    expect(result.current.model?.zooms?.[0]).toMatchObject({ scale: 2.2 });
+  });
+
+  it("does not dirty history when an update changes nothing", () => {
+    const { result } = renderHook(() => useTimelineEdits());
+    act(() => result.current.reset(base));
+    act(() => result.current.addZoom("z1", 2, 6));
+    const before = result.current.model;
+    act(() => result.current.updateZoom("z1", {})); // no-op patch
+    expect(result.current.model).toBe(before);
+    expect(result.current.canRedo).toBe(false);
+  });
 });

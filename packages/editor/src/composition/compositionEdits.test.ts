@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { CompositionTimelineModel } from "./compositionTimelineModel.js";
+import type { CompositionTimelineModel, ZoomUnit } from "./compositionTimelineModel.js";
+import {
+  DEFAULT_ZOOM_EASING,
+  DEFAULT_ZOOM_SCALE,
+  DEFAULT_ZOOM_TARGET,
+  MAX_ZOOM_SCALE,
+  MIN_ZOOM_SCALE,
+} from "./compositionTimelineModel.js";
+import { clipSpeed } from "./compositionTimelineModel.js";
 import {
   addMarker,
   addZoom,
@@ -9,8 +17,10 @@ import {
   removeClip,
   removeZoom,
   resizeZoom,
+  setClipSpeed,
   splitClipAt,
   trimClip,
+  updateZoom,
 } from "./compositionEdits.js";
 
 const model: CompositionTimelineModel = {
@@ -132,7 +142,57 @@ describe("clampTrim", () => {
   });
 });
 
-const withZoom = (...zooms: { id: string; start: number; end: number }[]): CompositionTimelineModel => ({
+describe("setClipSpeed", () => {
+  it("speeds a clip up, shortening its on-timeline length inversely and anchoring its start", () => {
+    const next = setClipSpeed(model, "a", 2); // clip a is 0–5 (length 5)
+    const a = clipById(next, "a");
+    expect(clipSpeed(a)).toBe(2);
+    expect(a.start).toBe(0); // start is anchored
+    expect(a.end).toBe(2.5); // length 5 / 2 = 2.5
+    // the neighbouring clip is untouched
+    expect(clipById(next, "b")).toEqual(model.clips[1]);
+  });
+
+  it("slows a clip down, lengthening it and growing the composition so it stays in view", () => {
+    const next = setClipSpeed(model, "b", 0.5); // clip b is 5–12 (length 7)
+    const b = clipById(next, "b");
+    expect(clipSpeed(b)).toBe(0.5);
+    expect(b.end).toBe(19); // 5 + 7 / 0.5
+    expect(next.durationSeconds).toBe(19); // extended past the old 12 to keep the clip readable
+  });
+
+  it("does not shrink the composition when a clip speeds up", () => {
+    const next = setClipSpeed(model, "a", 2);
+    expect(next.durationSeconds).toBe(12); // unchanged — other content/gaps remain
+  });
+
+  it("changing speed twice rescales from the live length, not the original", () => {
+    const fast = setClipSpeed(model, "a", 2); // 0–2.5
+    const slow = setClipSpeed(fast, "a", 0.5); // base length 2.5*2=5 → 5/0.5 = 10
+    expect(clipById(slow, "a").end).toBe(10);
+    expect(clipSpeed(clipById(slow, "a"))).toBe(0.5);
+  });
+
+  it("resets to 1x, restoring the original duration exactly", () => {
+    const fast = setClipSpeed(model, "a", 2);
+    expect(clipById(fast, "a").end).toBe(2.5);
+    const reset = setClipSpeed(fast, "a", 1);
+    expect(clipSpeed(clipById(reset, "a"))).toBe(1);
+    expect(clipById(reset, "a").end).toBe(5); // back to the original 1x length
+  });
+
+  it("clamps speed into the supported range", () => {
+    expect(clipSpeed(clipById(setClipSpeed(model, "a", 99), "a"))).toBe(2);
+    expect(clipSpeed(clipById(setClipSpeed(model, "a", 0.01), "a"))).toBe(0.5);
+  });
+
+  it("is a no-op (same model reference) for an unknown id or an unchanged speed", () => {
+    expect(setClipSpeed(model, "nope", 2)).toBe(model);
+    expect(setClipSpeed(model, "a", 1)).toBe(model); // already 1x (default)
+  });
+});
+
+const withZoom = (...zooms: ZoomUnit[]): CompositionTimelineModel => ({
   ...model,
   zooms,
 });
@@ -201,5 +261,60 @@ describe("removeZoom", () => {
   it("is a no-op (same model reference) for an unknown id", () => {
     const m = withZoom({ id: "z1", start: 2, end: 6 });
     expect(removeZoom(m, "nope")).toBe(m);
+  });
+});
+
+const zoomById = (m: CompositionTimelineModel, id: string): ZoomUnit => m.zooms!.find((z) => z.id === id)!;
+
+describe("updateZoom", () => {
+  it("sets the look properties on the unit, leaving its timing untouched", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6 });
+    const next = updateZoom(m, "z1", { scale: 2, easing: "linear", target: { x: 0.25, y: 0.75 } });
+    expect(zoomById(next, "z1")).toEqual({
+      id: "z1",
+      start: 2,
+      end: 6,
+      scale: 2,
+      easing: "linear",
+      target: { x: 0.25, y: 0.75 },
+    });
+  });
+
+  it("only touches the properties in the patch", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6, scale: 2, easing: "linear" });
+    const next = updateZoom(m, "z1", { scale: 2.4 });
+    expect(zoomById(next, "z1").scale).toBe(2.4);
+    expect(zoomById(next, "z1").easing).toBe("linear"); // preserved
+  });
+
+  it("clamps scale into [MIN, MAX] and the target into the [0,1] frame", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6 });
+    expect(zoomById(updateZoom(m, "z1", { scale: 99 }), "z1").scale).toBe(MAX_ZOOM_SCALE);
+    expect(zoomById(updateZoom(m, "z1", { scale: 0 }), "z1").scale).toBe(MIN_ZOOM_SCALE);
+    expect(zoomById(updateZoom(m, "z1", { target: { x: 2, y: -1 } }), "z1").target).toEqual({ x: 1, y: 0 });
+  });
+
+  it("resets the look to the defaults when patched with them", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6, scale: 3, easing: "linear", target: { x: 0.1, y: 0.9 } });
+    const reset = updateZoom(m, "z1", {
+      scale: DEFAULT_ZOOM_SCALE,
+      easing: DEFAULT_ZOOM_EASING,
+      target: DEFAULT_ZOOM_TARGET,
+    });
+    expect(zoomById(reset, "z1")).toEqual({
+      id: "z1",
+      start: 2,
+      end: 6,
+      scale: DEFAULT_ZOOM_SCALE,
+      easing: DEFAULT_ZOOM_EASING,
+      target: DEFAULT_ZOOM_TARGET,
+    });
+  });
+
+  it("is a no-op (same model reference) for an unknown id, empty patch, or unchanged values", () => {
+    const m = withZoom({ id: "z1", start: 2, end: 6, scale: 2, easing: "linear" });
+    expect(updateZoom(m, "nope", { scale: 2 })).toBe(m);
+    expect(updateZoom(m, "z1", {})).toBe(m);
+    expect(updateZoom(m, "z1", { scale: 2, easing: "linear" })).toBe(m);
   });
 });

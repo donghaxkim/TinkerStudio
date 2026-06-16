@@ -1,4 +1,15 @@
-import type { CompositionClip, CompositionTimelineModel, ZoomUnit } from "./compositionTimelineModel.js";
+import {
+  MAX_CLIP_SPEED,
+  MAX_ZOOM_SCALE,
+  MIN_CLIP_SPEED,
+  MIN_ZOOM_SCALE,
+  clipSpeed,
+  type CompositionClip,
+  type CompositionTimelineModel,
+  type ZoomEasing,
+  type ZoomTarget,
+  type ZoomUnit,
+} from "./compositionTimelineModel.js";
 
 const EPSILON = 1e-6;
 
@@ -90,6 +101,33 @@ export function trimClip(
   return { ...model, clips: model.clips.map((clip) => (clip.id === clipId ? edited : clip)) };
 }
 
+/**
+ * Set the playback speed of the clip identified by `clipId`, rescaling its on-timeline length
+ * inversely: the content stays anchored at `start`, and the `end` moves so a 2× clip plays in half
+ * the time, a 0.5× clip in double. The 1×-baseline length is recovered from the live
+ * `length × currentSpeed` (no stored base), so resetting to 1× restores the original length exactly.
+ *
+ * Speed is clamped to [MIN_CLIP_SPEED, MAX_CLIP_SPEED]. A slow-down that pushes the clip past the
+ * composition end grows `durationSeconds` to keep it readable; a speed-up never shrinks the
+ * composition (other clips / gaps remain). Returns the same model reference (a no-op) for an unknown
+ * id or an unchanged speed, keeping the undo history clean.
+ */
+export function setClipSpeed(model: CompositionTimelineModel, clipId: string, speed: number): CompositionTimelineModel {
+  const target = model.clips.find((clip) => clip.id === clipId);
+  if (!target) return model;
+  const nextSpeed = roundMicros(clamp(speed, MIN_CLIP_SPEED, MAX_CLIP_SPEED));
+  const currentSpeed = clipSpeed(target);
+  if (nextSpeed === currentSpeed) return model;
+  const baseLength = (target.end - target.start) * currentSpeed; // length at 1× (lazily recovered)
+  const end = roundMicros(target.start + baseLength / nextSpeed);
+  const edited: CompositionClip = { ...target, speed: nextSpeed, end };
+  return {
+    ...model,
+    durationSeconds: Math.max(model.durationSeconds, end),
+    clips: model.clips.map((clip) => (clip.id === clipId ? edited : clip)),
+  };
+}
+
 // --- Zoom units ----------------------------------------------------------
 // Zoom units live on their own timeline track (see ZoomTrack). They are model state, so
 // create/move/resize/delete ride the same undo/redo history as clip edits.
@@ -147,4 +185,39 @@ export function removeZoom(model: CompositionTimelineModel, id: string): Composi
   const zooms = model.zooms ?? [];
   if (!zooms.some((z) => z.id === id)) return model;
   return { ...model, zooms: zooms.filter((z) => z.id !== id) };
+}
+
+/** A partial edit of a zoom unit's *look* (its timing rides moveZoom/resizeZoom instead). */
+export type ZoomPropsPatch = Partial<{ scale: number; easing: ZoomEasing; target: ZoomTarget }>;
+
+function sameTarget(a: ZoomTarget | undefined, b: ZoomTarget | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.x === b.x && a.y === b.y;
+}
+
+/**
+ * Update a zoom unit's look properties (scale / easing / target). Only the keys present in
+ * `patch` change; scale is clamped to [MIN_ZOOM_SCALE, MAX_ZOOM_SCALE] and the target into the
+ * [0,1] frame. Returns the same model reference (a no-op) for an unknown id, an empty patch, or
+ * when nothing actually changes — so the undo history stays clean. Used for manual property
+ * edits and for "reset" (patch with the defaults).
+ */
+export function updateZoom(
+  model: CompositionTimelineModel,
+  id: string,
+  patch: ZoomPropsPatch,
+): CompositionTimelineModel {
+  const zooms = model.zooms ?? [];
+  const target = zooms.find((z) => z.id === id);
+  if (!target) return model;
+  const next: ZoomUnit = { ...target };
+  if (patch.scale !== undefined) next.scale = roundMicros(clamp(patch.scale, MIN_ZOOM_SCALE, MAX_ZOOM_SCALE));
+  if (patch.easing !== undefined) next.easing = patch.easing;
+  if (patch.target !== undefined) {
+    next.target = { x: roundMicros(clamp(patch.target.x, 0, 1)), y: roundMicros(clamp(patch.target.y, 0, 1)) };
+  }
+  if (next.scale === target.scale && next.easing === target.easing && sameTarget(next.target, target.target)) {
+    return model;
+  }
+  return { ...model, zooms: zooms.map((z) => (z.id === id ? next : z)) };
 }

@@ -20,10 +20,11 @@ function mockBounds(el: HTMLElement, width: number, left = 0) {
 }
 
 describe("ZoomTrack (display)", () => {
-  it("renders a labeled Zoom row with a strip", () => {
+  it("renders an accessible zoom strip with no visible caption", () => {
     render(<ZoomTrack durationSeconds={10} units={[]} />);
-    expect(screen.getByText("Zoom")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Zoom track" })).toBeInTheDocument();
     expect(screen.getByTestId("zoom-track")).toBeInTheDocument();
+    expect(screen.queryByText("Zoom")).not.toBeInTheDocument(); // label dropped; lanes are same-size now
   });
 
   it("renders each zoom unit as a positioned block on the same scale as the clip track", () => {
@@ -100,5 +101,46 @@ describe("ZoomTrack (interaction)", () => {
     render(<ZoomTrack durationSeconds={10} units={UNITS} selectedId="z1" onDelete={onDelete} />);
     fireEvent.keyDown(screen.getByTestId("zoom-unit-z1"), { key: "Delete" });
     expect(onDelete).toHaveBeenCalledWith("z1");
+  });
+});
+
+describe("ZoomTrack (unit popover)", () => {
+  const noopActions = { onAddToChat: () => undefined, onEdit: () => undefined };
+
+  it("shows a contextual popover over the selected unit with Add to chat / Edit manually", () => {
+    render(<ZoomTrack durationSeconds={10} units={UNITS} selectedId="z1" unitActions={noopActions} />);
+    const popup = screen.getByTestId("zoom-unit-popup");
+    expect(popup).toHaveStyle({ left: "40%" }); // center of 2s–6s over a 10s timeline
+    expect(screen.getByRole("button", { name: "Add to chat" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit manually" })).toBeInTheDocument();
+  });
+
+  it("shows no popover without unitActions, and none without a selected unit", () => {
+    const { rerender } = render(<ZoomTrack durationSeconds={10} units={UNITS} selectedId="z1" />);
+    expect(screen.queryByTestId("zoom-unit-popup")).not.toBeInTheDocument();
+    rerender(<ZoomTrack durationSeconds={10} units={UNITS} unitActions={noopActions} />);
+    expect(screen.queryByTestId("zoom-unit-popup")).not.toBeInTheDocument();
+  });
+
+  it("fires onAddToChat / onEdit with the unit, and edits on double-click", () => {
+    const onAddToChat = vi.fn();
+    const onEdit = vi.fn();
+    render(<ZoomTrack durationSeconds={10} units={UNITS} selectedId="z1" unitActions={{ onAddToChat, onEdit }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }));
+    expect(onAddToChat).toHaveBeenCalledWith(UNITS[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Edit manually" }));
+    expect(onEdit).toHaveBeenCalledWith(UNITS[0]);
+    fireEvent.doubleClick(screen.getByTestId("zoom-unit-z1"));
+    expect(onEdit).toHaveBeenCalledTimes(2);
+    expect(onEdit).toHaveBeenLastCalledWith(UNITS[0]);
+  });
+
+  it("a single click selects the unit but never edits it (no auto tab switch)", () => {
+    const onSelect = vi.fn();
+    const onEdit = vi.fn();
+    render(<ZoomTrack durationSeconds={10} units={UNITS} onSelect={onSelect} unitActions={{ onAddToChat: () => undefined, onEdit }} />);
+    fireEvent.click(screen.getByTestId("zoom-unit-z1"));
+    expect(onSelect).toHaveBeenCalledWith("z1");
+    expect(onEdit).not.toHaveBeenCalled();
   });
 });
