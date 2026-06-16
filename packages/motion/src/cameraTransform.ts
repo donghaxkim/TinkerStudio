@@ -73,8 +73,14 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function safePositive(value: number, fallback: number) {
-  return Number.isFinite(value) && value > 0 ? value : fallback;
+function safeFinite(value: number | undefined, fallback: number) {
+  return value !== undefined && Number.isFinite(value) ? value : fallback;
+}
+
+function safePositive(value: number | undefined, fallback: number) {
+  const safeValue = safeFinite(value, fallback);
+
+  return safeValue > 0 ? safeValue : fallback;
 }
 
 function focusBounds(scale: number) {
@@ -105,10 +111,10 @@ function distanceAdaptiveFollowFactor(
   safeZoneRadius: number,
   options: CursorFollowOptions,
 ) {
-  const minFollow = clamp(options.minFollowFactor ?? DEFAULT_MIN_FOLLOW_FACTOR, 0, 1);
-  const maxFollow = clamp(options.maxFollowFactor ?? DEFAULT_MAX_FOLLOW_FACTOR, minFollow, 1);
+  const minFollow = clamp(safeFinite(options.minFollowFactor, DEFAULT_MIN_FOLLOW_FACTOR), 0, 1);
+  const maxFollow = clamp(safeFinite(options.maxFollowFactor, DEFAULT_MAX_FOLLOW_FACTOR), minFollow, 1);
   const timeScale = safePositive(
-    options.followTimeScaleSeconds ?? DEFAULT_FOLLOW_TIME_SCALE_SECONDS,
+    options.followTimeScaleSeconds,
     DEFAULT_FOLLOW_TIME_SCALE_SECONDS,
   );
   const distanceProgress = clamp((distance - safeZoneRadius) / Math.max(0.000001, 1 - safeZoneRadius), 0, 1);
