@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import {
   CreateDemoRequestSchema,
+  DemoOutlineSchema,
   GenerationErrorSchema,
   GenerationJobSchema,
   GenerationProgressEventSchema,
   GenerationResultSchema,
+  PlanningSessionResponseSchema,
+  safeParseDemoOutline,
 } from "./index.js";
 import { parseCreateDemoRequest, safeParseCreateDemoRequest } from "./createDemoRequest.js";
 import sampleProject from "../../project-schema/fixtures/demo-project.sample.json";
@@ -123,6 +126,78 @@ for (const repoUrl of [
     `Expected AI URL repoUrl to reject ${repoUrl}`,
   );
 }
+
+const validDemoOutline = {
+  title: "Driftboard launch demo",
+  durationCapSeconds: 60,
+  aspectRatio: "16:9",
+  summary: "Show how teams turn scattered work into a polished launch board.",
+  scenes: [
+    {
+      id: "scene-1",
+      goal: "Introduce the launch problem",
+      visual: "Show the product homepage and hero promise.",
+      narration: "Launch work gets scattered fast.",
+      startHint: 0,
+      endHint: 12,
+      evidence: ["website"],
+    },
+    {
+      id: "scene-2",
+      goal: "Prove the repo-backed workflow",
+      visual: "Reference real repo routes and components in a clean UI walkthrough.",
+      evidence: ["repo", "website"],
+    },
+  ],
+  generationNotes: ["Keep the pacing crisp and avoid invented dashboards."],
+} as const;
+
+assert.deepEqual(DemoOutlineSchema.parse(validDemoOutline), validDemoOutline);
+assert.equal(safeParseDemoOutline(validDemoOutline).success, true);
+
+assert.equal(
+  DemoOutlineSchema.safeParse({
+    ...validDemoOutline,
+    scenes: [],
+  }).success,
+  false,
+);
+
+assert.equal(
+  DemoOutlineSchema.safeParse({
+    ...validDemoOutline,
+    scenes: [{ ...validDemoOutline.scenes[0], startHint: 20, endHint: 10 }],
+  }).success,
+  false,
+);
+
+assert.equal(
+  DemoOutlineSchema.safeParse({
+    ...validDemoOutline,
+    scenes: [{ ...validDemoOutline.scenes[0], endHint: 61 }],
+  }).success,
+  false,
+);
+
+assert.equal(
+  DemoOutlineSchema.parse({
+    ...validDemoOutline,
+    generationNotes: undefined,
+  }).generationNotes.length,
+  0,
+);
+
+const planningResponse = PlanningSessionResponseSchema.parse({
+  id: "plan-test",
+  productUrl: "https://example.com",
+  repoUrl: "https://github.com/example/product",
+  agent: "claude",
+  status: "ready",
+  messages: [{ role: "assistant", content: "I drafted an outline." }],
+  outline: validDemoOutline,
+  outlineValid: true,
+});
+assert.equal(planningResponse.outlineValid, true);
 
 const validAssistedRequest = CreateDemoRequestSchema.parse({
   durationCapSeconds: 10,
