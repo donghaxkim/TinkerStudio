@@ -131,6 +131,14 @@ function cropFiltersFor(project: DemoProject) {
   }));
 }
 
+const TEST_CURSOR_IMAGE = {
+  path: "/tmp/tinker-test-cursor-arrow.png",
+  width: 32,
+  height: 32,
+  hotspotX: 3,
+  hotspotY: 2,
+};
+
 function filterComplexFor(project: DemoProject) {
   const plan = buildFinalRenderPlan(project);
   const graph = buildRealMediaFilterGraph(project, plan, [
@@ -141,13 +149,25 @@ function filterComplexFor(project: DemoProject) {
       consumer: "export",
       path: "/tmp/capture-001.mp4",
     },
-  ]);
+  ], { cursorImage: TEST_CURSOR_IMAGE });
 
   return graph.filterComplex;
 }
 
-/** Every cursor drawbox emitted by the export filter graph. */
-function cursorDrawboxesFor(project: DemoProject) {
+function cursorOverlaysFor(project: DemoProject) {
+  return [
+    ...filterComplexFor(project).matchAll(
+      /overlay=x=(-?\d+):y=(-?\d+):enable='between\(t\\,(\d+(?:\.\d+)?)\\,(\d+(?:\.\d+)?)\)'\[cursor\d+\]/g,
+    ),
+  ].map((match) => ({
+    x: Number(match[1]),
+    y: Number(match[2]),
+    start: Number(match[3]),
+    end: Number(match[4]),
+  }));
+}
+
+function drawboxesFor(project: DemoProject) {
   return [
     ...filterComplexFor(project).matchAll(
       /drawbox=x=(-?\d+):y=(-?\d+):w=(\d+):h=(\d+):color=([^:]+):/g,
@@ -320,10 +340,12 @@ describe("preview/export cursor-settings parity (PB-006)", () => {
       clickEffectDurationMs: 500,
     });
 
-    // Export reflects that intent: a plain marker plus the amber click-emphasis box.
-    const boxes = cursorDrawboxesFor(project);
+    // Export reflects that intent: a cursor image plus the amber click-emphasis box.
+    const overlays = cursorOverlaysFor(project);
+    const boxes = drawboxesFor(project);
+    expect(filterComplexFor(project)).toContain("movie='/tmp/tinker-test-cursor-arrow.png'");
+    expect(overlays.length).toBeGreaterThan(0);
     expect(boxes.some((box) => box.color === CLICK_EMPHASIS_COLOR)).toBe(true);
-    expect(boxes.some((box) => box.color !== CLICK_EMPHASIS_COLOR)).toBe(true);
   });
 
   it("hidden: both preview-intent and export suppress the cursor entirely", () => {
@@ -332,8 +354,10 @@ describe("preview/export cursor-settings parity (PB-006)", () => {
     // Preview hides the cursor (resolved setting both sides read).
     expect(resolveCursorSettings(project.cursor).hidden).toBe(true);
 
-    // Export emits no cursor drawboxes at all — no cursor in the MP4.
-    expect(cursorDrawboxesFor(project)).toHaveLength(0);
+    // Export emits no cursor image overlays and no click emphasis at all — no cursor in the MP4.
+    expect(cursorOverlaysFor(project)).toHaveLength(0);
+    expect(drawboxesFor(project)).toHaveLength(0);
+    expect(filterComplexFor(project)).not.toContain("cursor-arrow.png");
     expect(filterComplexFor(project)).not.toContain("drawbox");
   });
 
@@ -344,9 +368,26 @@ describe("preview/export cursor-settings parity (PB-006)", () => {
 
     // No amber emphasis box, but the plain cursor marker still renders (parity with preview,
     // where the cursor stays but the click-event overlay is gone).
-    const boxes = cursorDrawboxesFor(project);
+    const overlays = cursorOverlaysFor(project);
+    const boxes = drawboxesFor(project);
     expect(boxes.some((box) => box.color === CLICK_EMPHASIS_COLOR)).toBe(false);
-    expect(boxes.length).toBeGreaterThan(0);
+    expect(boxes).toHaveLength(0);
+    expect(overlays.length).toBeGreaterThan(0);
+  });
+
+  it("positions the cursor image by hotspot after source-to-output mapping", () => {
+    const project = projectWith({
+      aspectRatio: "1:1",
+      zooms: [],
+      cursorEvents: [{ id: "move_hotspot", time: 1, type: "move", x: 960, y: 540 }],
+    });
+
+    expect(cursorOverlaysFor(project)).toContainEqual({
+      x: 537,
+      y: 538,
+      start: 1,
+      end: 1.25,
+    });
   });
 
   it("clickEffectDurationMs feeds the export click-emphasis enable window", () => {
@@ -372,7 +413,7 @@ describe("preview/export cursor-settings parity (PB-006)", () => {
     expect(resolveCursorSettings(project.cursor).clickEffect).toBe("ripple");
 
     // Export emits the amber emphasis box at the ripple size (34×34).
-    const boxes = cursorDrawboxesFor(project);
+    const boxes = drawboxesFor(project);
     const emphasisBoxes = boxes.filter((box) => box.color === CLICK_EMPHASIS_COLOR);
     expect(emphasisBoxes.length).toBeGreaterThan(0);
     emphasisBoxes.forEach((box) => {

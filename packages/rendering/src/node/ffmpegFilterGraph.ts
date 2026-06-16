@@ -8,6 +8,7 @@ import {
 } from "@tinker/motion";
 import type { FinalRenderPlan } from "../renderFinal.js";
 import type { NodeAssetFileResolution } from "./assetResolution.js";
+import type { CursorImage } from "./cursorPng.js";
 
 export type FfmpegInput = {
   assetId: string;
@@ -33,6 +34,9 @@ type SourceToOutputPlacement = {
   padX: number;
   padY: number;
 };
+type FfmpegFilterGraphOptions = {
+  cursorImage?: CursorImage;
+};
 
 const MIN_INTERVAL_SECONDS = 0.000001;
 const FRAME_TIME_QUANTIZATION_SECONDS = 0.000001;
@@ -41,6 +45,7 @@ export function buildRealMediaFilterGraph(
   project: DemoProject,
   plan: FinalRenderPlan,
   resolutions: readonly NodeAssetFileResolution[],
+  options: FfmpegFilterGraphOptions = {},
 ): FfmpegFilterGraph {
   const pathByAssetId = new Map(
     resolutions
@@ -85,7 +90,7 @@ export function buildRealMediaFilterGraph(
     composedLabel = nextLabel;
   });
 
-  const cursorLabel = appendCursorFilters(filters, composedLabel, project, plan);
+  const cursorLabel = appendCursorFilters(filters, composedLabel, project, plan, options.cursorImage);
   const cameraLabel = appendCameraFilters(filters, cursorLabel, project, plan);
   filters.push(`[${cameraLabel}]format=yuv420p[vout]`);
 
@@ -109,13 +114,11 @@ function appendCursorFilters(
   inputLabel: string,
   project: DemoProject,
   plan: FinalRenderPlan,
+  cursorImage: CursorImage | undefined,
 ) {
-  // PB-006: resolve the SAME cursor/click display settings the preview uses, so the
-  // exported MP4 matches the browser preview's intent.
   const cursorSettings = resolveCursorSettings(project.cursor);
 
-  // Hidden → no cursor overlay at all in the export (parity with preview hiding it).
-  if (cursorSettings.hidden) {
+  if (cursorSettings.hidden || !cursorImage) {
     return inputLabel;
   }
 
@@ -123,33 +126,55 @@ function appendCursorFilters(
     frame: plan.source,
     duration: plan.timeline.duration,
   });
+
+  if (cursorPoints.length === 0) {
+    return inputLabel;
+  }
+
   const placement = sourceToOutputPlacement(plan);
-  // clickEffect "none" → render click points as plain cursor markers (no emphasis),
-  // matching the preview, where the accent ring + ripple are suppressed.
   const emphasizeClicks = cursorSettings.clickEffect !== "none";
   const clickDisplaySeconds = cursorSettings.clickEffectDurationMs / 1000;
+  const cursorLabels = cursorPoints.map((_, index) => `cursor_icon${index}`);
   let currentLabel = inputLabel;
 
-  cursorPoints.forEach((point, index) => {
-    const nextLabel = `cursor${index}`;
-    const isEmphasizedClick = point.type === "click" && emphasizeClicks;
-    // Ripple reads as a slightly larger emphasis box than ring; both are accent-colored.
-    const emphasisSize = cursorSettings.clickEffect === "ripple" ? 34 : 30;
-    const size = isEmphasizedClick ? emphasisSize : 20;
-    const color = isEmphasizedClick ? "#fbbf24@0.90" : "#e2e8f0@0.70";
-    const position = mapSourcePointToOutput(point.cx, point.cy, placement);
-    const x = Math.round(position.x - size / 2);
-    const y = Math.round(position.y - size / 2);
-    const duration = isEmphasizedClick ? clickDisplaySeconds : 0.25;
-    const end = Math.min(plan.timeline.duration, point.time + duration);
+  if (cursorLabels.length === 1) {
+    filters.push(`movie='${ffmpegFilterPath(cursorImage.path)}',format=rgba[${cursorLabels[0]}]`);
+  } else {
+    filters.push(`movie='${ffmpegFilterPath(cursorImage.path)}',format=rgba,split=${cursorLabels.length}${cursorLabels.map((label) => `[${label}]`).join("")}`);
+  }
 
+  cursorPoints.forEach((point, index) => {
+    const isEmphasizedClick = point.type === "click" && emphasizeClicks;
+    const emphasisSize = cursorSettings.clickEffect === "ripple" ? 34 : 30;
+    const position = mapSourcePointToOutput(point.cx, point.cy, placement);
+    const cursorX = Math.round(position.x - cursorImage.hotspotX);
+    const cursorY = Math.round(position.y - cursorImage.hotspotY);
+    const cursorEnd = Math.min(plan.timeline.duration, point.time + 0.25);
+    let overlayInputLabel = currentLabel;
+
+    if (isEmphasizedClick) {
+      const emphasisLabel = `cursor_emphasis${index}`;
+      const clickX = Math.round(position.x - emphasisSize / 2);
+      const clickY = Math.round(position.y - emphasisSize / 2);
+      const clickEnd = Math.min(plan.timeline.duration, point.time + clickDisplaySeconds);
+      filters.push(
+        `[${currentLabel}]drawbox=x=${clickX}:y=${clickY}:w=${emphasisSize}:h=${emphasisSize}:color=#fbbf24@0.90:t=fill:enable='${enableBetween(point.time, clickEnd)}'[${emphasisLabel}]`,
+      );
+      overlayInputLabel = emphasisLabel;
+    }
+
+    const nextLabel = `cursor${index}`;
     filters.push(
-      `[${currentLabel}]drawbox=x=${x}:y=${y}:w=${size}:h=${size}:color=${color}:t=fill:enable='${enableBetween(point.time, end)}'[${nextLabel}]`,
+      `[${overlayInputLabel}][${cursorLabels[index]}]overlay=x=${cursorX}:y=${cursorY}:enable='${enableBetween(point.time, cursorEnd)}'[${nextLabel}]`,
     );
     currentLabel = nextLabel;
   });
 
   return currentLabel;
+}
+
+function ffmpegFilterPath(path: string) {
+  return path.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
 }
 
 function appendCameraFilters(
