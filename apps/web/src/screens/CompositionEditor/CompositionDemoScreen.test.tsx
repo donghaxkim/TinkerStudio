@@ -56,6 +56,90 @@ function completedCompositionJob(): ApiGenerationJob {
   };
 }
 
+function completedPlaywrightJob(): ApiGenerationJob {
+  return {
+    id: "playwright-job-1",
+    status: "completed",
+    request: {
+      id: "playwright-job-1",
+      mode: "ai-url-planning",
+      repoUrl: "https://github.com/acme/driftboard",
+      productUrl: "https://driftboard.example.com",
+      durationCapSeconds: 60,
+      aspectRatio: "16:9",
+      renderer: "playwright",
+    },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    progressEvents: [],
+    result: {
+      method: "playwright",
+      project: {
+        schemaVersion: "0.1.0",
+        id: "playwright-job-1",
+        title: "Driftboard demo",
+        duration: 10,
+        fps: 60,
+        aspectRatio: "16:9",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        assets: [
+          {
+            id: "capture-001",
+            type: "video",
+            uri: "assets/capture-001.mp4",
+            source: "captured",
+            duration: 10,
+            width: 1920,
+            height: 1080,
+            metadata: {},
+          },
+        ],
+        tracks: [
+          {
+            id: "track-video-main",
+            type: "video",
+            name: "Main capture",
+            locked: false,
+            hidden: false,
+            clips: [
+              {
+                id: "clip-capture-001",
+                assetId: "capture-001",
+                start: 0,
+                end: 10,
+                sourceStart: 0,
+                muted: false,
+                opacity: 1,
+                transform: { x: 0, y: 0, scale: 1, rotation: 0 },
+              },
+            ],
+          },
+        ],
+        zooms: [],
+        cursorEvents: [],
+        aiEditHistory: [],
+        metadata: { notes: [] },
+      },
+      artifacts: [
+        {
+          kind: "playwright-demo-project",
+          relativePath: "playwright/demo-project.json",
+          url: "/api/jobs/playwright-job-1/artifacts/playwright/demo-project.json",
+          mediaType: "application/json; charset=utf-8",
+        },
+        {
+          kind: "playwright-video",
+          relativePath: "playwright/capture/videos/capture-001.mp4",
+          url: "/api/jobs/playwright-job-1/artifacts/playwright/capture/videos/capture-001.mp4",
+          mediaType: "video/mp4",
+        },
+      ],
+      warnings: [],
+    },
+  };
+}
+
 function fakeHandle(): CompositionTimelineHandle {
   return {
     totalDuration: () => 10,
@@ -125,6 +209,21 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByTestId("composition-frame")).toHaveAttribute(
       "src",
       completedJob.result.composition.indexArtifact.url,
+    );
+  });
+
+  it("renders completed Playwright jobs as an artifact result view", () => {
+    render(<CompositionDemoScreen client={createLocalCompositionGenerationClient()} initialCompletedJob={completedPlaywrightJob()} />);
+
+    expect(screen.getByRole("heading", { name: "Playwright demo ready" })).toBeInTheDocument();
+    expect(screen.getByText("Generated DemoProject and capture artifacts from the Playwright pipeline.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open DemoProject JSON" })).toHaveAttribute(
+      "href",
+      "/api/jobs/playwright-job-1/artifacts/playwright/demo-project.json",
+    );
+    expect(screen.getByTestId("playwright-result-video")).toHaveAttribute(
+      "src",
+      "/api/jobs/playwright-job-1/artifacts/playwright/capture/videos/capture-001.mp4",
     );
   });
 
@@ -272,6 +371,8 @@ describe("CompositionDemoScreen", () => {
 
     expect(screen.getByRole("heading", { name: /Tinker Studio/i })).toBeInTheDocument();
     expect(screen.getByText("github.com/owner/repo")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /HyperFrames/i })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Playwright/i })).toBeEnabled();
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
     fireEvent.change(screen.getByLabelText("Demo description"), { target: { value: "Show the launch flow" } });
     expect(screen.queryByLabelText("Product URL")).not.toBeInTheDocument();
@@ -284,6 +385,7 @@ describe("CompositionDemoScreen", () => {
         durationCapSeconds: 60,
         aspectRatio: "16:9",
         prompt: "Show the launch flow",
+        renderer: "hyperframes",
       }),
     );
     await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
@@ -293,6 +395,69 @@ describe("CompositionDemoScreen", () => {
     const repoLink = screen.getByRole("link", { name: "GitHub repository acme/driftboard" });
     expect(repoLink).toHaveTextContent("github.com/acme/driftboard");
     expect(repoLink).toHaveAttribute("href", "https://github.com/acme/driftboard");
+  });
+
+  it("can select Playwright and submits a Playwright generation request", async () => {
+    const client = {
+      createJob: vi.fn(async (_request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => ({
+        id: "job-1",
+        status: "queued",
+        request: {
+          id: "job-1",
+          mode: "ai-url-planning",
+          repoUrl: "https://github.com/acme/driftboard",
+          productUrl: "https://driftboard.example.com",
+          durationCapSeconds: 60,
+          aspectRatio: "16:9",
+          renderer: "playwright",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        progressEvents: [],
+      })),
+      getJob: async () => {
+        throw new Error("not used");
+      },
+      waitForJob: async (): Promise<ApiGenerationJob> => ({
+        id: "job-1",
+        status: "failed",
+        request: {
+          id: "job-1",
+          mode: "ai-url-planning",
+          repoUrl: "https://github.com/acme/driftboard",
+          productUrl: "https://driftboard.example.com",
+          durationCapSeconds: 60,
+          aspectRatio: "16:9",
+          renderer: "playwright",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        progressEvents: [],
+        error: { status: "failed", stage: "unknown", message: "stop after request assertion" },
+      }),
+    } satisfies CompositionGenerationClient;
+    render(<CompositionDemoScreen client={client} />);
+
+    expect(screen.getByRole("radio", { name: /HyperFrames/i })).toBeChecked();
+    const playwrightRadio = screen.getByRole("radio", { name: /Playwright/i });
+    expect(playwrightRadio).toBeEnabled();
+    fireEvent.click(playwrightRadio);
+    expect(playwrightRadio).toBeChecked();
+
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.change(screen.getByLabelText("Demo description"), { target: { value: "Show the launch flow" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(client.createJob).toHaveBeenCalledWith({
+        mode: "ai-url-planning",
+        repoUrl: "https://github.com/acme/driftboard",
+        durationCapSeconds: 60,
+        aspectRatio: "16:9",
+        prompt: "Show the launch flow",
+        renderer: "playwright",
+      }),
+    );
   });
 
   it("shows an error when generation fails", async () => {
