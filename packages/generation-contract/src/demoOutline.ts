@@ -76,7 +76,7 @@ export const CreatePlanningSessionRequestSchema = z
     id: z.string().uuid().optional(),
     productUrl: PublicUrlSchema.optional(),
     repoUrl: PublicGithubRepoUrlSchema,
-    agent: PlanningAgentSchema.default("claude"),
+    agent: PlanningAgentSchema.default("opencode"),
   })
   .strict();
 
