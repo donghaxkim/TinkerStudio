@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type CSSProperties } from "react";
 import {
   readCompositionTimeline,
   readSceneClipsFromDocument,
@@ -42,6 +42,11 @@ export type CompositionPreviewProps = {
 };
 
 type Status = "loading" | "ready" | "error";
+
+type StatusState = {
+  key: string;
+  status: Status;
+};
 
 const shellStyle: CSSProperties = {
   width: "100%",
@@ -144,6 +149,10 @@ function defaultResolveWindow(iframe: HTMLIFrameElement): TimelineRegistryWindow
   return iframe.contentWindow as unknown as TimelineRegistryWindow | null;
 }
 
+function defaultResolveDocument(iframe: HTMLIFrameElement): Document | null | undefined {
+  return iframe.contentDocument;
+}
+
 /**
  * Read the timeline model, falling back to DOM scene sections when the master timeline
  * is flat (no nested clips). A flat GSAP timeline — the real pipeline's shape — reports
@@ -177,18 +186,41 @@ export function CompositionPreview({
   timeoutMs,
   onLoading,
   resolveWindow = defaultResolveWindow,
-  resolveDocument = (iframe) => iframe.contentDocument,
+  resolveDocument = defaultResolveDocument,
   zoomOverlay,
 }: CompositionPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<CompositionTimelineHandle | undefined>(undefined);
   const waitAbortRef = useRef<AbortController | null>(null);
-  const [status, setStatus] = useState<Status>("loading");
+  const compositionKey = `${src}::${compositionId ?? "sole"}`;
+  const [statusState, setStatusState] = useState<StatusState>(() => ({ key: compositionKey, status: "loading" }));
   const [ratio, setRatio] = useState(aspectRatio);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const status = statusState.key === compositionKey ? statusState.status : "loading";
+
+  if (statusState.key !== compositionKey) {
+    handleRef.current = undefined;
+    setStatusState({ key: compositionKey, status: "loading" });
+  }
 
   useEffect(() => () => waitAbortRef.current?.abort(), []);
+
+  const reportLoading = useEffectEvent(() => {
+    onLoading?.();
+  });
+
+  const reportReady = useEffectEvent((iframe: HTMLIFrameElement, handle: CompositionTimelineHandle) => {
+    handleRef.current = handle;
+    handle.pause();
+    setStatusState({ key: compositionKey, status: "ready" });
+    onReady?.(readModelWithSceneFallback(handle, () => resolveDocument(iframe), compositionId), handle);
+  });
+
+  const reportError = useEffectEvent((error: unknown) => {
+    setStatusState({ key: compositionKey, status: "error" });
+    onError?.(error instanceof Error ? error : new Error(String(error)));
+  });
 
   // Reflect the browser's fullscreen state so the toggle icon stays in sync (Esc, etc.).
   useEffect(() => {
@@ -220,14 +252,10 @@ export function CompositionPreview({
   // Re-initialize when the composition identity changes, so a new src/id can load
   // and an earlier error state does not stick forever.
   useEffect(() => {
-    setStatus("loading");
-    handleRef.current = undefined;
-    onLoading?.();
-  }, [src, compositionId, onLoading]);
-
-  function handleLoad() {
     const iframe = iframeRef.current;
+    reportLoading();
     if (!iframe) return;
+
     waitAbortRef.current?.abort();
     const controller = new AbortController();
     waitAbortRef.current = controller;
@@ -235,17 +263,15 @@ export function CompositionPreview({
     waitForCompositionTimeline(() => resolveWindow(iframe), compositionId, { timeoutMs, signal: controller.signal })
       .then((handle) => {
         if (controller.signal.aborted) return;
-        handleRef.current = handle;
-        handle.pause();
-        setStatus("ready");
-        onReady?.(readModelWithSceneFallback(handle, () => resolveDocument(iframe), compositionId), handle);
+        reportReady(iframe, handle);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setStatus("error");
-        onError?.(error instanceof Error ? error : new Error(String(error)));
+        reportError(error);
       });
-  }
+
+    return () => controller.abort();
+  }, [compositionKey, compositionId, resolveWindow, timeoutMs]);
 
   useEffect(() => {
     if (status === "ready") {
@@ -286,7 +312,6 @@ export function CompositionPreview({
             data-testid="composition-frame"
             title="Composition preview"
             src={src}
-            onLoad={handleLoad}
             sandbox="allow-scripts allow-same-origin"
             style={{ ...fillStyle, opacity: status === "ready" ? 1 : 0 }}
           />
