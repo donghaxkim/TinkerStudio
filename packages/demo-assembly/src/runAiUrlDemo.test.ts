@@ -465,6 +465,7 @@ const repairedResult = await runAiUrlDemo({
     return repoAnalysis;
   },
   generateHyperframes: async (input) => {
+    assert.equal(input.hyperframesAgent, "opencode");
     await writeValidHyperframesArtifacts(input.hyperframesDir);
   },
   runHyperframes: async (input) => {

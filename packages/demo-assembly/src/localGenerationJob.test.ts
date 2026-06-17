@@ -54,6 +54,7 @@ const successfulAiUrlRunner: AiUrlDemoRunner = async (input) => {
   assert.equal(input.productUrl, "http://127.0.0.1:3000/");
   assert.equal(input.repoUrl, "https://github.com/example/product");
   assert.equal(input.renderer, "hyperframes");
+  assert.equal(input.hyperframesAgent, "claude");
   assert.equal(input.prompt, "Show the AI URL path.");
 
   const phases = ["analysis", "planning", "validation", "capture", "assembly"] as const;
@@ -167,6 +168,7 @@ const aiUrlResult = await runLocalGenerationJob(
     mode: "ai-url-planning",
     productUrl: "http://127.0.0.1:3000/",
     repoUrl: "https://github.com/example/product",
+    hyperframesAgent: "claude",
     prompt: "Show the AI URL path.",
     outputDirectory: "generated/local-job/ai-url-job",
   },

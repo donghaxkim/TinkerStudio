@@ -266,6 +266,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       repoAnalysis,
       repoCheckoutDirectory,
       hyperframesDir,
+      hyperframesAgent: input.hyperframesAgent,
     });
 
     let validated: Awaited<ReturnType<typeof validateHyperframesArtifacts>> | undefined;

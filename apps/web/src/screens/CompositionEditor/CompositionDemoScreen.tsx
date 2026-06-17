@@ -14,6 +14,7 @@ import {
 import type {
   ApiGenerationJob,
   DemoOutline,
+  HyperframesAgent,
   PlanningProgressEntry,
   PlanningProgressStatus,
   PlanningStage,
@@ -29,6 +30,7 @@ import { useCompositionPlanningSession } from "../../lib/useCompositionPlanningS
 import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
 
 const PREVIEW_COMPOSITION_URL = "/demo-composition/index.html";
+type GenerationRenderer = "hyperframes" | "playwright";
 
 export type CompositionDemoScreenProps = {
   client: CompositionGenerationClient;
@@ -275,6 +277,8 @@ export function CompositionDemoScreen({
   const [productDraft, setProductDraft] = useState("");
   const [planningMessage, setPlanningMessage] = useState("");
   const [repoShake, setRepoShake] = useState(false);
+  const [renderer, setRenderer] = useState<GenerationRenderer>("hyperframes");
+  const [hyperframesAgent, setHyperframesAgent] = useState<HyperframesAgent>("opencode");
 
   const repoInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -356,12 +360,12 @@ export function CompositionDemoScreen({
       durationCapSeconds: session.outline.durationCapSeconds,
       aspectRatio: session.outline.aspectRatio,
       prompt: outlinePrompt(session.outline),
-      renderer: "hyperframes",
-      hyperframesAgent: "claude",
+      renderer,
+      ...(renderer === "hyperframes" ? { hyperframesAgent } : {}),
     } as const;
 
     void job.start(request);
-  }, [job, planningBusy, session]);
+  }, [hyperframesAgent, job, planningBusy, renderer, session]);
 
   const startImport = useCallback(
     (collected: Array<{ relativePath: string; file: File }>) => {
@@ -530,7 +534,6 @@ export function CompositionDemoScreen({
       </div>
     );
   }
-
   if (showEmptyEditor) {
     return (
       <CompositionEditorScreen
@@ -679,6 +682,46 @@ export function CompositionDemoScreen({
                         </div>
                       ) : (
                         <div className="tk-cd-gen-row">
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--tk-text-sec)" }}>
+                            Renderer
+                            <select
+                              aria-label="Renderer"
+                              value={renderer}
+                              onChange={(event) => setRenderer(event.currentTarget.value as GenerationRenderer)}
+                              disabled={jobRunning}
+                              style={{
+                                border: "1px solid var(--tk-border-soft)",
+                                borderRadius: "var(--tk-radius-sm)",
+                                background: "var(--tk-raised)",
+                                color: "var(--tk-text)",
+                                padding: "6px 8px",
+                              }}
+                            >
+                              <option value="hyperframes">Hyperframes</option>
+                              <option value="playwright">Playwright</option>
+                            </select>
+                          </label>
+                          {renderer === "hyperframes" ? (
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--tk-text-sec)" }}>
+                              Hyperframes agent
+                              <select
+                                aria-label="Hyperframes agent"
+                                value={hyperframesAgent}
+                                onChange={(event) => setHyperframesAgent(event.currentTarget.value as HyperframesAgent)}
+                                disabled={jobRunning}
+                                style={{
+                                  border: "1px solid var(--tk-border-soft)",
+                                  borderRadius: "var(--tk-radius-sm)",
+                                  background: "var(--tk-raised)",
+                                  color: "var(--tk-text)",
+                                  padding: "6px 8px",
+                                }}
+                              >
+                                <option value="opencode">OpenCode</option>
+                                <option value="claude">Claude Code</option>
+                              </select>
+                            </label>
+                          ) : null}
                           <button type="button" className="tk-btn tk-btn-accent" onClick={startGeneration} disabled={!canGenerate} aria-busy={false}>
                             Generate video
                           </button>

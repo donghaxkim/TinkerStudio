@@ -305,7 +305,7 @@ const originalHyperframesAgent = process.env.TINKER_HYPERFRAMES_AGENT;
 const originalShouldNotLeak = process.env.TINKER_SHOULD_NOT_LEAK;
 try {
   process.env.PATH = `${fakeBinDir}${delimiter}${originalPath ?? ""}`;
-  process.env.TINKER_HYPERFRAMES_AGENT = "opencode";
+  delete process.env.TINKER_HYPERFRAMES_AGENT;
   process.env.TINKER_SHOULD_NOT_LEAK = "host-secret";
   process.env.OPENCODE_CONFIG = join(tempDir, "host-opencode.json");
   await createOpencodeHyperframesGenerator()({
@@ -451,7 +451,7 @@ await chmod(claudeFallbackOpencodePath, 0o755);
 
 try {
   process.env.PATH = `${claudeFakeBinDir}${delimiter}${originalPath ?? ""}`;
-  process.env.TINKER_HYPERFRAMES_AGENT = "   ";
+  process.env.TINKER_HYPERFRAMES_AGENT = "claude";
   process.env.TINKER_SHOULD_NOT_LEAK = "host-secret";
   process.env.OPENCODE_CONFIG = join(claudeTempDir, "host-opencode.json");
   await createOpencodeHyperframesGenerator()({

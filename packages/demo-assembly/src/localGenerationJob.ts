@@ -174,6 +174,7 @@ export async function runLocalGenerationJob(
       productUrl: request.productUrl,
       repoUrl: request.repoUrl,
       renderer: request.renderer,
+      hyperframesAgent: request.hyperframesAgent,
       prompt: request.prompt ?? "Make a short demo of the main value prop.",
       durationCapSeconds: request.durationCapSeconds,
       aspectRatio: request.aspectRatio,

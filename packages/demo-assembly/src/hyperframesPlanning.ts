@@ -103,7 +103,7 @@ function selectHyperframesAgent(value = process.env.TINKER_HYPERFRAMES_AGENT): H
   const normalized = (value ?? "").trim();
 
   if (normalized === "") {
-    return "claude";
+    return "opencode";
   }
 
   if (normalized === "opencode" || normalized === "claude") {
@@ -115,8 +115,8 @@ function selectHyperframesAgent(value = process.env.TINKER_HYPERFRAMES_AGENT): H
   );
 }
 
-function buildHyperframesAgentCommand(prompt: string, sandboxDirectory: string): HyperframesAgentCommand {
-  const agent = selectHyperframesAgent();
+function buildHyperframesAgentCommand(prompt: string, sandboxDirectory: string, hyperframesAgent?: HyperframesAgent): HyperframesAgentCommand {
+  const agent = selectHyperframesAgent(hyperframesAgent);
 
   if (agent === "claude") {
     // Env is read in this (parent) process, so these overrides work even though the child env is
@@ -303,7 +303,7 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
   const stdoutPath = join(options.logDir, ".tinker-opencode-hyperframes-output.jsonl");
   const stderrPath = join(options.logDir, ".tinker-opencode-hyperframes-error.log");
   const sandboxDirectory = hyperframesOpencodeSandboxDirectory(options.logDir);
-  const agentCommand = buildHyperframesAgentCommand(prompt, sandboxDirectory);
+  const agentCommand = buildHyperframesAgentCommand(prompt, sandboxDirectory, options.hyperframesAgent);
 
   try {
     await prepareOpencodeSandbox(options);
@@ -531,13 +531,14 @@ export function createOpencodeHyperframesGenerator(options: OpencodeHyperframesO
     assertRequiredPath(input.repoCheckoutDirectory, "repoCheckoutDirectory");
     assertRequiredPath(input.hyperframesDir, "hyperframesDir");
     if (runOpencode === defaultRunOpencode) {
-      selectHyperframesAgent();
+      selectHyperframesAgent(input.hyperframesAgent ?? process.env.TINKER_HYPERFRAMES_AGENT);
     }
     try {
       await runOpencode(buildGeneratePrompt(input), {
         cwd: hyperframesOpencodeSandboxDirectory(input.hyperframesDir),
         logDir: input.hyperframesDir,
         repoCheckoutDirectory: input.repoCheckoutDirectory,
+        hyperframesAgent: input.hyperframesAgent,
       });
     } finally {
       await cleanupOpencodeSandbox(input.hyperframesDir);

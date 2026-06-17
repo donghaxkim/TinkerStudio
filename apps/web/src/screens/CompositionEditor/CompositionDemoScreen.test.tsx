@@ -492,7 +492,7 @@ describe("CompositionDemoScreen", () => {
     expect(await screen.findByText("Updated the outline.")).toBeInTheDocument();
   });
 
-  it("generates Hyperframes from the approved outline", async () => {
+  it("generates Hyperframes with OpenCode by default from the approved outline", async () => {
     const client = {
       createJob: vi.fn(async (_request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => ({
         id: "job-1",
@@ -505,7 +505,7 @@ describe("CompositionDemoScreen", () => {
           durationCapSeconds: 60,
           aspectRatio: "16:9",
           renderer: "hyperframes",
-          hyperframesAgent: "claude",
+          hyperframesAgent: "opencode",
         },
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
@@ -525,7 +525,7 @@ describe("CompositionDemoScreen", () => {
           durationCapSeconds: 60,
           aspectRatio: "16:9",
           renderer: "hyperframes",
-          hyperframesAgent: "claude",
+          hyperframesAgent: "opencode",
         },
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
@@ -576,6 +576,8 @@ describe("CompositionDemoScreen", () => {
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
     fireEvent.click(screen.getByRole("button", { name: "Plan" }));
     await screen.findByRole("heading", { name: "Driftboard launch demo" });
+    expect(screen.getByLabelText("Renderer")).toHaveValue("hyperframes");
+    expect(screen.getByLabelText("Hyperframes agent")).toHaveValue("opencode");
     fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
 
     await waitFor(() =>
@@ -587,7 +589,7 @@ describe("CompositionDemoScreen", () => {
         aspectRatio: "16:9",
         prompt: expect.stringContaining("Use this approved video outline as the product demo brief:"),
         renderer: "hyperframes",
-        hyperframesAgent: "claude",
+        hyperframesAgent: "opencode",
       })),
     );
     expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("Driftboard launch demo") }));
@@ -598,6 +600,49 @@ describe("CompositionDemoScreen", () => {
     const repoLink = screen.getByRole("link", { name: "GitHub repository acme/driftboard" });
     expect(repoLink).toHaveTextContent("github.com/acme/driftboard");
     expect(repoLink).toHaveAttribute("href", "https://github.com/acme/driftboard");
+  });
+
+  it("can generate a Playwright demo from the approved outline", async () => {
+    const client = {
+      createJob: vi.fn(async (_request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => ({
+        id: "job-1",
+        status: "queued",
+        request: {
+          id: "job-1",
+          mode: "ai-url-planning",
+          repoUrl: "https://github.com/acme/driftboard",
+          productUrl: "https://driftboard.example.com",
+          durationCapSeconds: 60,
+          aspectRatio: "16:9",
+          renderer: "playwright",
+          hyperframesAgent: "opencode",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        progressEvents: [],
+      })),
+      getJob: async () => {
+        throw new Error("not used");
+      },
+      waitForJob: async (): Promise<ApiGenerationJob> => completedPlaywrightJob(),
+    } satisfies CompositionGenerationClient;
+    render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
+
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    await screen.findByRole("heading", { name: "Driftboard launch demo" });
+    fireEvent.change(screen.getByLabelText("Renderer"), { target: { value: "playwright" } });
+    expect(screen.queryByLabelText("Hyperframes agent")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+
+    await waitFor(() =>
+      expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({
+        renderer: "playwright",
+      })),
+    );
+    expect(client.createJob).toHaveBeenCalledWith(expect.not.objectContaining({ hyperframesAgent: expect.any(String) }));
+    expect(await screen.findByRole("heading", { name: "Playwright demo ready" })).toBeInTheDocument();
   });
 
   it("disables generation until the planning agent produces a valid outline", async () => {
