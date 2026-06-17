@@ -263,6 +263,48 @@ describe("createClaudePlanningAgentRunner", () => {
     expect(promptJson).toContain("Do not require exactly four scenes");
   });
 
+  it("plans repo-only and streams stages when no product URL is provided", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-planning-repo-only-${randomUUID()}-`));
+    const outlinePath = join(workspaceRoot, "outline.json");
+    const runClaude = vi.fn(async (input: ClaudePlanningProcessInput) => {
+      void input;
+      return {
+        stdout: [
+          JSON.stringify({ type: "system", session_id: "claude-session-repo-only" }),
+          JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Drafted from the repo." }] } }),
+        ].join("\n"),
+      };
+    });
+    const analyzeWebsite = vi.fn(async () => websiteAnalysis);
+    const analyzeRepo = vi.fn(async () => repoAnalysis);
+    const progress: Array<[string, string]> = [];
+    const runner = createClaudePlanningAgentRunner({ runClaude, analyzeWebsite, analyzeRepo });
+
+    const result = await runner({
+      kind: "initial",
+      repoUrl: "https://github.com/example/product",
+      agent: "claude",
+      workspaceRoot,
+      outlinePath,
+      onProgress: (stage, status) => progress.push([stage, status]),
+    });
+
+    expect(result.assistantMessage).toBe("Drafted from the repo.");
+    expect(analyzeWebsite).not.toHaveBeenCalled();
+    expect(analyzeRepo).toHaveBeenCalledWith("https://github.com/example/product", {
+      checkoutDirectory: join(workspaceRoot, "repository"),
+    });
+    await expect(readFile(join(workspaceRoot, "website-analysis.json"), "utf8")).rejects.toThrow();
+    const prompt = JSON.parse(runClaude.mock.calls[0][0].prompt) as Record<string, unknown>;
+    expect(prompt).not.toHaveProperty("productUrl");
+    expect(prompt).not.toHaveProperty("websiteAnalysis");
+    expect(JSON.stringify(prompt)).toContain("No product URL was provided");
+    expect(progress).toContainEqual(["preparing", "done"]);
+    expect(progress).toContainEqual(["analyzing-repo", "done"]);
+    expect(progress).toContainEqual(["drafting", "done"]);
+    expect(progress.some(([stage]) => stage === "analyzing-website")).toBe(false);
+  });
+
   it("allows Claude to write outline.json during planning", async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-boundary-outline-${randomUUID()}-`));
     const outlinePath = join(workspaceRoot, "outline.json");

@@ -1798,3 +1798,87 @@ describe("generation worker", () => {
     }
   });
 });
+
+function multipartBody(parts: Array<{ fieldname: string; filename: string; content: string }>) {
+  const boundary = "----tinkertest1234567890";
+  const chunks: string[] = [];
+  for (const p of parts) {
+    chunks.push(`--${boundary}\r\n`);
+    chunks.push(`Content-Disposition: form-data; name="${p.fieldname}"; filename="${p.filename}"\r\n`);
+    chunks.push("Content-Type: application/octet-stream\r\n\r\n");
+    chunks.push(p.content);
+    chunks.push("\r\n");
+  }
+  chunks.push(`--${boundary}--\r\n`);
+  return { payload: chunks.join(""), headers: { "content-type": `multipart/form-data; boundary=${boundary}` } };
+}
+
+const IMPORT_INDEX = `<!doctype html><html><body><main data-composition-id="x"></main>
+<script>window.__timelines = {};</script></body></html>`;
+
+describe("POST /api/jobs/import", () => {
+  it("imports a hyperframes folder as a completed editable job", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "import-srv-"));
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-import-1",
+      now: () => "2026-06-16T00:00:00.000Z",
+    });
+    try {
+      const body = multipartBody([
+        { fieldname: "hyperframes/index.html", filename: "index.html", content: IMPORT_INDEX },
+        { fieldname: "hyperframes/output.mp4", filename: "output.mp4", content: "mp4-bytes" },
+        {
+          fieldname: "hyperframes/generation-manifest.json",
+          filename: "generation-manifest.json",
+          content: JSON.stringify({
+            sourceRepoUrl: "https://github.com/acme/widget",
+            productUrl: "https://widget.example.com",
+            durationCapSeconds: 18,
+            aspectRatio: "16:9",
+          }),
+        },
+      ]);
+      const response = await server.inject({ method: "POST", url: "/api/jobs/import", ...body });
+      expect(response.statusCode).toBe(200);
+      const job = JSON.parse(response.body);
+      expect(job.status).toBe("completed");
+      expect(job.result.method).toBe("hyperframes");
+      expect(job.result.composition.indexArtifact.url).toBe("/api/jobs/job-import-1/artifacts/hyperframes/index.html");
+      expect(job.request.repoUrl).toBe("https://github.com/acme/widget");
+
+      const artifact = await server.inject({ method: "GET", url: "/api/jobs/job-import-1/artifacts/hyperframes/index.html" });
+      expect(artifact.statusCode).toBe(200);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns 422 when index.html is missing", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "import-srv-"));
+    const server = await buildServer({ config: testConfig(repoRoot) });
+    try {
+      const body = multipartBody([{ fieldname: "hyperframes/output.mp4", filename: "output.mp4", content: "mp4" }]);
+      const response = await server.inject({ method: "POST", url: "/api/jobs/import", ...body });
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body).message).toMatch(/index\.html/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns 422 when the composition is not editable", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "import-srv-"));
+    const server = await buildServer({ config: testConfig(repoRoot) });
+    try {
+      const body = multipartBody([
+        { fieldname: "hyperframes/index.html", filename: "index.html", content: "<html></html>" },
+        { fieldname: "hyperframes/output.mp4", filename: "output.mp4", content: "mp4" },
+      ]);
+      const response = await server.inject({ method: "POST", url: "/api/jobs/import", ...body });
+      expect(response.statusCode).toBe(422);
+    } finally {
+      await server.close();
+    }
+  });
+});

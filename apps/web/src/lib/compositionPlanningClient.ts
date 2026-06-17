@@ -6,4 +6,6 @@ export type CompositionPlanningSession = PlanningSessionResponse;
 export interface CompositionPlanningClient {
   createSession(request: CreateCompositionPlanningSessionRequest): Promise<CompositionPlanningSession>;
   sendMessage(sessionId: string, message: string): Promise<CompositionPlanningSession>;
+  /** Reads the current session snapshot, used to poll planning progress while work is in flight. */
+  getSession(sessionId: string): Promise<CompositionPlanningSession>;
 }

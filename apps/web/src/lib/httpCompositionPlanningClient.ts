@@ -33,6 +33,10 @@ export function createHttpCompositionPlanningClient(
         }),
       );
     },
+
+    async getSession(sessionId: string): Promise<CompositionPlanningSession> {
+      return readPlanningSession(await fetchFn(`${baseUrl}/api/planning-sessions/${encodeURIComponent(sessionId)}`));
+    },
   };
 }
 

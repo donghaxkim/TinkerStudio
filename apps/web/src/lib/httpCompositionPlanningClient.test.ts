@@ -8,6 +8,7 @@ const responseBody = {
   agent: "claude",
   status: "ready",
   messages: [{ role: "assistant", content: "Drafted." }],
+  progress: [],
   outline: {
     title: "Fixture demo",
     durationCapSeconds: 60,
@@ -75,6 +76,25 @@ describe("createHttpCompositionPlanningClient", () => {
     const client = createHttpCompositionPlanningClient({ fetchFn });
 
     await expect(client.createSession(requestBody)).rejects.toThrow("Request failed with status 502");
+  });
+
+  it("reads a planning session snapshot for progress polling", async () => {
+    const runningSnapshot = {
+      ...responseBody,
+      status: "running",
+      messages: [],
+      progress: [
+        { stage: "preparing", status: "done" },
+        { stage: "analyzing-repo", status: "active" },
+      ],
+      outlineValid: false,
+    };
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify(runningSnapshot), { status: 200, headers: { "content-type": "application/json" } }));
+    const client = createHttpCompositionPlanningClient({ baseUrl: "http://api.test", fetchFn });
+
+    const session = await client.getSession("plan-test");
+    expect(session.progress).toHaveLength(2);
+    expect(fetchFn).toHaveBeenCalledWith("http://api.test/api/planning-sessions/plan-test");
   });
 
   it("URL-encodes session IDs when continuing planning sessions", async () => {

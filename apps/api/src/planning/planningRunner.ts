@@ -1,24 +1,35 @@
 import { readFile } from "node:fs/promises";
-import { safeParseDemoOutline, type DemoOutline, type PlanningAgent } from "@tinker/generation-contract";
+import {
+  safeParseDemoOutline,
+  type DemoOutline,
+  type PlanningAgent,
+  type PlanningProgressStatus,
+  type PlanningStage,
+} from "@tinker/generation-contract";
+
+/** Streams a pipeline stage transition to the caller (e.g. to persist for polling). */
+export type PlanningProgressReporter = (stage: PlanningStage, status: PlanningProgressStatus) => void;
 
 export type InitialPlanningAgentTurnInput = {
   kind: "initial";
-  productUrl: string;
+  productUrl?: string;
   repoUrl: string;
   agent: PlanningAgent;
   workspaceRoot: string;
   outlinePath: string;
+  onProgress?: PlanningProgressReporter;
 };
 
 export type FollowupPlanningAgentTurnInput = {
   kind: "followup";
-  productUrl: string;
+  productUrl?: string;
   repoUrl: string;
   agent: PlanningAgent;
   workspaceRoot: string;
   outlinePath: string;
   message: string;
   agentResumeHandle: string;
+  onProgress?: PlanningProgressReporter;
 };
 
 export type PlanningAgentTurnInput = InitialPlanningAgentTurnInput | FollowupPlanningAgentTurnInput;

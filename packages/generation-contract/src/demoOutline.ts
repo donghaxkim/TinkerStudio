@@ -60,9 +60,21 @@ export const PlanningAgentSchema = z.enum(["claude", "opencode"]);
 export const PlanningSessionStatusSchema = z.enum(["starting", "ready", "running", "error"]);
 export const PlanningMessageSchema = z.object({ role: z.enum(["user", "assistant"]), content: nonEmptyString }).strict();
 
+// Stages the planning runner streams while it works, in the order they begin.
+// `analyzing-website` is omitted when no product URL is available (repo-only planning).
+export const PlanningStageSchema = z.enum(["preparing", "analyzing-repo", "analyzing-website", "drafting"]);
+export const PlanningProgressStatusSchema = z.enum(["active", "done"]);
+export const PlanningProgressEntrySchema = z
+  .object({ stage: PlanningStageSchema, status: PlanningProgressStatusSchema })
+  .strict();
+
 export const CreatePlanningSessionRequestSchema = z
   .object({
-    productUrl: PublicUrlSchema,
+    // Optional client-generated id so the frontend can poll progress while the
+    // create request is still in flight. Constrained to a UUID so it is always a
+    // safe filesystem path segment; the server falls back to its own id when absent.
+    id: z.string().uuid().optional(),
+    productUrl: PublicUrlSchema.optional(),
     repoUrl: PublicGithubRepoUrlSchema,
     agent: PlanningAgentSchema.default("claude"),
   })
@@ -73,11 +85,12 @@ export const ContinuePlanningSessionRequestSchema = z.object({ message: nonEmpty
 export const PlanningSessionResponseSchema = z
   .object({
     id: nonEmptyString,
-    productUrl: PublicUrlSchema,
+    productUrl: PublicUrlSchema.optional(),
     repoUrl: PublicGithubRepoUrlSchema,
     agent: PlanningAgentSchema,
     status: PlanningSessionStatusSchema,
     messages: z.array(PlanningMessageSchema),
+    progress: z.array(PlanningProgressEntrySchema).default([]),
     outline: DemoOutlineSchema.optional(),
     outlineValid: z.boolean(),
     lastError: nonEmptyString.optional(),
@@ -90,6 +103,9 @@ export type DemoOutlineScene = z.infer<typeof DemoOutlineSceneSchema>;
 export type PlanningAgent = z.infer<typeof PlanningAgentSchema>;
 export type PlanningMessage = z.infer<typeof PlanningMessageSchema>;
 export type PlanningSessionStatus = z.infer<typeof PlanningSessionStatusSchema>;
+export type PlanningStage = z.infer<typeof PlanningStageSchema>;
+export type PlanningProgressStatus = z.infer<typeof PlanningProgressStatusSchema>;
+export type PlanningProgressEntry = z.infer<typeof PlanningProgressEntrySchema>;
 export type CreatePlanningSessionRequest = z.infer<typeof CreatePlanningSessionRequestSchema>;
 export type ContinuePlanningSessionRequest = z.infer<typeof ContinuePlanningSessionRequestSchema>;
 export type PlanningSessionResponse = z.infer<typeof PlanningSessionResponseSchema>;

@@ -210,6 +210,47 @@ assert.equal(
   true,
 );
 
+// Repo-first planning: the product URL is optional now.
+assert.equal(
+  CreatePlanningSessionRequestSchema.safeParse({
+    repoUrl: "https://github.com/example/product",
+  }).success,
+  true,
+);
+
+// The optional client-supplied id must be a UUID so it is a safe path segment.
+assert.equal(
+  CreatePlanningSessionRequestSchema.safeParse({
+    id: "123e4567-e89b-42d3-a456-426614174000",
+    repoUrl: "https://github.com/example/product",
+  }).success,
+  true,
+);
+assert.equal(
+  CreatePlanningSessionRequestSchema.safeParse({
+    id: "../escape",
+    repoUrl: "https://github.com/example/product",
+  }).success,
+  false,
+);
+
+// Progress defaults to an empty list and accepts streamed stage entries.
+assert.deepEqual(planningResponse.progress, []);
+const planningProgressResponse = PlanningSessionResponseSchema.parse({
+  id: "plan-test",
+  repoUrl: "https://github.com/example/product",
+  agent: "claude",
+  status: "running",
+  messages: [],
+  progress: [
+    { stage: "preparing", status: "done" },
+    { stage: "analyzing-repo", status: "active" },
+  ],
+  outlineValid: false,
+});
+assert.equal(planningProgressResponse.progress.length, 2);
+assert.equal(planningProgressResponse.productUrl, undefined);
+
 for (const repoUrl of [
   "http://github.com/example/product",
   "https://github.example.com/example/product",
