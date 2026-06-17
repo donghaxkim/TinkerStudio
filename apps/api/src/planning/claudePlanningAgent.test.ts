@@ -7,6 +7,7 @@ import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import {
   createClaudePlanningAgentRunner,
   defaultRunClaudePlanningProcess,
+  defaultRunOpenCodePlanningProcess,
   parseClaudePlanningOutput,
   parseOpenCodePlanningOutput,
   type ClaudePlanningProcessInput,
@@ -65,6 +66,16 @@ async function createFakeClaude(workspaceRoot: string, contents: string) {
   return executablePath;
 }
 
+async function createFakeOpenCode(workspaceRoot: string, contents: string) {
+  const binDirectory = join(workspaceRoot, "bin");
+  const executablePath = join(binDirectory, "opencode");
+  await mkdir(binDirectory, { recursive: true });
+  await writeFile(executablePath, contents);
+  await chmod(executablePath, 0o755);
+  process.env.PATH = `${binDirectory}:${originalEnv.PATH ?? ""}`;
+  return executablePath;
+}
+
 describe("parseClaudePlanningOutput", () => {
   it("throws when Claude output does not include a session_id", () => {
     const stdout = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "No session." }] } });
@@ -90,7 +101,7 @@ describe("parseOpenCodePlanningOutput", () => {
     const result = parseOpenCodePlanningOutput(
       [
         JSON.stringify({ session_id: "opencode-session-1" }),
-        JSON.stringify({ message: { content: [{ type: "text", text: "Drafted with OpenCode." }] } }),
+        JSON.stringify({ type: "message", role: "assistant", message: { content: [{ type: "text", text: "Drafted with OpenCode." }] } }),
       ].join("\n"),
     );
 
@@ -101,7 +112,7 @@ describe("parseOpenCodePlanningOutput", () => {
     const result = parseOpenCodePlanningOutput(
       [
         JSON.stringify({ session: { id: "opencode-session-nested" } }),
-        JSON.stringify({ type: "message", content: "Nested session parsed." }),
+        JSON.stringify({ type: "message", role: "assistant", content: "Nested session parsed." }),
       ].join("\n"),
     );
 
@@ -112,6 +123,64 @@ describe("parseOpenCodePlanningOutput", () => {
     expect(() => parseOpenCodePlanningOutput(JSON.stringify({ content: "No session id." }))).toThrow(
       "OpenCode planning output did not include a session id",
     );
+  });
+
+  it("ignores user and tool content while collecting assistant message and delta events", () => {
+    const result = parseOpenCodePlanningOutput(
+      [
+        JSON.stringify({ sessionId: "opencode-session-filtered" }),
+        JSON.stringify({ type: "message", role: "user", content: "Do not include user text." }),
+        JSON.stringify({ type: "tool", content: "Do not include tool text." }),
+        JSON.stringify({ type: "message", role: "assistant", content: "Assistant message." }),
+        JSON.stringify({ type: "message_delta", role: "assistant", delta: "Assistant delta." }),
+      ].join("\n"),
+    );
+
+    expect(result).toEqual({
+      assistantMessage: "Assistant message.\nAssistant delta.",
+      agentResumeHandle: "opencode-session-filtered",
+    });
+  });
+
+  it("throws clearly when OpenCode output has a session id but no assistant text", () => {
+    expect(() =>
+      parseOpenCodePlanningOutput(
+        [
+          JSON.stringify({ sessionID: "opencode-session-no-assistant" }),
+          JSON.stringify({ type: "message", role: "user", content: "Only user content." }),
+          JSON.stringify({ type: "tool", content: "Only tool content." }),
+          JSON.stringify({ type: "diagnostic", text: "Only diagnostic content." }),
+        ].join("\n"),
+      ),
+    ).toThrow("OpenCode planning output did not include an assistant message");
+  });
+});
+
+describe("defaultRunOpenCodePlanningProcess", () => {
+  it("preserves stream metadata when bounded stdout logs truncate early session output", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-opencode-stream-metadata-${randomUUID()}-`));
+    await createFakeOpenCode(
+      workspaceRoot,
+      `#!/bin/sh
+printf '%s\n' '{"session_id":"opencode-stream-session"}'
+i=0
+while [ "$i" -lt 70000 ]; do
+  printf x
+  i=$((i + 1))
+done
+printf '\n'
+printf '%s\n' '{"type":"message","role":"assistant","message":{"content":[{"type":"text","text":"metadata survived"}]}}'
+`,
+    );
+
+    const result = await defaultRunOpenCodePlanningProcess({ cwd: workspaceRoot, prompt: "Plan." });
+
+    expect(parseOpenCodePlanningOutput(result.stdout)).toEqual({
+      assistantMessage: "metadata survived",
+      agentResumeHandle: "opencode-stream-session",
+    });
+    const stdoutLog = await readFile(join(workspaceRoot, ".tinker-opencode-planning-output.jsonl"), "utf8");
+    expect(stdoutLog).toContain("stdout truncated");
   });
 });
 
@@ -347,7 +416,7 @@ describe("createClaudePlanningAgentRunner", () => {
       return {
         stdout: [
           JSON.stringify({ session_id: "opencode-session-1" }),
-          JSON.stringify({ message: { content: [{ type: "text", text: "OpenCode drafted the outline." }] } }),
+          JSON.stringify({ type: "message", role: "assistant", message: { content: [{ type: "text", text: "OpenCode drafted the outline." }] } }),
         ].join("\n"),
       };
     });
@@ -382,7 +451,7 @@ describe("createClaudePlanningAgentRunner", () => {
       return {
         stdout: [
           JSON.stringify({ session_id: "opencode-session-2" }),
-          JSON.stringify({ message: { content: [{ type: "text", text: "OpenCode updated the outline." }] } }),
+          JSON.stringify({ type: "message", role: "assistant", message: { content: [{ type: "text", text: "OpenCode updated the outline." }] } }),
         ].join("\n"),
       };
     });
@@ -415,7 +484,7 @@ describe("createClaudePlanningAgentRunner", () => {
       return {
         stdout: [
           JSON.stringify({ session_id: "opencode-session-unexpected" }),
-          JSON.stringify({ message: { content: [{ type: "text", text: "I wrote too much." }] } }),
+          JSON.stringify({ type: "message", role: "assistant", message: { content: [{ type: "text", text: "I wrote too much." }] } }),
         ].join("\n"),
       };
     });

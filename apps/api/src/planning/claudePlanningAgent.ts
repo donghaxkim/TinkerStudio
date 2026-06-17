@@ -104,6 +104,8 @@ type ClaudePlanningOutputCapture = {
   partialLine: string;
 };
 
+type OpenCodePlanningOutputCapture = ClaudePlanningOutputCapture;
+
 function effectiveTimeout(value: number | undefined, fallback: number) {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
 }
@@ -224,6 +226,60 @@ function capturedClaudePlanningOutputToStdout(capture: ClaudePlanningOutputCaptu
 
   if (capture.hasAssistantText) {
     lines.push(JSON.stringify({ message: { content: [{ type: "text", text: retainedOutputText(capture.assistantText) }] } }));
+  } else if (capture.fallbackAssistantMessage !== undefined) {
+    lines.push(capture.fallbackAssistantMessage);
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function createOpenCodePlanningOutputCapture(): OpenCodePlanningOutputCapture {
+  return { assistantText: createRetainedOutput(), hasAssistantText: false, partialLine: "" };
+}
+
+function processOpenCodePlanningOutputLine(capture: OpenCodePlanningOutputCapture, line: string) {
+  const trimmedLine = line.trim();
+  if (trimmedLine === "") return;
+
+  try {
+    const parsed = recordValue(JSON.parse(trimmedLine));
+    if (parsed === undefined) return;
+
+    const sessionId = openCodeSessionId(parsed);
+    if (sessionId !== undefined) capture.sessionId = sessionId;
+
+    const assistantText = textFromOpenCodeAssistantEvent(parsed);
+    if (assistantText !== "") appendAssistantTextCapture(capture, assistantText);
+  } catch {
+    capture.fallbackAssistantMessage ??= trimmedLine.slice(0, LOG_STREAM_RETAIN_BYTES);
+  }
+}
+
+function appendOpenCodePlanningOutputCapture(capture: OpenCodePlanningOutputCapture, chunk: Buffer) {
+  const lines = `${capture.partialLine}${chunk.toString("utf8")}`.split(/\r?\n/);
+  capture.partialLine = lines.pop() ?? "";
+  if (capture.partialLine.length > STREAM_LINE_RETAIN_CHARS) {
+    capture.partialLine = capture.partialLine.slice(-STREAM_LINE_RETAIN_CHARS);
+  }
+
+  for (const line of lines) {
+    processOpenCodePlanningOutputLine(capture, line);
+  }
+}
+
+function finalizeOpenCodePlanningOutputCapture(capture: OpenCodePlanningOutputCapture) {
+  processOpenCodePlanningOutputLine(capture, capture.partialLine);
+  capture.partialLine = "";
+}
+
+function capturedOpenCodePlanningOutputToStdout(capture: OpenCodePlanningOutputCapture) {
+  const lines: string[] = [];
+  if (capture.sessionId !== undefined) {
+    lines.push(JSON.stringify({ session_id: capture.sessionId }));
+  }
+
+  if (capture.hasAssistantText) {
+    lines.push(JSON.stringify({ type: "message", role: "assistant", message: { content: [{ type: "text", text: retainedOutputText(capture.assistantText) }] } }));
   } else if (capture.fallbackAssistantMessage !== undefined) {
     lines.push(capture.fallbackAssistantMessage);
   }
@@ -393,14 +449,64 @@ function textFromClaudeContent(content: unknown) {
     .join("\n");
 }
 
-function textFromOpenCodeEvent(value: unknown): string {
+function textFromOpenCodePayload(value: unknown): string {
   if (typeof value === "string") return value.trim();
-  if (Array.isArray(value)) return value.map(textFromOpenCodeEvent).filter(Boolean).join("\n").trim();
+  if (Array.isArray(value)) return value.map(textFromOpenCodePayload).filter(Boolean).join("\n").trim();
   const record = recordValue(value);
   if (record === undefined) return "";
   const direct = [record.text, record.content, record.delta].find((entry): entry is string => typeof entry === "string" && entry.trim() !== "");
   if (direct !== undefined) return direct.trim();
-  return [record.message, record.content, record.part, record.data, record.event].map(textFromOpenCodeEvent).filter(Boolean).join("\n").trim();
+  return [record.message, record.content, record.part, record.data].map(textFromOpenCodePayload).filter(Boolean).join("\n").trim();
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+}
+
+function normalizedStringValue(value: unknown) {
+  return stringValue(value)?.toLowerCase();
+}
+
+function openCodeSessionId(parsed: Record<string, unknown>) {
+  const nestedSession = recordValue(parsed.session);
+  return stringValue(parsed.session_id ?? parsed.sessionId ?? parsed.sessionID ?? nestedSession?.id);
+}
+
+function openCodeRole(parsed: Record<string, unknown>) {
+  const message = recordValue(parsed.message);
+  const part = recordValue(parsed.part);
+  const data = recordValue(parsed.data);
+  return normalizedStringValue(parsed.role ?? message?.role ?? part?.role ?? data?.role);
+}
+
+function isOpenCodeAssistantMessageEvent(parsed: Record<string, unknown>) {
+  const eventType = normalizedStringValue(parsed.type);
+  if (eventType === "assistant" || eventType === "assistant_message" || eventType === "assistant_delta") return true;
+  if (eventType !== undefined && eventType !== "message" && eventType !== "message_delta" && eventType !== "delta") return false;
+  return openCodeRole(parsed) === "assistant";
+}
+
+function isIgnoredOpenCodeEventType(eventType: string | undefined) {
+  return (
+    eventType === "message" ||
+    eventType === "message_delta" ||
+    eventType === "delta" ||
+    eventType === "user" ||
+    eventType === "tool" ||
+    eventType === "metadata" ||
+    eventType === "diagnostic" ||
+    eventType === "session"
+  );
+}
+
+function textFromOpenCodeAssistantEvent(value: unknown): string {
+  const record = recordValue(value);
+  if (record === undefined) return "";
+
+  if (isOpenCodeAssistantMessageEvent(record)) return textFromOpenCodePayload(record);
+  if (isIgnoredOpenCodeEventType(normalizedStringValue(record.type))) return "";
+
+  return [record.message, record.data, record.event, record.part].map(textFromOpenCodeAssistantEvent).filter(Boolean).join("\n").trim();
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
@@ -510,13 +616,9 @@ export function parseOpenCodePlanningOutput(stdout: string) {
       const parsed = recordValue(JSON.parse(trimmedLine));
       if (parsed === undefined) continue;
 
-      const nestedSession = recordValue(parsed.session);
-      const possibleSessionId = parsed.session_id ?? parsed.sessionId ?? parsed.sessionID ?? nestedSession?.id;
-      if (typeof possibleSessionId === "string" && possibleSessionId.trim() !== "") {
-        sessionId = possibleSessionId.trim();
-      }
+      sessionId = openCodeSessionId(parsed) ?? sessionId;
 
-      const assistantText = textFromOpenCodeEvent(parsed);
+      const assistantText = textFromOpenCodeAssistantEvent(parsed);
       if (assistantText !== "") assistantTextParts.push(assistantText);
     } catch {
       fallbackAssistantMessage ??= trimmedLine;
@@ -712,6 +814,7 @@ export async function defaultRunOpenCodePlanningProcess(input: OpenCodePlanningP
   await mkdir(input.cwd, { recursive: true });
   const stdout = createRetainedOutput();
   const stderr = createRetainedOutput();
+  const capturedStdout = createOpenCodePlanningOutputCapture();
   const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean; startError?: Error }>((resolve) => {
     const detached = process.platform !== "win32";
     let timedOut = false;
@@ -769,7 +872,11 @@ export async function defaultRunOpenCodePlanningProcess(input: OpenCodePlanningP
       resolve(finalResult);
     }
 
-    child.stdout.on("data", (chunk) => appendRetainedOutput(stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8")));
+    child.stdout.on("data", (chunk) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8");
+      appendRetainedOutput(stdout, buffer);
+      appendOpenCodePlanningOutputCapture(capturedStdout, buffer);
+    });
     child.stderr.on("data", (chunk) => appendRetainedOutput(stderr, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8")));
     child.on("error", (error) => {
       appendRetainedOutput(stderr, Buffer.from(`OpenCode planning process failed to start: ${error.message}\n`, "utf8"));
@@ -778,6 +885,7 @@ export async function defaultRunOpenCodePlanningProcess(input: OpenCodePlanningP
     child.on("close", (code, signal) => resolveOnce({ code, signal, timedOut }));
   });
 
+  finalizeOpenCodePlanningOutputCapture(capturedStdout);
   await Promise.all([
     writeFileReplacingFilesystemEntry(stdoutPath, retainedOutputToLog("stdout", stdout)),
     writeFileReplacingFilesystemEntry(stderrPath, retainedOutputToLog("stderr", stderr)),
@@ -795,7 +903,7 @@ export async function defaultRunOpenCodePlanningProcess(input: OpenCodePlanningP
     throw new Error(`OpenCode planning process failed with ${reason}; see ${stderrPath}`);
   }
 
-  return { stdout: retainedOutputToLog("stdout", stdout) };
+  return { stdout: capturedOpenCodePlanningOutputToStdout(capturedStdout) };
 }
 
 export function createClaudePlanningAgentRunner(options: ClaudePlanningAgentRunnerOptions = {}): PlanningAgentRunner {
