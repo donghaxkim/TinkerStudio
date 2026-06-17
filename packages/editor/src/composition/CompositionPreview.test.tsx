@@ -46,6 +46,22 @@ describe("CompositionPreview", () => {
     expect(pause).toHaveBeenCalled();
   });
 
+  it("starts reading the timeline before the iframe fully loads", async () => {
+    const handle = fakeHandle();
+    const onReady = vi.fn();
+    render(
+      <CompositionPreview
+        src={SRC}
+        compositionId="sample"
+        onReady={onReady}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { sample: handle } })}
+      />,
+    );
+
+    await waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("composition-loading")).not.toBeInTheDocument();
+  });
+
   it("seeks the timeline when currentTime changes after ready", async () => {
     const seek = vi.fn();
     const handle = fakeHandle({ seek });
