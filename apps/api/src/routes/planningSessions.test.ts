@@ -275,6 +275,74 @@ describe("planning session routes", () => {
     }
   });
 
+  it("plans repo-only and exposes a snapshot via GET for progress polling", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-get-${randomUUID()}-`));
+    let receivedProductUrl: string | undefined = "unset";
+    const runner: PlanningAgentRunner = async (input) => {
+      receivedProductUrl = input.productUrl;
+      input.onProgress?.("preparing", "done");
+      input.onProgress?.("drafting", "done");
+      await writeFile(input.outlinePath, `${JSON.stringify(outline, null, 2)}\n`);
+      return { assistantMessage: "Outline ready.", agentResumeHandle: "session-1" };
+    };
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "plan-get",
+      planningRunner: runner,
+      productUrlResolver: async () => undefined,
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/planning-sessions",
+        payload: { repoUrl: "https://github.com/example/product", agent: "claude" },
+      });
+      expect(created.statusCode).toBe(201);
+      expect(receivedProductUrl).toBeUndefined();
+      expect(JSON.parse(created.body).productUrl).toBeUndefined();
+
+      const got = await server.inject({ method: "GET", url: "/api/planning-sessions/plan-get" });
+      expect(got.statusCode).toBe(200);
+      expect(JSON.parse(got.body)).toMatchObject({ id: "plan-get", status: "ready", outlineValid: true });
+
+      const missing = await server.inject({ method: "GET", url: "/api/planning-sessions/does-not-exist" });
+      expect(missing.statusCode).toBe(404);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("honors a client-supplied UUID session id", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-clientid-${randomUUID()}-`));
+    const runner: PlanningAgentRunner = async (input) => {
+      await writeFile(input.outlinePath, `${JSON.stringify(outline, null, 2)}\n`);
+      return { assistantMessage: "Outline ready.", agentResumeHandle: "session-1" };
+    };
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "server-id",
+      planningRunner: runner,
+      productUrlResolver: async () => undefined,
+    });
+    const clientId = randomUUID();
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/planning-sessions",
+        payload: { id: clientId, repoUrl: "https://github.com/example/product", agent: "claude" },
+      });
+      expect(created.statusCode).toBe(201);
+      expect(JSON.parse(created.body).id).toBe(clientId);
+
+      const got = await server.inject({ method: "GET", url: `/api/planning-sessions/${clientId}` });
+      expect(got.statusCode).toBe(200);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("rejects invalid create-session URLs", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-validation-${randomUUID()}-`));
     const server = await buildServer({ config: testConfig(repoRoot), planningRunner: async () => ({ assistantMessage: "unused", agentResumeHandle: "unused" }) });

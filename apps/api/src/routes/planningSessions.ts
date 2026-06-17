@@ -8,6 +8,7 @@ import {
 } from "@tinker/generation-contract";
 import type { PlanningSessionStore } from "../planning/planningSessionStore.js";
 import { readValidatedOutline, type PlanningAgentRunner } from "../planning/planningRunner.js";
+import { resolveProductUrlFromGithubRepo, type ProductUrlResolver } from "./jobs.js";
 
 export type PlanningSessionsRoutesOptions = {
   store: PlanningSessionStore;
@@ -15,6 +16,8 @@ export type PlanningSessionsRoutesOptions = {
   now: () => string;
   idGenerator: () => string;
   runner: PlanningAgentRunner;
+  /** Derives a product URL from the repo when the client omits one (repo-first planning). */
+  productUrlResolver?: ProductUrlResolver;
 };
 
 function validationError(message: string) {
@@ -40,18 +43,31 @@ function validatedResumeHandle(agentResumeHandle: string | undefined) {
 }
 
 export function registerPlanningSessionsRoutes(server: FastifyInstance, options: PlanningSessionsRoutesOptions) {
+  // Polled by the client to stream planning progress while the create request is in flight.
+  server.get<{ Params: { id: string } }>("/api/planning-sessions/:id", async (request, reply) => {
+    const snapshot = options.store.getSnapshot(request.params.id);
+    if (snapshot === undefined) {
+      return reply.status(404).send({ message: "Planning session not found" });
+    }
+    return snapshot;
+  });
+
   server.post("/api/planning-sessions", async (request, reply) => {
     const parsed = CreatePlanningSessionRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(422).send(validationError(formatZodIssues(parsed.error.issues)));
     }
 
-    const id = options.idGenerator();
+    const id = parsed.data.id ?? options.idGenerator();
+    // Repo-first: derive a product URL from the repo when one was not supplied.
+    // Planning still proceeds repo-only when nothing can be derived.
+    const productUrl =
+      parsed.data.productUrl ?? (await (options.productUrlResolver ?? resolveProductUrlFromGithubRepo)(parsed.data.repoUrl));
     const workspaceRoot = resolve(options.repoRoot, "generated", "planning", id);
     const outlinePath = resolve(workspaceRoot, "outline.json");
     options.store.create({
       id,
-      productUrl: parsed.data.productUrl,
+      ...(productUrl === undefined ? {} : { productUrl }),
       repoUrl: parsed.data.repoUrl,
       agent: parsed.data.agent,
       workspaceRoot,
@@ -64,11 +80,12 @@ export function registerPlanningSessionsRoutes(server: FastifyInstance, options:
       await mkdir(workspaceRoot, { recursive: true });
       const result = await options.runner({
         kind: "initial",
-        productUrl: parsed.data.productUrl,
+        ...(productUrl === undefined ? {} : { productUrl }),
         repoUrl: parsed.data.repoUrl,
         agent: parsed.data.agent,
         workspaceRoot,
         outlinePath,
+        onProgress: (stage, status) => options.store.setProgress(id, stage, status, options.now()),
       });
       const outlineResult = await readValidatedOutline(outlinePath);
       options.store.markReady(id, { ...result, agentResumeHandle: validatedResumeHandle(result.agentResumeHandle), ...outlineResult }, options.now());
@@ -105,13 +122,14 @@ export function registerPlanningSessionsRoutes(server: FastifyInstance, options:
       options.store.markRunning(record.id, options.now());
       const result = await options.runner({
         kind: "followup",
-        productUrl: record.productUrl,
+        ...(record.productUrl === undefined ? {} : { productUrl: record.productUrl }),
         repoUrl: record.repoUrl,
         agent: record.agent,
         workspaceRoot: record.workspaceRoot,
         outlinePath: record.outlinePath,
         message: parsed.data.message,
         agentResumeHandle,
+        onProgress: (stage, status) => options.store.setProgress(record.id, stage, status, options.now()),
       });
       const outlineResult = await readValidatedOutline(record.outlinePath);
       options.store.markReady(record.id, { ...result, agentResumeHandle: validatedResumeHandle(result.agentResumeHandle), ...outlineResult }, options.now());

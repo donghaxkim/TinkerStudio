@@ -3,17 +3,21 @@ import {
   type DemoOutline,
   type PlanningAgent,
   type PlanningMessage,
+  type PlanningProgressEntry,
+  type PlanningProgressStatus,
   type PlanningSessionResponse,
   type PlanningSessionStatus,
+  type PlanningStage,
 } from "@tinker/generation-contract";
 
 export type PlanningSessionRecord = {
   id: string;
-  productUrl: string;
+  productUrl?: string;
   repoUrl: string;
   agent: PlanningAgent;
   status: PlanningSessionStatus;
   messages: PlanningMessage[];
+  progress: PlanningProgressEntry[];
   outline?: DemoOutline;
   outlineValid: boolean;
   agentResumeHandle?: string;
@@ -29,7 +33,7 @@ export type PlanningSessionRecord = {
 
 export type CreatePlanningSessionRecordInput = {
   id: string;
-  productUrl: string;
+  productUrl?: string;
   repoUrl: string;
   agent: PlanningAgent;
   workspaceRoot: string;
@@ -52,11 +56,12 @@ export type PlanningSessionStore = ReturnType<typeof createPlanningSessionStore>
 function snapshot(record: PlanningSessionRecord): PlanningSessionResponse {
   return PlanningSessionResponseSchema.parse({
     id: record.id,
-    productUrl: record.productUrl,
+    ...(record.productUrl === undefined ? {} : { productUrl: record.productUrl }),
     repoUrl: record.repoUrl,
     agent: record.agent,
     status: record.status,
     messages: record.messages,
+    progress: record.progress,
     outlineValid: record.outlineValid,
     ...(record.outline === undefined ? {} : { outline: record.outline }),
     ...(record.lastError === undefined ? {} : { lastError: record.lastError }),
@@ -70,11 +75,12 @@ export function createPlanningSessionStore() {
     create(input: CreatePlanningSessionRecordInput) {
       const record: PlanningSessionRecord = {
         id: input.id,
-        productUrl: input.productUrl,
+        ...(input.productUrl === undefined ? {} : { productUrl: input.productUrl }),
         repoUrl: input.repoUrl,
         agent: input.agent,
         status: "starting",
         messages: [],
+        progress: [],
         outlineValid: false,
         workspaceRoot: input.workspaceRoot,
         outlinePath: input.outlinePath,
@@ -98,7 +104,20 @@ export function createPlanningSessionStore() {
       const record = records.get(id);
       if (record === undefined) return;
       record.status = "running";
+      record.progress = [];
       delete record.lastError;
+      record.updatedAt = now;
+    },
+
+    setProgress(id: string, stage: PlanningStage, status: PlanningProgressStatus, now: string) {
+      const record = records.get(id);
+      if (record === undefined) return;
+      const existing = record.progress.find((entry) => entry.stage === stage);
+      if (existing === undefined) {
+        record.progress.push({ stage, status });
+      } else {
+        existing.status = status;
+      }
       record.updatedAt = now;
     },
 

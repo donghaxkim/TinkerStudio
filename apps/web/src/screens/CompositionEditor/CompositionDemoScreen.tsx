@@ -1,12 +1,31 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
-import type { ApiGenerationJob, DemoOutline } from "@tinker/generation-contract";
+import {
+  LuArrowUp,
+  LuChevronLeft,
+  LuCircle,
+  LuCircleCheck,
+  LuGithub,
+  LuGlobe,
+  LuListVideo,
+  LuLoaderCircle,
+  LuSparkles,
+  LuUpload,
+} from "react-icons/lu";
+import type {
+  ApiGenerationJob,
+  DemoOutline,
+  PlanningProgressEntry,
+  PlanningProgressStatus,
+  PlanningStage,
+} from "@tinker/generation-contract";
 import type { TimelineRegistryWindow } from "@tinker/editor";
 import type { CompositionEditClient } from "../../lib/compositionEditClient.js";
 import type { CompositionGenerationClient } from "../../lib/compositionGenerationClient.js";
 import type { CompositionImportClient } from "../../lib/compositionImportClient.js";
-import type { CompositionPlanningClient, CompositionPlanningSession } from "../../lib/compositionPlanningClient.js";
+import type { CompositionPlanningClient } from "../../lib/compositionPlanningClient.js";
 import { selectCanonicalBundleFiles } from "../../lib/bundleFiles.js";
 import { useCompositionGenerationJob } from "../../lib/useCompositionGenerationJob.js";
+import { useCompositionPlanningSession } from "../../lib/useCompositionPlanningSession.js";
 import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
 
 const PREVIEW_COMPOSITION_URL = "/demo-composition/index.html";
@@ -82,39 +101,118 @@ function normalizePublicUrl(raw: string): string | undefined {
   }
 }
 
+function hostOf(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  try {
+    return new URL(url).host;
+  } catch {
+    return undefined;
+  }
+}
+
 function outlinePrompt(outline: DemoOutline): string {
   return `Use this approved video outline as the product demo brief:\n\n${JSON.stringify(outline, null, 2)}`;
 }
 
-function OutlineView({ outline }: { outline: DemoOutline }) {
+const STAGE_LABELS: Record<PlanningStage, (context: { repo?: string; site?: string }) => string> = {
+  preparing: () => "Creating the planning workspace",
+  "analyzing-repo": ({ repo }) => `Cloning and reading ${repo ?? "the repository"}`,
+  "analyzing-website": ({ site }) => `Analyzing ${site ?? "the product site"}`,
+  drafting: () => "Drafting the outline",
+};
+
+function StageChecklist({
+  progress,
+  includeWebsite,
+  repo,
+  site,
+}: {
+  progress: PlanningProgressEntry[];
+  includeWebsite: boolean;
+  repo?: string;
+  site?: string;
+}) {
+  const stages: PlanningStage[] = [
+    "preparing",
+    "analyzing-repo",
+    ...(includeWebsite ? (["analyzing-website"] as PlanningStage[]) : []),
+    "drafting",
+  ];
+
+  function statusFor(stage: PlanningStage): PlanningProgressStatus | "pending" {
+    const entry = progress.find((item) => item.stage === stage);
+    if (entry !== undefined) return entry.status;
+    if (progress.length === 0 && stage === "preparing") return "active";
+    return "pending";
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 22, letterSpacing: "-0.02em" }}>{outline.title}</h2>
-        <p style={{ margin: "8px 0 0", color: "var(--tk-text-sec)", lineHeight: 1.5 }}>{outline.summary}</p>
+    <div className="tk-cd-assistant tk-cd-msg">
+      <div className="tk-cd-avatar" aria-hidden="true">
+        <LuSparkles size={14} />
       </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--tk-text-sec)" }}>
-        <span>{outline.durationCapSeconds}s cap</span>
-        <span>{outline.aspectRatio}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="tk-cd-author">Planner</div>
+        <div className="tk-cd-steps">
+          {stages.map((stage) => {
+            const state = statusFor(stage);
+            return (
+              <div key={stage} className="tk-cd-step" data-state={state}>
+                <span className="tk-cd-step-icon">
+                  {state === "done" ? (
+                    <LuCircleCheck size={15} />
+                  ) : state === "active" ? (
+                    <LuLoaderCircle size={15} className="tk-spin" />
+                  ) : (
+                    <LuCircle size={15} />
+                  )}
+                </span>
+                <span>{STAGE_LABELS[stage]({ repo, site })}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
-      <div style={{ display: "grid", gap: 10 }}>
+    </div>
+  );
+}
+
+function OutlineStoryboard({ outline }: { outline: DemoOutline }) {
+  return (
+    <>
+      <div className="tk-cd-outline-head">
+        <div className="tk-cd-outline-title">
+          <LuListVideo size={15} style={{ color: "var(--tk-accent)" }} aria-hidden="true" />
+          <h2>{outline.title}</h2>
+        </div>
+        <p className="tk-cd-outline-summary">{outline.summary}</p>
+        <div className="tk-cd-meta">
+          <span className="tk-cd-chip">{outline.durationCapSeconds}s cap</span>
+          <span className="tk-cd-chip">{outline.aspectRatio}</span>
+          <span className="tk-cd-chip">
+            {outline.scenes.length} {outline.scenes.length === 1 ? "scene" : "scenes"}
+          </span>
+        </div>
+      </div>
+      <div className="tk-cd-scenes">
         {outline.scenes.map((scene, index) => (
-          <article
-            key={scene.id}
-            style={{
-              padding: 14,
-              border: "1px solid var(--tk-border-soft)",
-              borderRadius: "var(--tk-radius-md)",
-              background: "var(--tk-raised)",
-            }}
-          >
-            <div style={{ fontSize: 11, color: "var(--tk-text-ter)", marginBottom: 6 }}>Scene {index + 1}</div>
-            <h3 style={{ margin: 0, fontSize: 15 }}>{scene.goal}</h3>
-            <p style={{ margin: "7px 0 0", color: "var(--tk-text-sec)", lineHeight: 1.45 }}>{scene.visual}</p>
+          <article key={scene.id} className="tk-cd-scene">
+            <span className="tk-cd-scene-num" aria-hidden="true">
+              {index + 1}
+            </span>
+            <div className="tk-cd-scene-goal">{scene.goal}</div>
+            <p className="tk-cd-scene-visual">{scene.visual}</p>
+            <div className="tk-cd-evidence">
+              {scene.evidence.map((kind) => (
+                <span key={kind} className="tk-cd-pill" data-kind={kind}>
+                  {kind}
+                </span>
+              ))}
+            </div>
           </article>
         ))}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -157,8 +255,17 @@ function PlaywrightResultView({ job }: { job: ApiGenerationJob }) {
   );
 }
 
-export function CompositionDemoScreen({ client, planningClient, editClient, importClient, onBack, resolveWindow, initialCompletedJob }: CompositionDemoScreenProps) {
+export function CompositionDemoScreen({
+  client,
+  planningClient,
+  editClient,
+  importClient,
+  onBack,
+  resolveWindow,
+  initialCompletedJob,
+}: CompositionDemoScreenProps) {
   const job = useCompositionGenerationJob(client);
+  const planning = useCompositionPlanningSession(planningClient);
   const [showEmptyEditor, setShowEmptyEditor] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [importedJob, setImportedJob] = useState<ApiGenerationJob | undefined>(undefined);
@@ -166,30 +273,44 @@ export function CompositionDemoScreen({ client, planningClient, editClient, impo
   const [importError, setImportError] = useState<string | undefined>(undefined);
   const [repoDraft, setRepoDraft] = useState("");
   const [productDraft, setProductDraft] = useState("");
-  const [planningSession, setPlanningSession] = useState<CompositionPlanningSession | undefined>(undefined);
   const [planningMessage, setPlanningMessage] = useState("");
-  const [planningBusy, setPlanningBusy] = useState(false);
-  const [planningError, setPlanningError] = useState<string | undefined>(undefined);
-  const [productFocus, setProductFocus] = useState(false);
-  const [repoFocus, setRepoFocus] = useState(false);
   const [repoShake, setRepoShake] = useState(false);
 
-  const productInputRef = useRef<HTMLInputElement>(null);
   const repoInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const shakeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const planningRequestIdRef = useRef(0);
+
+  const session = planning.session;
+  const planningBusy = planning.busy;
+  const jobRunning = job.phase === "running";
+  const isOpen = planningBusy || session !== undefined;
+  const isInitialWork = planningBusy && (session === undefined || session.status !== "ready");
+  const showOutline = session !== undefined && !isInitialWork;
 
   const normalizedProductUrl = normalizePublicUrl(productDraft);
   const normalizedRepo = parseGithubRepo(repoDraft);
-  const canPlan = !planningBusy && normalizedProductUrl !== undefined && normalizedRepo !== undefined;
-  const canGenerate = !planningBusy && job.phase !== "running" && planningSession?.outlineValid === true && planningSession.outline !== undefined;
-  const canNavigateBackToUrls = !planningBusy && job.phase !== "running";
-  const canUseGlobalNavigation = !planningBusy && job.phase !== "running";
+  const outline = session?.outline;
+  const outlineValid = session?.outlineValid === true && outline !== undefined;
+
+  const canPlan = !planningBusy && normalizedRepo !== undefined;
+  const canGenerate = !planningBusy && !jobRunning && outlineValid;
+  const canUseGlobalNavigation = !planningBusy && !jobRunning;
+
+  const repoLabel = parseGithubRepo(session?.repoUrl ?? "") ?? normalizedRepo;
+  const siteLabel = hostOf(session?.productUrl) ?? hostOf(normalizedProductUrl);
+  const includeWebsite =
+    normalizedProductUrl !== undefined ||
+    session?.productUrl !== undefined ||
+    (session?.progress ?? []).some((entry) => entry.stage === "analyzing-website");
 
   useEffect(() => {
-    productInputRef.current?.focus();
+    repoInputRef.current?.focus();
     return () => clearTimeout(shakeTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (isOpen && !planningBusy) composerRef.current?.focus();
+  }, [isOpen, planningBusy]);
 
   const requireRepo = useCallback(() => {
     clearTimeout(shakeTimerRef.current);
@@ -199,67 +320,39 @@ export function CompositionDemoScreen({ client, planningClient, editClient, impo
   }, []);
 
   const startPlanning = useCallback(() => {
-    const productUrl = normalizePublicUrl(productDraft);
     const repo = parseGithubRepo(repoDraft);
-    if (productUrl === undefined) {
-      productInputRef.current?.focus();
-      return;
-    }
     if (repo === undefined) {
       requireRepo();
       return;
     }
+    const productUrl = normalizePublicUrl(productDraft);
+    planning.start({
+      repoUrl: `https://github.com/${repo}`,
+      ...(productUrl === undefined ? {} : { productUrl }),
+      agent: "claude",
+    });
+  }, [planning, productDraft, repoDraft, requireRepo]);
 
-    const requestId = planningRequestIdRef.current + 1;
-    planningRequestIdRef.current = requestId;
-    setPlanningBusy(true);
-    setPlanningError(undefined);
-    void planningClient
-      .createSession({ productUrl, repoUrl: `https://github.com/${repo}`, agent: "claude" })
-      .then((session) => {
-        if (planningRequestIdRef.current === requestId) setPlanningSession(session);
-      })
-      .catch((error: unknown) => {
-        if (planningRequestIdRef.current === requestId) setPlanningError(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => {
-        if (planningRequestIdRef.current === requestId) setPlanningBusy(false);
-      });
-  }, [planningClient, productDraft, repoDraft, requireRepo]);
-
-  const sendPlanningMessage = useCallback(() => {
-    const sessionId = planningSession?.id;
+  const submitMessage = useCallback(() => {
     const message = planningMessage.trim();
-    if (sessionId === undefined || message === "" || planningBusy) return;
+    if (message === "" || planningBusy) return;
+    planning.sendMessage(message);
+    setPlanningMessage("");
+  }, [planning, planningBusy, planningMessage]);
 
-    const requestId = planningRequestIdRef.current + 1;
-    planningRequestIdRef.current = requestId;
-    setPlanningBusy(true);
-    setPlanningError(undefined);
-    void planningClient
-      .sendMessage(sessionId, message)
-      .then((session) => {
-        if (planningRequestIdRef.current !== requestId) return;
-        setPlanningSession(session);
-        setPlanningMessage("");
-      })
-      .catch((error: unknown) => {
-        if (planningRequestIdRef.current === requestId) setPlanningError(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => {
-        if (planningRequestIdRef.current === requestId) setPlanningBusy(false);
-      });
-  }, [planningBusy, planningClient, planningMessage, planningSession?.id]);
+  const backToUrls = useCallback(() => {
+    if (!canUseGlobalNavigation) return;
+    planning.reset();
+    setPlanningMessage("");
+  }, [canUseGlobalNavigation, planning]);
 
   const startGeneration = useCallback(() => {
-    const session = planningSession;
-    if (planningBusy) return;
-    if (session?.outlineValid !== true || session.outline === undefined) return;
+    if (planningBusy || session === undefined || session.outlineValid !== true || session.outline === undefined) return;
 
     const request = {
       mode: "ai-url-planning",
       repoUrl: session.repoUrl,
-      productUrl: session.productUrl,
+      ...(session.productUrl === undefined ? {} : { productUrl: session.productUrl }),
       durationCapSeconds: session.outline.durationCapSeconds,
       aspectRatio: session.outline.aspectRatio,
       prompt: outlinePrompt(session.outline),
@@ -268,7 +361,7 @@ export function CompositionDemoScreen({ client, planningClient, editClient, impo
     } as const;
 
     void job.start(request);
-  }, [job, planningBusy, planningSession]);
+  }, [job, planningBusy, session]);
 
   const startImport = useCallback(
     (collected: Array<{ relativePath: string; file: File }>) => {
@@ -311,84 +404,130 @@ export function CompositionDemoScreen({ client, planningClient, editClient, impo
     [importBusy, startImport],
   );
 
+  // "Edit an existing demo" lands the user directly in the editor shell. The preview/video
+  // stage IS the dropzone — they drag the generated demo folder onto exactly where the video
+  // will appear, and on import the real editor loads in place.
   if (showUpload && importedJob === undefined) {
     return (
-      <section
-        aria-label="Edit an existing demo"
-        className="tk-porcelain"
-        style={{
-          minHeight: "100vh",
-          padding: 24,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "var(--tk-app-bg)",
-          color: "var(--tk-text)",
-          fontFamily: "var(--tk-font)",
-        }}
-      >
-        <div style={{ width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="tk-porcelain tk-composition-shell" aria-label="Edit an existing demo">
+        <header className="tk-composition-header">
           <button
             type="button"
-            className="tk-btn"
-            disabled={importBusy}
             onClick={() => {
+              if (importBusy) return;
               setShowUpload(false);
               setImportError(undefined);
             }}
-            style={{ alignSelf: "flex-start", background: "transparent", color: "var(--tk-text-sec)" }}
+            disabled={importBusy}
+            aria-label="Back to create"
+            title="Back to create"
+            style={{
+              display: "inline-flex",
+              alignItems: "baseline",
+              gap: 6,
+              border: "none",
+              background: "transparent",
+              padding: "4px 2px",
+              borderRadius: "var(--tk-radius-sm)",
+              cursor: importBusy ? "default" : "pointer",
+            }}
           >
-            Back
+            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--tk-text)" }}>Tinker</span>
+            <span style={{ fontSize: 14, fontWeight: 400, color: "var(--tk-text-sec)" }}>Studio</span>
           </button>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 24, letterSpacing: "-0.02em" }}>Edit an existing demo</h1>
-            <p style={{ margin: "8px 0 0", color: "var(--tk-text-sec)", lineHeight: 1.5, fontSize: 13.5 }}>
-              Drop the generated demo folder (the one containing <code>hyperframes/index.html</code> and <code>output.mp4</code>) to open it in the editor.
-            </p>
+          <div className="tk-composition-status" aria-label="Editor status">
+            {importBusy ? "Importing demo…" : "Drop a demo to edit"}
           </div>
-          <label
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => void handleImportDrop(event)}
+          <div style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <button type="button" className="tk-btn tk-btn-accent" aria-label="Export" title="Import a demo to export" disabled>
+              Export
+            </button>
+          </div>
+        </header>
+
+        <div className="tk-composition-body">
+          <div className="tk-composition-main">
+            <section aria-label="Preview stage" className="tk-composition-stage">
+              <label
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => void handleImportDrop(event)}
+                style={{
+                  position: "absolute",
+                  inset: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 14,
+                  padding: 24,
+                  textAlign: "center",
+                  border: "1.5px dashed rgba(255, 255, 255, 0.2)",
+                  borderRadius: "var(--tk-radius-md)",
+                  color: "rgba(255, 255, 255, 0.92)",
+                  cursor: importBusy ? "default" : "pointer",
+                }}
+              >
+                {importBusy ? (
+                  <LuLoaderCircle size={28} className="tk-spin" style={{ color: "rgba(255, 255, 255, 0.55)" }} aria-hidden="true" />
+                ) : (
+                  <LuUpload size={28} style={{ color: "rgba(255, 255, 255, 0.55)" }} aria-hidden="true" />
+                )}
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  <span style={{ fontSize: 14.5, color: "rgba(255, 255, 255, 0.92)" }}>
+                    {importBusy ? "Importing demo…" : "Drag your HyperFrames demo here"}
+                  </span>
+                  {importBusy ? null : (
+                    <span style={{ fontSize: 12, color: "rgba(255, 255, 255, 0.5)" }}>
+                      the generated folder with hyperframes/index.html and output.mp4 — or click to choose
+                    </span>
+                  )}
+                </div>
+                <input
+                  aria-label="Choose demo folder"
+                  type="file"
+                  disabled={importBusy}
+                  onChange={(event) => handleImportFiles(event.currentTarget.files)}
+                  ref={(node) => {
+                    if (node) {
+                      node.setAttribute("webkitdirectory", "");
+                      node.setAttribute("directory", "");
+                    }
+                  }}
+                  style={{ display: "none" }}
+                />
+              </label>
+            </section>
+            {importError ? (
+              <div role="alert" style={{ fontSize: 13, color: "var(--tk-text-sec)", padding: "4px 2px" }}>
+                <span style={{ color: "var(--tk-text)" }}>Import failed: </span>
+                {importError}
+              </div>
+            ) : null}
+          </div>
+
+          <aside
             style={{
               display: "flex",
               flexDirection: "column",
-              alignItems: "center",
               justifyContent: "center",
-              gap: 8,
-              padding: 32,
-              border: "1.5px dashed var(--tk-border)",
+              gap: 10,
+              padding: 18,
+              border: "1px solid var(--tk-border)",
               borderRadius: "var(--tk-radius-lg)",
-              background: "var(--tk-raised)",
-              cursor: importBusy ? "default" : "pointer",
-              textAlign: "center",
+              background: "var(--tk-card)",
             }}
           >
-            <span style={{ fontSize: 13.5, color: "var(--tk-text-sec)" }}>
-              {importBusy ? "Importing…" : "Drag a demo folder here, or click to choose"}
-            </span>
-            <input
-              aria-label="Choose demo folder"
-              type="file"
-              disabled={importBusy}
-              onChange={(event) => handleImportFiles(event.currentTarget.files)}
-              ref={(node) => {
-                if (node) {
-                  node.setAttribute("webkitdirectory", "");
-                  node.setAttribute("directory", "");
-                }
-              }}
-              style={{ display: "none" }}
-            />
-          </label>
-          {importError ? (
-            <div role="alert" style={{ fontSize: 13, color: "var(--tk-text-sec)" }}>
-              <span style={{ color: "var(--tk-text)" }}>Import failed: </span>
-              {importError}
-            </div>
-          ) : null}
+            <h2 style={{ margin: 0, fontSize: 14, display: "inline-flex", alignItems: "center", gap: 7 }}>
+              <LuSparkles size={14} style={{ color: "var(--tk-accent)" }} aria-hidden="true" />
+              Edit an existing demo
+            </h2>
+            <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.55, color: "var(--tk-text-sec)" }}>
+              Drop a HyperFrames demo you already generated onto the preview to open it here — then tighten the
+              pacing, add zooms, and re-export. No re-generation needed.
+            </p>
+          </aside>
         </div>
-      </section>
+      </div>
     );
   }
 
@@ -431,472 +570,255 @@ export function CompositionDemoScreen({ client, planningClient, editClient, impo
     );
   }
 
+  const messages = session?.messages ?? [];
+
   return (
-    <section
-      aria-label="Create demo"
-      style={{
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        background: "var(--tk-app-bg)",
-        fontFamily: "var(--tk-font)",
-        color: "var(--tk-text)",
-        overflow: "auto",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: planningSession === undefined ? 580 : 1120,
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: planningSession === undefined ? "center" : "flex-start",
-          padding: planningSession === undefined ? "0 24px" : "28px 24px",
-          boxSizing: "border-box",
-        }}
-      >
-        {onBack ? (
-          <button
-            type="button"
-            className="tk-btn"
-            onClick={onBack}
-            disabled={!canUseGlobalNavigation}
-            style={{
-              alignSelf: "flex-start",
-              marginBottom: 24,
-              opacity: canUseGlobalNavigation ? 1 : 0.45,
-              cursor: canUseGlobalNavigation ? "pointer" : "not-allowed",
-            }}
-          >
+    <section className="tk-cd-screen" aria-label="Create demo">
+      {onBack ? (
+        <div className="tk-cd-top">
+          <button type="button" className="tk-btn" onClick={() => canUseGlobalNavigation && onBack()} disabled={!canUseGlobalNavigation}>
             Back
           </button>
-        ) : null}
+        </div>
+      ) : null}
 
-        {planningSession === undefined ? (
-          <>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 28 }}>
-              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>
-                Tinker <span style={{ fontWeight: 400, color: "var(--tk-text-sec)" }}>Studio</span>
-              </h1>
-              <p style={{ margin: "7px 0 0", fontSize: 13.5, color: "var(--tk-text-sec)", textAlign: "center" }}>
-                Paste product and repo URLs, plan the demo, then generate the video.
-              </p>
-            </div>
+      <div className={`tk-cd-stage${isOpen ? " is-open" : ""}`}>
+        <div className={`tk-cd-hero${isOpen ? " is-tucked" : ""}`} aria-hidden={isOpen}>
+          <h1>
+            Tinker <span>Studio</span>
+          </h1>
+          <p>Drop in your repo. We plan the demo together, then make the video.</p>
+        </div>
 
-            <div style={{ flexShrink: 0 }}>
-              <div
-                className={repoShake ? "tk-shake" : undefined}
-                style={{
-                  background: "var(--tk-card)",
-                  border: "1px solid var(--tk-border)",
-                  borderRadius: "var(--tk-radius-lg)",
-                  boxShadow: "var(--tk-shadow-md)",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  onClick={() => productInputRef.current?.focus()}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "10px 14px",
-                    background: "var(--tk-raised)",
-                    borderBottom: `1px solid ${productFocus ? "var(--tk-accent-line)" : "var(--tk-border-soft)"}`,
-                    cursor: "text",
-                    transition: "border-color 0.15s",
-                  }}
-                >
-                  <span style={{ width: 15, color: normalizedProductUrl ? "var(--tk-accent)" : "var(--tk-text-sec)", flexShrink: 0 }}>URL</span>
-                  <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
-                    {productDraft === "" ? (
-                      <span
-                        style={{
-                          position: "absolute",
-                          left: 0,
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          fontSize: 12,
-                          fontFamily: "var(--tk-mono)",
-                          color: "var(--tk-text-ter)",
-                          pointerEvents: "none",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        product.example.com
+        <div className={`tk-cd-box${isOpen ? " is-open" : ""}`}>
+          {isOpen ? (
+            <>
+              <div className="tk-cd-head">
+                <button type="button" className="tk-cd-back" onClick={backToUrls} disabled={!canUseGlobalNavigation}>
+                  <LuChevronLeft size={15} aria-hidden="true" />
+                  Back to URLs
+                </button>
+                {repoLabel ? (
+                  <span className="tk-cd-chip">
+                    <LuGithub size={13} style={{ color: "var(--tk-text)" }} aria-hidden="true" />
+                    {repoLabel}
+                  </span>
+                ) : null}
+                {siteLabel ? (
+                  <span className="tk-cd-chip">
+                    <LuGlobe size={12} aria-hidden="true" />
+                    {siteLabel}
+                  </span>
+                ) : null}
+                <span className={`tk-cd-status${planningBusy ? " is-working" : ""}`}>
+                  {planningBusy ? "Planner working" : "Planner ready"}
+                </span>
+              </div>
+
+              <div className="tk-cd-body" role="log" aria-label="Planning transcript" aria-live="polite">
+                {messages.map((message, index) =>
+                  message.role === "user" ? (
+                    <div key={`m-${index}`} className="tk-cd-user tk-cd-msg">
+                      {message.content}
+                    </div>
+                  ) : (
+                    <div key={`m-${index}`} className="tk-cd-assistant tk-cd-msg">
+                      <div className="tk-cd-avatar" aria-hidden="true">
+                        <LuSparkles size={14} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="tk-cd-author">Planner</div>
+                        <div className="tk-cd-assistant-text">{message.content}</div>
+                      </div>
+                    </div>
+                  ),
+                )}
+
+                {planningBusy && isInitialWork ? (
+                  <StageChecklist progress={session?.progress ?? []} includeWebsite={includeWebsite} repo={repoLabel} site={siteLabel} />
+                ) : null}
+
+                {planningBusy && !isInitialWork ? (
+                  <div className="tk-cd-assistant tk-cd-msg">
+                    <div className="tk-cd-avatar" aria-hidden="true">
+                      <LuSparkles size={14} />
+                    </div>
+                    <div className="tk-cd-revise">
+                      Revising the outline
+                      <span style={{ display: "inline-flex", gap: 3 }}>
+                        <span className="tk-dot" style={{ background: "var(--tk-text-ter)" }} />
+                        <span className="tk-dot" style={{ background: "var(--tk-text-ter)", animationDelay: "0.16s" }} />
+                        <span className="tk-dot" style={{ background: "var(--tk-text-ter)", animationDelay: "0.32s" }} />
                       </span>
-                    ) : null}
-                    <input
-                      ref={productInputRef}
-                      aria-label="Product URL"
-                      value={productDraft}
-                      spellCheck={false}
-                      onFocus={() => setProductFocus(true)}
-                      onBlur={() => setProductFocus(false)}
-                      onChange={(event) => setProductDraft(event.currentTarget.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          repoInputRef.current?.focus();
-                        }
-                      }}
-                      style={{
-                        width: "100%",
-                        border: "none",
-                        outline: "none",
-                        background: "transparent",
-                        color: "var(--tk-text)",
-                        fontSize: 12,
-                        fontFamily: "var(--tk-mono)",
-                        padding: 0,
-                        display: "block",
-                      }}
-                    />
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
-                <div
-                  onClick={() => repoInputRef.current?.focus()}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "10px 14px",
-                    background: "var(--tk-raised)",
-                    borderBottom: `1px solid ${repoFocus ? "var(--tk-accent-line)" : "var(--tk-border-soft)"}`,
-                    cursor: "text",
-                    transition: "border-color 0.15s",
-                  }}
-                >
-                  <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 16 16"
-                    fill={normalizedRepo ? "var(--tk-accent)" : "var(--tk-text-sec)"}
-                    style={{ flexShrink: 0, transition: "fill 0.15s" }}
-                  >
-                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-                  </svg>
-                  <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
-                    {repoDraft === "" ? (
-                      <span
-                        style={{
-                          position: "absolute",
-                          left: 0,
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          fontSize: 12,
-                          fontFamily: "var(--tk-mono)",
-                          color: "var(--tk-text-ter)",
-                          pointerEvents: "none",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        github.com/owner/repo
-                      </span>
-                    ) : null}
-                    <input
-                      ref={repoInputRef}
-                      aria-label="GitHub repo URL"
-                      value={repoDraft}
-                      spellCheck={false}
-                      onFocus={() => setRepoFocus(true)}
-                      onBlur={() => setRepoFocus(false)}
-                      onChange={(event) => setRepoDraft(event.currentTarget.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          startPlanning();
-                        }
-                      }}
-                      style={{
-                        width: "100%",
-                        border: "none",
-                        outline: "none",
-                        background: "transparent",
-                        color: "var(--tk-text)",
-                        fontSize: 12,
-                        fontFamily: "var(--tk-mono)",
-                        padding: 0,
-                        display: "block",
-                      }}
-                    />
+                {showOutline ? (
+                  <div className="tk-cd-outline tk-cd-msg">
+                    {outlineValid && outline !== undefined ? (
+                      <OutlineStoryboard outline={outline} />
+                    ) : (
+                      <div className="tk-cd-outline-empty">The agent has not produced a valid outline yet.</div>
+                    )}
+                    <div className="tk-cd-outline-foot">
+                      {jobRunning ? (
+                        <div data-testid="composition-generating">
+                          <div className="tk-cd-bar">
+                            <i />
+                          </div>
+                          <div className="tk-cd-gen-row">
+                            <span className="tk-cd-gen-label">Generating your demo video, this usually takes a few minutes.</span>
+                            <button type="button" className="tk-btn" aria-busy="true" disabled>
+                              Generating...
+                            </button>
+                            <button type="button" className="tk-btn" onClick={() => job.cancel()}>
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="tk-cd-gen-row">
+                          <button type="button" className="tk-btn tk-btn-accent" onClick={startGeneration} disabled={!canGenerate} aria-busy={false}>
+                            Generate video
+                          </button>
+                          <span className="tk-cd-gen-hint">
+                            {outlineValid ? "Outline approved, ready to render." : "Keep refining the outline in chat."}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
-                  <div aria-live="polite" aria-atomic="true" style={{ flex: 1, fontSize: 12, color: "var(--tk-text-ter)" }}>
-                    {planningBusy ? "Planning demo..." : ""}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={startPlanning}
-                    disabled={!canPlan}
-                    className="tk-btn"
-                    style={{ opacity: canPlan ? 1 : 0.45, cursor: canPlan ? "pointer" : "not-allowed" }}
-                  >
-                    {planningBusy ? "Planning..." : "Plan demo"}
-                  </button>
-                </div>
-
-                {planningError ? (
-                  <div role="alert" style={{ padding: "0 14px 12px", fontSize: 13, color: "var(--tk-text-sec)" }}>
-                    <span style={{ color: "var(--tk-text)" }}>Planning failed: </span>
-                    {planningError}
+                {job.phase === "failed" ? (
+                  <div role="alert" className="tk-cd-alert">
+                    <b>Something went wrong: </b>
+                    {job.error ?? "Generation failed."}
                   </div>
                 ) : null}
               </div>
+
+              <div className="tk-cd-foot">
+                <div className="tk-cd-composer">
+                  <textarea
+                    ref={composerRef}
+                    className="tk-cd-composer-input"
+                    aria-label="Planning message"
+                    rows={1}
+                    value={planningMessage}
+                    disabled={planningBusy}
+                    placeholder="Ask for a change, e.g. make the hook punchier"
+                    onChange={(event) => setPlanningMessage(event.currentTarget.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        submitMessage();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="tk-cd-send"
+                    aria-label="Send planning message"
+                    onClick={submitMessage}
+                    disabled={planningBusy || planningMessage.trim() === ""}
+                  >
+                    <LuArrowUp size={16} aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className={`tk-cd-form${repoShake ? " tk-shake" : ""}`}>
+              <div className="tk-cd-field">
+                <span className="tk-cd-field-icon" aria-hidden="true">
+                  <LuGithub size={18} style={{ color: normalizedRepo ? "var(--tk-accent)" : "var(--tk-text-sec)" }} />
+                </span>
+                <div className="tk-cd-input-wrap">
+                  <input
+                    ref={repoInputRef}
+                    className="tk-cd-input"
+                    aria-label="GitHub repo URL"
+                    placeholder="github.com/owner/repo"
+                    spellCheck={false}
+                    value={repoDraft}
+                    onChange={(event) => setRepoDraft(event.currentTarget.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        startPlanning();
+                      }
+                    }}
+                  />
+                </div>
+                {normalizedRepo ? (
+                  <span className="tk-cd-check" aria-label="valid repository">
+                    <LuCircleCheck size={16} />
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="tk-cd-field">
+                <span className="tk-cd-field-icon" aria-hidden="true">
+                  <LuGlobe size={16} style={{ color: "var(--tk-text-sec)" }} />
+                </span>
+                <div className="tk-cd-input-wrap">
+                  <input
+                    className="tk-cd-input"
+                    aria-label="Product URL"
+                    placeholder="product.example.com"
+                    spellCheck={false}
+                    value={productDraft}
+                    onChange={(event) => setProductDraft(event.currentTarget.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        startPlanning();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="tk-cd-actions">
+                <span className="tk-cd-actions-hint">{planningBusy ? "Planning demo..." : "Press ⏎ to plan"}</span>
+                <button type="button" className="tk-btn tk-btn-accent" onClick={startPlanning} disabled={!canPlan}>
+                  <LuSparkles size={14} aria-hidden="true" />
+                  Plan
+                </button>
+              </div>
+
+              {planning.error ? (
+                <div role="alert" className="tk-cd-alert" style={{ marginTop: 12 }}>
+                  <b>Planning failed: </b>
+                  {planning.error}
+                </div>
+              ) : null}
             </div>
+          )}
+        </div>
 
-            {job.phase !== "running" ? (
+        {!isOpen ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <button type="button" className="tk-cd-shell-link" onClick={() => setShowEmptyEditor(true)}>
+              Open empty editor shell
+            </button>
+            {importClient ? (
               <button
                 type="button"
-                className="tk-btn"
+                className="tk-cd-shell-link"
+                style={{ marginTop: 0 }}
                 onClick={() => {
-                  if (planningBusy) return;
-                  planningRequestIdRef.current += 1;
-                  setShowEmptyEditor(true);
-                }}
-                disabled={planningBusy}
-                style={{
-                  alignSelf: "center",
-                  marginTop: 14,
-                  fontSize: 12.5,
-                  color: "var(--tk-text-sec)",
-                  background: "transparent",
-                  opacity: planningBusy ? 0.45 : 1,
-                  cursor: planningBusy ? "not-allowed" : "pointer",
-                }}
-              >
-                Open empty editor shell
-              </button>
-            ) : null}
-
-            {importClient && job.phase !== "running" ? (
-              <button
-                type="button"
-                className="tk-btn"
-                onClick={() => {
-                  if (planningBusy) return;
-                  planningRequestIdRef.current += 1;
                   setImportError(undefined);
                   setShowUpload(true);
-                }}
-                disabled={planningBusy}
-                style={{
-                  alignSelf: "center",
-                  marginTop: 8,
-                  fontSize: 12.5,
-                  color: "var(--tk-text-sec)",
-                  background: "transparent",
-                  opacity: planningBusy ? 0.45 : 1,
-                  cursor: planningBusy ? "not-allowed" : "pointer",
                 }}
               >
                 Edit an existing demo
               </button>
             ) : null}
-          </>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <button
-              type="button"
-              className="tk-btn"
-              onClick={() => {
-                if (!canNavigateBackToUrls) return;
-                planningRequestIdRef.current += 1;
-                setPlanningSession(undefined);
-                setPlanningMessage("");
-                setPlanningError(undefined);
-              }}
-              disabled={!canNavigateBackToUrls}
-              style={{
-                alignSelf: "flex-start",
-                color: "var(--tk-text-sec)",
-                background: "transparent",
-                opacity: canNavigateBackToUrls ? 1 : 0.45,
-                cursor: canNavigateBackToUrls ? "pointer" : "not-allowed",
-              }}
-            >
-              Back to URLs
-            </button>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
-                gap: 18,
-                alignItems: "start",
-              }}
-            >
-              <section
-                aria-label="Planning workspace"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 14,
-                  padding: 18,
-                  background: "var(--tk-card)",
-                  border: "1px solid var(--tk-border)",
-                  borderRadius: "var(--tk-radius-lg)",
-                  boxShadow: "var(--tk-shadow-md)",
-                }}
-              >
-                <div>
-                  <h1 style={{ margin: 0, fontSize: 26, letterSpacing: "-0.02em" }}>Plan demo</h1>
-                  <p style={{ margin: "7px 0 0", color: "var(--tk-text-sec)", fontSize: 13 }}>
-                    {planningSession.productUrl} / {planningSession.repoUrl}
-                  </p>
-                </div>
-
-                <div
-                  role="log"
-                  aria-label="Planning transcript"
-                  aria-live="polite"
-                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
-                >
-                  {planningSession.messages.map((message, index) => (
-                    <div
-                      key={`${message.role}-${index}`}
-                      style={{
-                        alignSelf: message.role === "user" ? "flex-end" : "flex-start",
-                        maxWidth: "88%",
-                        padding: "9px 11px",
-                        borderRadius: "var(--tk-radius-md)",
-                        background: message.role === "user" ? "var(--tk-accent)" : "var(--tk-raised)",
-                        color: message.role === "user" ? "white" : "var(--tk-text)",
-                        lineHeight: 1.45,
-                        fontSize: 13,
-                      }}
-                    >
-                      {message.content}
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-                  <textarea
-                    aria-label="Planning message"
-                    value={planningMessage}
-                    rows={2}
-                    onChange={(event) => setPlanningMessage(event.currentTarget.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        sendPlanningMessage();
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      resize: "vertical",
-                      minHeight: 42,
-                      border: "1px solid var(--tk-border-soft)",
-                      borderRadius: "var(--tk-radius-md)",
-                      background: "var(--tk-raised)",
-                      color: "var(--tk-text)",
-                      padding: "9px 10px",
-                      fontFamily: "inherit",
-                      fontSize: 13,
-                    }}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Send planning message"
-                    className="tk-btn"
-                    onClick={sendPlanningMessage}
-                    disabled={planningBusy || planningMessage.trim() === ""}
-                    style={{ opacity: planningBusy || planningMessage.trim() === "" ? 0.45 : 1 }}
-                  >
-                    Send
-                  </button>
-                </div>
-
-                {planningError ? (
-                  <div role="alert" style={{ fontSize: 13, color: "var(--tk-text-sec)" }}>
-                    <span style={{ color: "var(--tk-text)" }}>Planning failed: </span>
-                    {planningError}
-                  </div>
-                ) : null}
-              </section>
-
-              <section
-                aria-label="Approved outline"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 16,
-                  padding: 18,
-                  background: "var(--tk-card)",
-                  border: "1px solid var(--tk-border)",
-                  borderRadius: "var(--tk-radius-lg)",
-                  boxShadow: "var(--tk-shadow-md)",
-                }}
-              >
-                {planningSession.outlineValid && planningSession.outline !== undefined ? (
-                  <OutlineView outline={planningSession.outline} />
-                ) : (
-                  <div style={{ color: "var(--tk-text-sec)", lineHeight: 1.5 }}>
-                    The agent has not produced a valid outline yet.
-                  </div>
-                )}
-
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    aria-busy={job.phase === "running"}
-                    className="tk-btn"
-                    onClick={startGeneration}
-                    disabled={!canGenerate}
-                    style={{ opacity: canGenerate ? 1 : 0.45, cursor: canGenerate ? "pointer" : "not-allowed" }}
-                  >
-                    {job.phase === "running" ? "Generating..." : "Generate video"}
-                  </button>
-                  {job.phase === "running" ? (
-                    <div data-testid="composition-generating" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span role="status" style={{ fontSize: 12, color: "var(--tk-text-sec)" }}>
-                        Generating video...
-                      </span>
-                      <div style={{ display: "flex", gap: 4 }}>
-                        {[0, 1, 2].map((index) => (
-                          <span
-                            key={index}
-                            className="tk-dot"
-                            data-testid="typing-dot"
-                            style={{ background: "var(--tk-text-ter)", animationDelay: `${index * 0.18}s` }}
-                          />
-                        ))}
-                      </div>
-                      <button type="button" className="tk-btn" onClick={() => job.cancel()}>
-                        Cancel
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-
-                {job.phase === "failed" ? (
-                  <div
-                    role="alert"
-                    style={{
-                      fontSize: 13,
-                      lineHeight: 1.5,
-                      color: "var(--tk-text-sec)",
-                      background: "var(--tk-raised)",
-                      border: "1px solid var(--tk-border)",
-                      borderRadius: "var(--tk-radius-md)",
-                      padding: "9px 12px",
-                    }}
-                  >
-                    <span style={{ color: "var(--tk-text)" }}>Something went wrong: </span>
-                    {job.error ?? "Generation failed."}
-                  </div>
-                ) : null}
-              </section>
-            </div>
           </div>
-        )}
+        ) : null}
       </div>
     </section>
   );
