@@ -26,6 +26,19 @@ function isCompositionTimelineHandle(value: unknown): value is CompositionTimeli
   );
 }
 
+function withoutThenableAssimilation(handle: CompositionTimelineHandle): CompositionTimelineHandle {
+  if (typeof (handle as unknown as { then?: unknown }).then !== "function") return handle;
+
+  return {
+    totalDuration: () => handle.totalDuration(),
+    labels: handle.labels,
+    getChildren: (nested, tweens, timelines, ignoreBeforeTime) => handle.getChildren(nested, tweens, timelines, ignoreBeforeTime),
+    seek: (time, suppressEvents) => handle.seek(time, suppressEvents),
+    play: (from, suppressEvents) => handle.play(from, suppressEvents),
+    pause: (atTime, suppressEvents) => handle.pause(atTime, suppressEvents),
+  };
+}
+
 /** Read the registered master timeline for `compositionId`, or undefined if absent/unusable. */
 export function getCompositionTimeline(
   win: TimelineRegistryWindow | null | undefined,
@@ -75,12 +88,12 @@ export async function waitForCompositionTimeline(
   const now = options.now ?? (() => performance.now());
   const sleep = options.sleep ?? ((ms: number) => abortableDelay(ms, options.signal));
   const start = now();
-
   for (;;) {
     options.signal?.throwIfAborted();
-    const handle = getCompositionTimeline(getWindow(), compositionId);
+    const win = getWindow();
+    const handle = getCompositionTimeline(win, compositionId);
     if (handle) {
-      return handle;
+      return withoutThenableAssimilation(handle);
     }
     if (now() - start >= timeoutMs) {
       const target = compositionId === undefined ? "the sole window.__timelines entry" : `window.__timelines["${compositionId}"]`;

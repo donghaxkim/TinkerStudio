@@ -1,4 +1,6 @@
-import { resolve } from "node:path";
+import { constants } from "node:fs";
+import { access, readFile, stat } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { FastifyInstance } from "fastify";
 import {
   AiUrlPlanningCreateDemoRequestSchema,
@@ -6,7 +8,12 @@ import {
   EditCompositionRequestBodySchema,
   GenerationErrorSchema,
   type AiUrlPlanningCreateDemoRequest,
+  type ApiArtifact,
+  type ApiArtifactKind,
+  type ApiGenerationJob,
+  type ApiGenerationResult,
 } from "@tinker/generation-contract";
+import { indexArtifacts } from "../jobs/artifactIndex.js";
 import type { JobStore } from "../jobs/jobStore.js";
 import type { JobQueue } from "../server.js";
 
@@ -40,6 +47,19 @@ function requestBodyWithoutClientId(body: unknown) {
   return requestBody;
 }
 
+const RestorableHyperframesArtifactPaths = [
+  "hyperframes/index.html",
+  "hyperframes/output.mp4",
+  "hyperframes/asset-manifest.json",
+  "hyperframes/generation-manifest.json",
+  "hyperframes/lint.log",
+  "hyperframes/render.log",
+  "hyperframes/product-analysis.png",
+  "product-analysis.json",
+  "product-analysis.png",
+  "repo-analysis.json",
+];
+
 const ApiJobCreateRequestBodySchema = AiUrlPlanningCreateDemoRequestSchema.omit({
   id: true,
   outputDirectory: true,
@@ -57,6 +77,183 @@ function parseGithubRepo(repoUrl: string) {
   const [, owner, repo] = url.pathname.split("/");
   if (owner === undefined || repo === undefined) return undefined;
   return { owner, repo: repo.endsWith(".git") ? repo.slice(0, -4) : repo };
+}
+
+function isSafeLocalJobId(id: string) {
+  return id.length > 0 && !id.includes("/") && !id.includes("\\") && !id.includes("\0") && id !== "." && id !== "..";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function candidateOutputRoots(repoRoot: string, id: string) {
+  return [
+    resolve(repoRoot, "generated", "local-job", id),
+    resolve(repoRoot, "packages", "generated", "local-job", id),
+  ];
+}
+
+async function pathExists(path: string) {
+  try {
+    await access(path, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function pathIsFile(path: string) {
+  const fileStat = await stat(path).catch(() => undefined);
+  return fileStat?.isFile() === true;
+}
+
+function hasDriveLetterPrefix(path: string) {
+  return /^[A-Za-z]:(?:$|[\\/])/.test(path);
+}
+
+function hasParentSegment(path: string) {
+  return path.split(/[\\/]+/).includes("..");
+}
+
+function isInsideDirectory(root: string, filePath: string) {
+  const relativePath = relative(root, filePath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+}
+
+function pathVariants(value: string) {
+  const variants = [value];
+  let current = value;
+  for (let i = 0; i < 5 && current.includes("%"); i += 1) {
+    try {
+      current = decodeURIComponent(current);
+    } catch {
+      return undefined;
+    }
+    variants.push(current);
+  }
+  return variants;
+}
+
+function safeHyperframesManifestOutputPath(outputRoot: string, outputPath: string) {
+  const trimmed = outputPath.trim();
+  if (trimmed.length === 0 || trimmed.includes("\0")) return undefined;
+
+  const variants = pathVariants(trimmed);
+  if (variants === undefined) return undefined;
+  for (const variant of variants) {
+    if (variant.includes("\0") || isAbsolute(variant) || hasDriveLetterPrefix(variant) || hasParentSegment(variant)) {
+      return undefined;
+    }
+  }
+
+  const hyperframesRoot = resolve(outputRoot, "hyperframes");
+  const artifactPath = resolve(hyperframesRoot, trimmed);
+  return isInsideDirectory(hyperframesRoot, artifactPath) ? artifactPath : undefined;
+}
+
+async function manifestDeclaredHyperframesArtifactPaths(outputRoot: string) {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(await readFile(join(outputRoot, "hyperframes", "asset-manifest.json"), "utf8")) as unknown;
+  } catch {
+    return [];
+  }
+  if (!isRecord(manifest) || !Array.isArray(manifest.assets)) return [];
+
+  const paths: string[] = [];
+  for (const asset of manifest.assets) {
+    if (!isRecord(asset) || typeof asset.outputPath !== "string") continue;
+    const artifactPath = safeHyperframesManifestOutputPath(outputRoot, asset.outputPath);
+    if (artifactPath !== undefined && (await pathIsFile(artifactPath))) paths.push(artifactPath);
+  }
+  return paths;
+}
+
+async function existingRestorableArtifactPaths(outputRoot: string) {
+  const paths = new Set<string>();
+  for (const relativePath of RestorableHyperframesArtifactPaths) {
+    const artifactPath = join(outputRoot, relativePath);
+    if (await pathExists(artifactPath)) paths.add(artifactPath);
+  }
+  for (const artifactPath of await manifestDeclaredHyperframesArtifactPaths(outputRoot)) {
+    paths.add(artifactPath);
+  }
+  return [...paths];
+}
+
+function requireArtifact(artifacts: ApiArtifact[], kind: ApiArtifactKind) {
+  const artifact = artifacts.find((candidate) => candidate.kind === kind);
+  if (artifact === undefined) {
+    throw new Error(`Restored job is missing required ${kind} artifact`);
+  }
+  return artifact;
+}
+
+function optionalArtifact(artifacts: ApiArtifact[], kind: ApiArtifactKind) {
+  return artifacts.find((candidate) => candidate.kind === kind);
+}
+
+function buildRestoredHyperframesResult(artifacts: ApiArtifact[]): ApiGenerationResult {
+  const generationManifestArtifact = optionalArtifact(artifacts, "generation-manifest");
+  const assetManifestArtifact = optionalArtifact(artifacts, "asset-manifest");
+  return {
+    method: "hyperframes",
+    composition: {
+      indexArtifact: requireArtifact(artifacts, "composition-index"),
+      outputVideoArtifact: requireArtifact(artifacts, "output-video"),
+      ...(generationManifestArtifact === undefined ? {} : { generationManifestArtifact }),
+      ...(assetManifestArtifact === undefined ? {} : { assetManifestArtifact }),
+    },
+    artifacts,
+    warnings: [],
+  };
+}
+
+async function readGenerationManifest(outputRoot: string) {
+  try {
+    const parsed = JSON.parse(await readFile(join(outputRoot, "hyperframes", "generation-manifest.json"), "utf8")) as unknown;
+    if (!isRecord(parsed)) return undefined;
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+async function restoreCompletedHyperframesJob(id: string, options: JobsRoutesOptions): Promise<ApiGenerationJob | undefined> {
+  if (!isSafeLocalJobId(id)) return undefined;
+
+  for (const outputRoot of candidateOutputRoots(options.repoRoot, id)) {
+    const manifest = await readGenerationManifest(outputRoot);
+    if (manifest === undefined || manifest.renderer !== "hyperframes") continue;
+
+    const requestResult = AiUrlPlanningCreateDemoRequestSchema.safeParse({
+      id,
+      mode: "ai-url-planning",
+      repoUrl: manifest.sourceRepoUrl,
+      productUrl: manifest.productUrl,
+      durationCapSeconds: manifest.durationCapSeconds,
+      aspectRatio: manifest.aspectRatio,
+      renderer: "hyperframes",
+      hyperframesAgent: "opencode",
+    });
+    if (!requestResult.success) continue;
+
+    const artifactPaths = await existingRestorableArtifactPaths(outputRoot);
+    const artifacts = indexArtifacts({ jobId: id, outputRoot, artifactPaths });
+    let result: ApiGenerationResult;
+    try {
+      result = buildRestoredHyperframesResult(artifacts);
+    } catch {
+      continue;
+    }
+
+    options.store.create({ id, request: requestResult.data, outputRoot, now: options.now() });
+    options.store.complete(id, result, options.now());
+    return options.store.getSnapshot(id);
+  }
+
+  return undefined;
 }
 
 function isPublicHttpUrl(value: unknown): value is string {
@@ -157,7 +354,7 @@ export function registerJobsRoutes(server: FastifyInstance, options: JobsRoutesO
   });
 
   server.get<{ Params: { id: string } }>("/api/jobs/:id", async (request, reply) => {
-    const snapshot = options.store.getSnapshot(request.params.id);
+    const snapshot = options.store.getSnapshot(request.params.id) ?? (await restoreCompletedHyperframesJob(request.params.id, options));
     if (snapshot === undefined) {
       return reply.status(404).send({ message: "Job not found" });
     }

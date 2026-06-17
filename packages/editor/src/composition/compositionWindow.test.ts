@@ -54,6 +54,21 @@ describe("waitForCompositionTimeline", () => {
     expect(calls).toBe(3);
   });
 
+  it("resolves GSAP-style thenable handles without waiting on their then method", async () => {
+    const handle = Object.assign(fakeHandle(), { then: () => undefined });
+    const result = await Promise.race([
+      waitForCompositionTimeline(() => ({ __timelines: { sample: handle } }), "sample", {
+        intervalMs: 0,
+        sleep: async () => undefined,
+        now: () => 0,
+      }),
+      new Promise((resolve) => setTimeout(() => resolve("timeout"), 0)),
+    ]);
+
+    expect(result).not.toBe("timeout");
+    expect((result as CompositionTimelineHandle).totalDuration()).toBe(5);
+  });
+
   it("rejects immediately when the signal is already aborted", async () => {
     const controller = new AbortController();
     controller.abort();

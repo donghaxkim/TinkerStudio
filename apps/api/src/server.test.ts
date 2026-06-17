@@ -303,6 +303,89 @@ describe("job routes", () => {
     }
   });
 
+  it("restores a completed HyperFrames job from disk when the in-memory record is missing", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-restored-job-${randomUUID()}-`));
+    const outputRoot = join(repoRoot, "generated", "local-job", "job-restored");
+    const hyperframesRoot = join(outputRoot, "hyperframes");
+    const assetPath = join(hyperframesRoot, "assets", "logo.png");
+    await mkdir(hyperframesRoot, { recursive: true });
+    await mkdir(join(hyperframesRoot, "assets"), { recursive: true });
+    await writeFile(join(hyperframesRoot, "index.html"), "<html>composition</html>");
+    await writeFile(join(hyperframesRoot, "output.mp4"), "video");
+    await writeFile(assetPath, "png");
+    await writeFile(
+      join(hyperframesRoot, "asset-manifest.json"),
+      JSON.stringify({
+        assets: [
+          {
+            id: "logo",
+            type: "image",
+            sourcePath: "repo/logo.png",
+            outputPath: "assets/logo.png",
+            evidence: "Used by index.html",
+          },
+        ],
+      }),
+    );
+    await writeFile(
+      join(hyperframesRoot, "generation-manifest.json"),
+      JSON.stringify({
+        renderer: "hyperframes",
+        productUrl: "https://example.com/",
+        sourceRepoUrl: "https://github.com/example/product",
+        durationCapSeconds: 60,
+        aspectRatio: "16:9",
+        outputVideoPath: "output.mp4",
+      }),
+    );
+
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      now: () => "2026-06-17T00:00:00.000Z",
+    });
+
+    try {
+      const response = await server.inject({ method: "GET", url: "/api/jobs/job-restored" });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toMatchObject({
+        id: "job-restored",
+        status: "completed",
+        request: {
+          id: "job-restored",
+          mode: "ai-url-planning",
+          repoUrl: "https://github.com/example/product",
+          productUrl: "https://example.com/",
+          durationCapSeconds: 60,
+          aspectRatio: "16:9",
+          renderer: "hyperframes",
+          hyperframesAgent: "opencode",
+        },
+        result: {
+          method: "hyperframes",
+          artifacts: [
+            { kind: "composition-index", relativePath: "hyperframes/index.html" },
+            { kind: "output-video", relativePath: "hyperframes/output.mp4" },
+            { kind: "asset-manifest", relativePath: "hyperframes/asset-manifest.json" },
+            { kind: "generation-manifest", relativePath: "hyperframes/generation-manifest.json" },
+            { kind: "asset", relativePath: "hyperframes/assets/logo.png" },
+          ],
+        },
+      });
+
+      const artifactResponse = await server.inject({ method: "GET", url: "/api/jobs/job-restored/artifacts/hyperframes/index.html" });
+      expect(artifactResponse.statusCode).toBe(200);
+      expect(artifactResponse.body).toBe("<html>composition</html>");
+
+      const assetResponse = await server.inject({ method: "GET", url: "/api/jobs/job-restored/artifacts/hyperframes/assets/logo.png" });
+      expect(assetResponse.statusCode).toBe(200);
+      expect(assetResponse.headers["content-type"]).toContain("image/png");
+      expect(assetResponse.body).toBe("png");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("derives productUrl from the repo when the create-job body omits it", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-derived-url-${randomUUID()}-`));
     const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
