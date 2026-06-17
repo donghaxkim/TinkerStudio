@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { ApiConfig } from "./config.js";
 import { createJobQueue } from "./jobs/jobQueue.js";
@@ -8,6 +9,7 @@ import { createClaudePlanningAgentRunner } from "./planning/claudePlanningAgent.
 import { createPlanningSessionStore } from "./planning/planningSessionStore.js";
 import type { PlanningAgentRunner } from "./planning/planningRunner.js";
 import { registerArtifactsRoutes } from "./routes/artifacts.js";
+import { registerImportRoutes } from "./routes/importComposition.js";
 import { registerJobsRoutes, type ProductUrlResolver } from "./routes/jobs.js";
 import { registerPlanningSessionsRoutes } from "./routes/planningSessions.js";
 import { createEditWorker, type RunEdit } from "./workers/editWorker.js";
@@ -53,6 +55,10 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     origin: options.config.corsOrigins,
   });
 
+  await server.register(multipart, {
+    limits: { fileSize: 200 * 1024 * 1024, files: 200, parts: 250 },
+  });
+
   server.get("/health", async () => ({ ok: true }));
 
   server.setErrorHandler((error: FastifyError, _request, reply) => {
@@ -80,6 +86,12 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     runner: options.planningRunner ?? createClaudePlanningAgentRunner(),
   });
   registerArtifactsRoutes(server, { store });
+  registerImportRoutes(server, {
+    store,
+    repoRoot: options.config.repoRoot,
+    now,
+    idGenerator,
+  });
 
   return server;
 }
