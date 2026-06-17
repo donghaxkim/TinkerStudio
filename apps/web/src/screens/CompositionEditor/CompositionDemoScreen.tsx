@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import type { ApiGenerationJob, DemoOutline } from "@tinker/generation-contract";
 import type { TimelineRegistryWindow } from "@tinker/editor";
 import type { CompositionEditClient } from "../../lib/compositionEditClient.js";
 import type { CompositionGenerationClient } from "../../lib/compositionGenerationClient.js";
+import type { CompositionImportClient } from "../../lib/compositionImportClient.js";
 import type { CompositionPlanningClient, CompositionPlanningSession } from "../../lib/compositionPlanningClient.js";
+import { selectCanonicalBundleFiles } from "../../lib/bundleFiles.js";
 import { useCompositionGenerationJob } from "../../lib/useCompositionGenerationJob.js";
 import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
 
@@ -13,6 +15,8 @@ export type CompositionDemoScreenProps = {
   client: CompositionGenerationClient;
   planningClient: CompositionPlanningClient;
   editClient?: CompositionEditClient;
+  /** Enables the "Edit an existing demo" upload flow when provided. */
+  importClient?: CompositionImportClient;
   /** Optional: render a Back button that calls this. */
   onBack?: () => void;
   /** Test seam forwarded to CompositionEditorScreen. */
@@ -38,6 +42,30 @@ function parseGithubRepo(raw: string): string | undefined {
   const [owner, repoWithGit] = path.replace(/^\/+/, "").split("/").filter(Boolean);
   const repo = repoWithGit?.replace(/\.git$/, "");
   return owner && repo && /^[\w.-]+$/.test(owner) && /^[\w.-]+$/.test(repo) ? `${owner}/${repo}` : undefined;
+}
+
+/** Recursively reads a dropped folder entry into a flat list of files with their relative paths. */
+function walkEntry(entry: FileSystemEntry, prefix: string, out: Array<{ relativePath: string; file: File }>): Promise<void> {
+  if (entry.isFile) {
+    return new Promise((resolve) => {
+      (entry as FileSystemFileEntry).file(
+        (file) => {
+          out.push({ relativePath: `${prefix}${entry.name}`, file });
+          resolve();
+        },
+        () => resolve(),
+      );
+    });
+  }
+  const reader = (entry as FileSystemDirectoryEntry).createReader();
+  return new Promise((resolve) => {
+    reader.readEntries(
+      (entries) => {
+        void Promise.all(entries.map((child) => walkEntry(child, `${prefix}${entry.name}/`, out))).then(() => resolve());
+      },
+      () => resolve(),
+    );
+  });
 }
 
 function normalizePublicUrl(raw: string): string | undefined {
@@ -129,9 +157,13 @@ function PlaywrightResultView({ job }: { job: ApiGenerationJob }) {
   );
 }
 
-export function CompositionDemoScreen({ client, planningClient, editClient, onBack, resolveWindow, initialCompletedJob }: CompositionDemoScreenProps) {
+export function CompositionDemoScreen({ client, planningClient, editClient, importClient, onBack, resolveWindow, initialCompletedJob }: CompositionDemoScreenProps) {
   const job = useCompositionGenerationJob(client);
   const [showEmptyEditor, setShowEmptyEditor] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
+  const [importedJob, setImportedJob] = useState<ApiGenerationJob | undefined>(undefined);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | undefined>(undefined);
   const [repoDraft, setRepoDraft] = useState("");
   const [productDraft, setProductDraft] = useState("");
   const [planningSession, setPlanningSession] = useState<CompositionPlanningSession | undefined>(undefined);
@@ -238,6 +270,128 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
     void job.start(request);
   }, [job, planningBusy, planningSession]);
 
+  const startImport = useCallback(
+    (collected: Array<{ relativePath: string; file: File }>) => {
+      if (importClient === undefined) return;
+      const selected = selectCanonicalBundleFiles(collected);
+      if (selected.length === 0) {
+        setImportError("Couldn't find hyperframes/index.html in that folder. Pick the generated demo folder.");
+        return;
+      }
+      setImportBusy(true);
+      setImportError(undefined);
+      void importClient
+        .importComposition(selected.map((s) => ({ relativePath: s.relativePath, data: s.source.file })))
+        .then((imported) => setImportedJob(imported))
+        .catch((error: unknown) => setImportError(error instanceof Error ? error.message : String(error)))
+        .finally(() => setImportBusy(false));
+    },
+    [importClient],
+  );
+
+  const handleImportFiles = useCallback(
+    (fileList: FileList | null) => {
+      if (fileList === null) return;
+      startImport(Array.from(fileList).map((file) => ({ relativePath: file.webkitRelativePath || file.name, file })));
+    },
+    [startImport],
+  );
+
+  const handleImportDrop = useCallback(
+    async (event: DragEvent<HTMLLabelElement>) => {
+      event.preventDefault();
+      if (importBusy) return;
+      const entries = Array.from(event.dataTransfer.items)
+        .map((item) => item.webkitGetAsEntry())
+        .filter((entry): entry is FileSystemEntry => entry !== null);
+      const collected: Array<{ relativePath: string; file: File }> = [];
+      await Promise.all(entries.map((entry) => walkEntry(entry, "", collected)));
+      startImport(collected);
+    },
+    [importBusy, startImport],
+  );
+
+  if (showUpload && importedJob === undefined) {
+    return (
+      <section
+        aria-label="Edit an existing demo"
+        className="tk-porcelain"
+        style={{
+          minHeight: "100vh",
+          padding: 24,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--tk-app-bg)",
+          color: "var(--tk-text)",
+          fontFamily: "var(--tk-font)",
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", gap: 16 }}>
+          <button
+            type="button"
+            className="tk-btn"
+            disabled={importBusy}
+            onClick={() => {
+              setShowUpload(false);
+              setImportError(undefined);
+            }}
+            style={{ alignSelf: "flex-start", background: "transparent", color: "var(--tk-text-sec)" }}
+          >
+            Back
+          </button>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 24, letterSpacing: "-0.02em" }}>Edit an existing demo</h1>
+            <p style={{ margin: "8px 0 0", color: "var(--tk-text-sec)", lineHeight: 1.5, fontSize: 13.5 }}>
+              Drop the generated demo folder (the one containing <code>hyperframes/index.html</code> and <code>output.mp4</code>) to open it in the editor.
+            </p>
+          </div>
+          <label
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => void handleImportDrop(event)}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              padding: 32,
+              border: "1.5px dashed var(--tk-border)",
+              borderRadius: "var(--tk-radius-lg)",
+              background: "var(--tk-raised)",
+              cursor: importBusy ? "default" : "pointer",
+              textAlign: "center",
+            }}
+          >
+            <span style={{ fontSize: 13.5, color: "var(--tk-text-sec)" }}>
+              {importBusy ? "Importing…" : "Drag a demo folder here, or click to choose"}
+            </span>
+            <input
+              aria-label="Choose demo folder"
+              type="file"
+              disabled={importBusy}
+              onChange={(event) => handleImportFiles(event.currentTarget.files)}
+              ref={(node) => {
+                if (node) {
+                  node.setAttribute("webkitdirectory", "");
+                  node.setAttribute("directory", "");
+                }
+              }}
+              style={{ display: "none" }}
+            />
+          </label>
+          {importError ? (
+            <div role="alert" style={{ fontSize: 13, color: "var(--tk-text-sec)" }}>
+              <span style={{ color: "var(--tk-text)" }}>Import failed: </span>
+              {importError}
+            </div>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
   if (showEmptyEditor) {
     return (
       <CompositionEditorScreen
@@ -248,7 +402,7 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
     );
   }
 
-  const completedJob = initialCompletedJob ?? (job.phase === "completed" ? job.job : undefined);
+  const completedJob = importedJob ?? initialCompletedJob ?? (job.phase === "completed" ? job.job : undefined);
 
   if (completedJob) {
     if (completedJob.result?.method === "hyperframes") {
@@ -518,6 +672,31 @@ export function CompositionDemoScreen({ client, planningClient, editClient, onBa
                 }}
               >
                 Open empty editor shell
+              </button>
+            ) : null}
+
+            {importClient && job.phase !== "running" ? (
+              <button
+                type="button"
+                className="tk-btn"
+                onClick={() => {
+                  if (planningBusy) return;
+                  planningRequestIdRef.current += 1;
+                  setImportError(undefined);
+                  setShowUpload(true);
+                }}
+                disabled={planningBusy}
+                style={{
+                  alignSelf: "center",
+                  marginTop: 8,
+                  fontSize: 12.5,
+                  color: "var(--tk-text-sec)",
+                  background: "transparent",
+                  opacity: planningBusy ? 0.45 : 1,
+                  cursor: planningBusy ? "not-allowed" : "pointer",
+                }}
+              >
+                Edit an existing demo
               </button>
             ) : null}
           </>

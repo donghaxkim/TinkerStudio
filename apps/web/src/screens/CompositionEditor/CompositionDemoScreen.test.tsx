@@ -4,6 +4,7 @@ import type { TimelineRegistryWindow, CompositionTimelineHandle } from "@tinker/
 import type { ApiGenerationJob } from "@tinker/generation-contract";
 import type { CompositionGenerationClient, CreateCompositionJobRequest } from "../../lib/compositionGenerationClient.js";
 import type { CompositionPlanningClient, CompositionPlanningSession } from "../../lib/compositionPlanningClient.js";
+import type { CompositionImportClient } from "../../lib/compositionImportClient.js";
 import { CompositionDemoScreen } from "./CompositionDemoScreen.js";
 
 function completedCompositionJob(): ApiGenerationJob {
@@ -215,6 +216,12 @@ function deferred<T>() {
     reject = promiseReject;
   });
   return { promise, resolve, reject };
+}
+
+function fileWithPath(name: string, relativePath: string): File {
+  const file = new File(["x"], name, { type: "application/octet-stream" });
+  Object.defineProperty(file, "webkitRelativePath", { value: relativePath });
+  return file;
 }
 
 describe("CompositionDemoScreen", () => {
@@ -677,5 +684,47 @@ describe("CompositionDemoScreen", () => {
     fireEvent.click(topLevelBack);
     expect(onBack).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  });
+
+  it("imports an existing demo folder and opens the editor", async () => {
+    const importClient: CompositionImportClient = { importComposition: vi.fn(async () => completedCompositionJob()) };
+    render(
+      <CompositionDemoScreen
+        client={createLocalCompositionGenerationClient()}
+        planningClient={createPlanningClient()}
+        importClient={importClient}
+        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit an existing demo" }));
+    const input = screen.getByLabelText("Choose demo folder");
+    fireEvent.change(input, {
+      target: {
+        files: [
+          fileWithPath("index.html", "demo/hyperframes/index.html"),
+          fileWithPath("output.mp4", "demo/hyperframes/output.mp4"),
+        ],
+      },
+    });
+
+    expect(await screen.findByRole("button", { name: "Export" })).toBeInTheDocument();
+    expect(importClient.importComposition).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows an error when the dropped folder has no index.html", async () => {
+    const importClient: CompositionImportClient = { importComposition: vi.fn(async () => completedCompositionJob()) };
+    render(
+      <CompositionDemoScreen
+        client={createLocalCompositionGenerationClient()}
+        planningClient={createPlanningClient()}
+        importClient={importClient}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit an existing demo" }));
+    const input = screen.getByLabelText("Choose demo folder");
+    fireEvent.change(input, { target: { files: [fileWithPath("output.mp4", "demo/output.mp4")] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent(/index\.html/);
+    expect(importClient.importComposition).not.toHaveBeenCalled();
   });
 });
