@@ -154,6 +154,14 @@ describe("parseOpenCodePlanningOutput", () => {
       ),
     ).toThrow("OpenCode planning output did not include an assistant message");
   });
+
+  it("throws when OpenCode output has a session id and only non-JSON diagnostic output", () => {
+    expect(() =>
+      parseOpenCodePlanningOutput(
+        [JSON.stringify({ session_id: "opencode-session-diagnostic-only" }), "warning: diagnostic output only"].join("\n"),
+      ),
+    ).toThrow("OpenCode planning output did not include an assistant message");
+  });
 });
 
 describe("defaultRunOpenCodePlanningProcess", () => {
@@ -181,6 +189,21 @@ printf '%s\n' '{"type":"message","role":"assistant","message":{"content":[{"type
     });
     const stdoutLog = await readFile(join(workspaceRoot, ".tinker-opencode-planning-output.jsonl"), "utf8");
     expect(stdoutLog).toContain("stdout truncated");
+  });
+
+  it("does not preserve stdout diagnostics as assistant text", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-opencode-diagnostic-output-${randomUUID()}-`));
+    await createFakeOpenCode(
+      workspaceRoot,
+      `#!/bin/sh
+printf '%s\n' '{"session_id":"opencode-stream-diagnostic-only"}'
+printf '%s\n' 'warning: diagnostic output only'
+`,
+    );
+
+    const result = await defaultRunOpenCodePlanningProcess({ cwd: workspaceRoot, prompt: "Plan." });
+
+    expect(() => parseOpenCodePlanningOutput(result.stdout)).toThrow("OpenCode planning output did not include an assistant message");
   });
 });
 

@@ -250,9 +250,7 @@ function processOpenCodePlanningOutputLine(capture: OpenCodePlanningOutputCaptur
 
     const assistantText = textFromOpenCodeAssistantEvent(parsed);
     if (assistantText !== "") appendAssistantTextCapture(capture, assistantText);
-  } catch {
-    capture.fallbackAssistantMessage ??= trimmedLine.slice(0, LOG_STREAM_RETAIN_BYTES);
-  }
+  } catch {}
 }
 
 function appendOpenCodePlanningOutputCapture(capture: OpenCodePlanningOutputCapture, chunk: Buffer) {
@@ -280,8 +278,6 @@ function capturedOpenCodePlanningOutputToStdout(capture: OpenCodePlanningOutputC
 
   if (capture.hasAssistantText) {
     lines.push(JSON.stringify({ type: "message", role: "assistant", message: { content: [{ type: "text", text: retainedOutputText(capture.assistantText) }] } }));
-  } else if (capture.fallbackAssistantMessage !== undefined) {
-    lines.push(capture.fallbackAssistantMessage);
   }
 
   return `${lines.join("\n")}\n`;
@@ -606,7 +602,6 @@ export function parseClaudePlanningOutput(stdout: string) {
 export function parseOpenCodePlanningOutput(stdout: string) {
   let sessionId: string | undefined;
   const assistantTextParts: string[] = [];
-  let fallbackAssistantMessage: string | undefined;
 
   for (const line of stdout.split(/\r?\n/)) {
     const trimmedLine = line.trim();
@@ -620,16 +615,14 @@ export function parseOpenCodePlanningOutput(stdout: string) {
 
       const assistantText = textFromOpenCodeAssistantEvent(parsed);
       if (assistantText !== "") assistantTextParts.push(assistantText);
-    } catch {
-      fallbackAssistantMessage ??= trimmedLine;
-    }
+    } catch {}
   }
 
   if (sessionId === undefined) {
     throw new Error("OpenCode planning output did not include a session id.");
   }
 
-  const assistantMessage = assistantTextParts.join("\n").trim() || fallbackAssistantMessage;
+  const assistantMessage = assistantTextParts.join("\n").trim();
   if (assistantMessage === undefined || assistantMessage.trim() === "") {
     throw new Error("OpenCode planning output did not include an assistant message.");
   }
