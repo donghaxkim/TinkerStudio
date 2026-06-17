@@ -32,6 +32,7 @@ describe("planning session routes", () => {
       expect(input.kind).toBe("initial");
       expect(input.productUrl).toBe("https://product.example.com");
       expect(input.repoUrl).toBe("https://github.com/example/product");
+      expect(input.agent).toBe("opencode");
       expect(input.outlinePath).toContain("outline.json");
       await writeFile(input.outlinePath, `${JSON.stringify(outline, null, 2)}\n`);
       return {
@@ -51,7 +52,6 @@ describe("planning session routes", () => {
         payload: {
           productUrl: "https://product.example.com",
           repoUrl: "https://github.com/example/product",
-          agent: "claude",
         },
       });
 
@@ -60,7 +60,7 @@ describe("planning session routes", () => {
         id: "plan-test",
         productUrl: "https://product.example.com",
         repoUrl: "https://github.com/example/product",
-        agent: "claude",
+        agent: "opencode",
         status: "ready",
         messages: [{ role: "assistant", content: "I drafted a one-scene outline." }],
         outline,
@@ -74,9 +74,9 @@ describe("planning session routes", () => {
 
   it("continues a session with the stored resume handle", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-continue-${randomUUID()}-`));
-    const calls: string[] = [];
+    const calls: Array<{ kind: string; agent: string; resumeHandle?: string }> = [];
     const runner: PlanningAgentRunner = async (input) => {
-      calls.push(input.kind);
+      calls.push({ kind: input.kind, agent: input.agent, resumeHandle: input.kind === "followup" ? input.agentResumeHandle : undefined });
       await writeFile(input.outlinePath, `${JSON.stringify(outline, null, 2)}\n`);
       return {
         assistantMessage: input.kind === "initial" ? "Initial outline." : `Updated after: ${input.message}`,
@@ -89,7 +89,7 @@ describe("planning session routes", () => {
       await server.inject({
         method: "POST",
         url: "/api/planning-sessions",
-        payload: { productUrl: "https://product.example.com", repoUrl: "https://github.com/example/product", agent: "claude" },
+        payload: { productUrl: "https://product.example.com", repoUrl: "https://github.com/example/product", agent: "opencode" },
       });
       const response = await server.inject({
         method: "POST",
@@ -98,7 +98,10 @@ describe("planning session routes", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(calls).toEqual(["initial", "followup"]);
+      expect(calls).toEqual([
+        { kind: "initial", agent: "opencode", resumeHandle: undefined },
+        { kind: "followup", agent: "opencode", resumeHandle: "session-initial" },
+      ]);
       expect(JSON.parse(response.body)).toMatchObject({
         status: "ready",
         messages: [
@@ -248,28 +251,6 @@ describe("planning session routes", () => {
       expect(JSON.parse(createResponse.body).lastError).toContain("resume handle");
       expect(followupResponse.statusCode).toBe(409);
       expect(calls).toEqual(["initial"]);
-    } finally {
-      await server.close();
-    }
-  });
-
-  it("rejects OpenCode planning until a real resume adapter exists", async () => {
-    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-opencode-${randomUUID()}-`));
-    const server = await buildServer({ config: testConfig(repoRoot), idGenerator: () => "plan-test" });
-
-    try {
-      const response = await server.inject({
-        method: "POST",
-        url: "/api/planning-sessions",
-        payload: { productUrl: "https://product.example.com", repoUrl: "https://github.com/example/product", agent: "opencode" },
-      });
-
-      expect(response.statusCode).toBe(500);
-      expect(JSON.parse(response.body)).toMatchObject({
-        id: "plan-test",
-        status: "error",
-        lastError: "OpenCode planning sessions require a resumable session adapter before they can be used.",
-      });
     } finally {
       await server.close();
     }

@@ -415,6 +415,7 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByRole("heading", { name: /Tinker Studio/i })).toBeInTheDocument();
     expect(screen.getByLabelText("Product URL")).toBeInTheDocument();
     expect(screen.getByLabelText("GitHub repo URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("Planning agent")).toHaveValue("opencode");
     expect(screen.queryByLabelText("Demo description")).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: /Playwright/i })).not.toBeInTheDocument();
 
@@ -427,7 +428,7 @@ describe("CompositionDemoScreen", () => {
         expect.objectContaining({
           productUrl: "https://driftboard.example.com",
           repoUrl: "https://github.com/acme/driftboard",
-          agent: "claude",
+          agent: "opencode",
         }),
       ),
     );
@@ -435,6 +436,27 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByRole("heading", { name: "Driftboard launch demo" })).toBeInTheDocument();
     expect(screen.getByText("Open on the launch problem")).toBeInTheDocument();
     expect(screen.getByText("Show repo-backed details")).toBeInTheDocument();
+  });
+
+  it("can start planning with Claude Code when selected", async () => {
+    const client = createLocalCompositionGenerationClient();
+    const planningClient = createPlanningClient();
+    render(<CompositionDemoScreen client={client} planningClient={planningClient} />);
+
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.change(screen.getByLabelText("Planning agent"), { target: { value: "claude" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+
+    await waitFor(() =>
+      expect(planningClient.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          productUrl: "https://driftboard.example.com",
+          repoUrl: "https://github.com/acme/driftboard",
+          agent: "claude",
+        }),
+      ),
+    );
   });
 
   it("continues planning with the backend session id", async () => {

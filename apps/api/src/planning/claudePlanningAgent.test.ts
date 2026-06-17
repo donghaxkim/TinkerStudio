@@ -7,9 +7,13 @@ import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import {
   createClaudePlanningAgentRunner,
   defaultRunClaudePlanningProcess,
+  defaultRunOpenCodePlanningProcess,
   parseClaudePlanningOutput,
+  parseOpenCodePlanningOutput,
   type ClaudePlanningProcessInput,
 } from "./claudePlanningAgent.js";
+
+type OpenCodePlanningProcessInput = ClaudePlanningProcessInput;
 
 const originalEnv = {
   PATH: process.env.PATH,
@@ -62,6 +66,16 @@ async function createFakeClaude(workspaceRoot: string, contents: string) {
   return executablePath;
 }
 
+async function createFakeOpenCode(workspaceRoot: string, contents: string) {
+  const binDirectory = join(workspaceRoot, "bin");
+  const executablePath = join(binDirectory, "opencode");
+  await mkdir(binDirectory, { recursive: true });
+  await writeFile(executablePath, contents);
+  await chmod(executablePath, 0o755);
+  process.env.PATH = `${binDirectory}:${originalEnv.PATH ?? ""}`;
+  return executablePath;
+}
+
 describe("parseClaudePlanningOutput", () => {
   it("throws when Claude output does not include a session_id", () => {
     const stdout = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "No session." }] } });
@@ -79,6 +93,117 @@ describe("parseClaudePlanningOutput", () => {
     );
 
     expect(result).toEqual({ assistantMessage: "First chunk.\nSecond chunk.", agentResumeHandle: "claude-session-joined" });
+  });
+});
+
+describe("parseOpenCodePlanningOutput", () => {
+  it("extracts assistant text and session id from OpenCode JSON events", () => {
+    const result = parseOpenCodePlanningOutput(
+      [
+        JSON.stringify({ session_id: "opencode-session-1" }),
+        JSON.stringify({ type: "message", role: "assistant", message: { content: [{ type: "text", text: "Drafted with OpenCode." }] } }),
+      ].join("\n"),
+    );
+
+    expect(result).toEqual({ assistantMessage: "Drafted with OpenCode.", agentResumeHandle: "opencode-session-1" });
+  });
+
+  it("extracts assistant text and nested session id from OpenCode raw events", () => {
+    const result = parseOpenCodePlanningOutput(
+      [
+        JSON.stringify({ session: { id: "opencode-session-nested" } }),
+        JSON.stringify({ type: "message", role: "assistant", content: "Nested session parsed." }),
+      ].join("\n"),
+    );
+
+    expect(result).toEqual({ assistantMessage: "Nested session parsed.", agentResumeHandle: "opencode-session-nested" });
+  });
+
+  it("throws when OpenCode output has no resume handle", () => {
+    expect(() => parseOpenCodePlanningOutput(JSON.stringify({ content: "No session id." }))).toThrow(
+      "OpenCode planning output did not include a session id",
+    );
+  });
+
+  it("ignores user and tool content while collecting assistant message and delta events", () => {
+    const result = parseOpenCodePlanningOutput(
+      [
+        JSON.stringify({ sessionId: "opencode-session-filtered" }),
+        JSON.stringify({ type: "message", role: "user", content: "Do not include user text." }),
+        JSON.stringify({ type: "tool", content: "Do not include tool text." }),
+        JSON.stringify({ type: "message", role: "assistant", content: "Assistant message." }),
+        JSON.stringify({ type: "message_delta", role: "assistant", delta: "Assistant delta." }),
+      ].join("\n"),
+    );
+
+    expect(result).toEqual({
+      assistantMessage: "Assistant message.\nAssistant delta.",
+      agentResumeHandle: "opencode-session-filtered",
+    });
+  });
+
+  it("throws clearly when OpenCode output has a session id but no assistant text", () => {
+    expect(() =>
+      parseOpenCodePlanningOutput(
+        [
+          JSON.stringify({ sessionID: "opencode-session-no-assistant" }),
+          JSON.stringify({ type: "message", role: "user", content: "Only user content." }),
+          JSON.stringify({ type: "tool", content: "Only tool content." }),
+          JSON.stringify({ type: "diagnostic", text: "Only diagnostic content." }),
+        ].join("\n"),
+      ),
+    ).toThrow("OpenCode planning output did not include an assistant message");
+  });
+
+  it("throws when OpenCode output has a session id and only non-JSON diagnostic output", () => {
+    expect(() =>
+      parseOpenCodePlanningOutput(
+        [JSON.stringify({ session_id: "opencode-session-diagnostic-only" }), "warning: diagnostic output only"].join("\n"),
+      ),
+    ).toThrow("OpenCode planning output did not include an assistant message");
+  });
+});
+
+describe("defaultRunOpenCodePlanningProcess", () => {
+  it("preserves stream metadata when bounded stdout logs truncate early session output", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-opencode-stream-metadata-${randomUUID()}-`));
+    await createFakeOpenCode(
+      workspaceRoot,
+      `#!/bin/sh
+printf '%s\n' '{"session_id":"opencode-stream-session"}'
+i=0
+while [ "$i" -lt 70000 ]; do
+  printf x
+  i=$((i + 1))
+done
+printf '\n'
+printf '%s\n' '{"type":"message","role":"assistant","message":{"content":[{"type":"text","text":"metadata survived"}]}}'
+`,
+    );
+
+    const result = await defaultRunOpenCodePlanningProcess({ cwd: workspaceRoot, prompt: "Plan." });
+
+    expect(parseOpenCodePlanningOutput(result.stdout)).toEqual({
+      assistantMessage: "metadata survived",
+      agentResumeHandle: "opencode-stream-session",
+    });
+    const stdoutLog = await readFile(join(workspaceRoot, ".tinker-opencode-planning-output.jsonl"), "utf8");
+    expect(stdoutLog).toContain("stdout truncated");
+  });
+
+  it("does not preserve stdout diagnostics as assistant text", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-opencode-diagnostic-output-${randomUUID()}-`));
+    await createFakeOpenCode(
+      workspaceRoot,
+      `#!/bin/sh
+printf '%s\n' '{"session_id":"opencode-stream-diagnostic-only"}'
+printf '%s\n' 'warning: diagnostic output only'
+`,
+    );
+
+    const result = await defaultRunOpenCodePlanningProcess({ cwd: workspaceRoot, prompt: "Plan." });
+
+    expect(() => parseOpenCodePlanningOutput(result.stdout)).toThrow("OpenCode planning output did not include an assistant message");
   });
 });
 
@@ -303,6 +428,105 @@ describe("createClaudePlanningAgentRunner", () => {
     expect(progress).toContainEqual(["analyzing-repo", "done"]);
     expect(progress).toContainEqual(["drafting", "done"]);
     expect(progress.some(([stage]) => stage === "analyzing-website")).toBe(false);
+  });
+
+  it("runs initial planning with OpenCode when requested", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-opencode-planning-${randomUUID()}-`));
+    const outlinePath = join(workspaceRoot, "outline.json");
+    const runOpenCodeCalls: OpenCodePlanningProcessInput[] = [];
+    const runOpencode = vi.fn(async (input: OpenCodePlanningProcessInput) => {
+      runOpenCodeCalls.push(input);
+      return {
+        stdout: [
+          JSON.stringify({ session_id: "opencode-session-1" }),
+          JSON.stringify({ type: "message", role: "assistant", message: { content: [{ type: "text", text: "OpenCode drafted the outline." }] } }),
+        ].join("\n"),
+      };
+    });
+    const runner = createClaudePlanningAgentRunner({
+      runOpencode,
+      analyzeWebsite: vi.fn(async () => websiteAnalysis),
+      analyzeRepo: vi.fn(async () => repoAnalysis),
+    });
+
+    const result = await runner({
+      kind: "initial",
+      productUrl: "https://product.example.com",
+      repoUrl: "https://github.com/example/product",
+      agent: "opencode",
+      workspaceRoot,
+      outlinePath,
+    });
+
+    expect(result).toMatchObject({ assistantMessage: "OpenCode drafted the outline.", agentResumeHandle: "opencode-session-1" });
+    expect(runOpencode).toHaveBeenCalledTimes(1);
+    expect(runOpenCodeCalls[0]).toMatchObject({ cwd: workspaceRoot });
+    expect(runOpenCodeCalls[0]).not.toHaveProperty("resumeHandle");
+    expect(JSON.stringify(JSON.parse(runOpenCodeCalls[0].prompt))).toContain("Runner-owned OpenCode log files");
+  });
+
+  it("runs follow-up planning with OpenCode and the stored resume handle", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-opencode-planning-followup-${randomUUID()}-`));
+    const outlinePath = join(workspaceRoot, "outline.json");
+    const runOpenCodeCalls: OpenCodePlanningProcessInput[] = [];
+    const runOpencode = vi.fn(async (input: OpenCodePlanningProcessInput) => {
+      runOpenCodeCalls.push(input);
+      return {
+        stdout: [
+          JSON.stringify({ session_id: "opencode-session-2" }),
+          JSON.stringify({ type: "message", role: "assistant", message: { content: [{ type: "text", text: "OpenCode updated the outline." }] } }),
+        ].join("\n"),
+      };
+    });
+    const analyzeWebsite = vi.fn(async () => websiteAnalysis);
+    const analyzeRepo = vi.fn(async () => repoAnalysis);
+    const runner = createClaudePlanningAgentRunner({ runOpencode, analyzeWebsite, analyzeRepo });
+
+    const result = await runner({
+      kind: "followup",
+      productUrl: "https://product.example.com",
+      repoUrl: "https://github.com/example/product",
+      agent: "opencode",
+      workspaceRoot,
+      outlinePath,
+      message: "Make it more technical.",
+      agentResumeHandle: "opencode-session-1",
+    });
+
+    expect(result).toMatchObject({ assistantMessage: "OpenCode updated the outline.", agentResumeHandle: "opencode-session-2" });
+    expect(analyzeWebsite).not.toHaveBeenCalled();
+    expect(analyzeRepo).not.toHaveBeenCalled();
+    expect(runOpenCodeCalls[0]).toMatchObject({ cwd: workspaceRoot, resumeHandle: "opencode-session-1" });
+  });
+
+  it("rejects unexpected workspace writes from OpenCode with OpenCode-specific wording", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-opencode-boundary-unexpected-${randomUUID()}-`));
+    const outlinePath = join(workspaceRoot, "outline.json");
+    const runOpencode = vi.fn(async () => {
+      await writeFile(join(workspaceRoot, "unexpected.txt"), "not allowed\n");
+      return {
+        stdout: [
+          JSON.stringify({ session_id: "opencode-session-unexpected" }),
+          JSON.stringify({ type: "message", role: "assistant", message: { content: [{ type: "text", text: "I wrote too much." }] } }),
+        ].join("\n"),
+      };
+    });
+    const runner = createClaudePlanningAgentRunner({
+      runOpencode,
+      analyzeWebsite: vi.fn(async () => websiteAnalysis),
+      analyzeRepo: vi.fn(async () => repoAnalysis),
+    });
+
+    await expect(
+      runner({
+        kind: "initial",
+        productUrl: "https://product.example.com",
+        repoUrl: "https://github.com/example/product",
+        agent: "opencode",
+        workspaceRoot,
+        outlinePath,
+      }),
+    ).rejects.toThrow("OpenCode planning modified files outside the allowed output boundary: unexpected.txt");
   });
 
   it("allows Claude to write outline.json during planning", async () => {

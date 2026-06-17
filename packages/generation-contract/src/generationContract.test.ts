@@ -202,10 +202,25 @@ const planningResponse = PlanningSessionResponseSchema.parse({
 });
 assert.equal(planningResponse.outlineValid, true);
 
+const defaultPlanningRequest = CreatePlanningSessionRequestSchema.parse({
+  productUrl: "https://example.com",
+  repoUrl: "https://github.com/example/product",
+});
+assert.equal(defaultPlanningRequest.agent, "opencode");
+
 assert.equal(
   CreatePlanningSessionRequestSchema.safeParse({
     productUrl: "https://example.com",
     repoUrl: "https://github.com/example/product",
+    agent: "claude",
+  }).success,
+  true,
+);
+assert.equal(
+  CreatePlanningSessionRequestSchema.safeParse({
+    productUrl: "https://example.com",
+    repoUrl: "https://github.com/example/product",
+    agent: "opencode",
   }).success,
   true,
 );

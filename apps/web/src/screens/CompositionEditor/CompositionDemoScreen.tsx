@@ -15,6 +15,7 @@ import type {
   ApiGenerationJob,
   DemoOutline,
   HyperframesAgent,
+  PlanningAgent,
   PlanningProgressEntry,
   PlanningProgressStatus,
   PlanningStage,
@@ -279,6 +280,7 @@ export function CompositionDemoScreen({
   const [repoShake, setRepoShake] = useState(false);
   const [renderer, setRenderer] = useState<GenerationRenderer>("hyperframes");
   const [hyperframesAgent, setHyperframesAgent] = useState<HyperframesAgent>("opencode");
+  const [planningAgent, setPlanningAgent] = useState<PlanningAgent>("opencode");
 
   const repoInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -333,9 +335,9 @@ export function CompositionDemoScreen({
     planning.start({
       repoUrl: `https://github.com/${repo}`,
       ...(productUrl === undefined ? {} : { productUrl }),
-      agent: "claude",
+      agent: planningAgent,
     });
-  }, [planning, productDraft, repoDraft, requireRepo]);
+  }, [planning, planningAgent, productDraft, repoDraft, requireRepo]);
 
   const submitMessage = useCallback(() => {
     const message = planningMessage.trim();
@@ -823,6 +825,26 @@ export function CompositionDemoScreen({
                   />
                 </div>
               </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--tk-text-sec)", padding: "0 2px" }}>
+                Planning agent
+                <select
+                  aria-label="Planning agent"
+                  value={planningAgent}
+                  onChange={(event) => setPlanningAgent(event.currentTarget.value as PlanningAgent)}
+                  disabled={planningBusy}
+                  style={{
+                    border: "1px solid var(--tk-border-soft)",
+                    borderRadius: "var(--tk-radius-sm)",
+                    background: "var(--tk-raised)",
+                    color: "var(--tk-text)",
+                    padding: "6px 8px",
+                  }}
+                >
+                  <option value="opencode">OpenCode</option>
+                  <option value="claude">Claude Code</option>
+                </select>
+              </label>
 
               <div className="tk-cd-actions">
                 <span className="tk-cd-actions-hint">{planningBusy ? "Planning demo..." : "Press ⏎ to plan"}</span>
