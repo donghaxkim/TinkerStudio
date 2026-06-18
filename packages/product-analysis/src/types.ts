@@ -82,3 +82,40 @@ export type NarrativeExploration = {
   avoidNarratives: string[];
   explorationNotes: string[];
 };
+
+export type NarrativeStagehandObserveInput = {
+  instruction: string;
+  drawOverlay?: boolean;
+  iframes?: boolean;
+};
+
+export type NarrativeStagehandExtractInput<T> = {
+  instruction: string;
+  schema: unknown;
+  domSettleTimeoutMs?: number;
+  iframes?: boolean;
+};
+
+export type NarrativeStagehandPage = {
+  goto: (url: string, options?: { waitUntil?: "domcontentloaded" | "load" | "networkidle"; timeout?: number }) => Promise<unknown>;
+  observe: (input: NarrativeStagehandObserveInput) => Promise<unknown>;
+  extract: <T>(input: NarrativeStagehandExtractInput<T>) => Promise<T>;
+};
+
+export type NarrativeStagehandClient = {
+  init: () => Promise<void>;
+  close: () => Promise<void>;
+  page?: NarrativeStagehandPage;
+  context?: { pages: () => NarrativeStagehandPage[] };
+};
+
+export type CreateNarrativeStagehand = () => NarrativeStagehandClient;
+
+export type ExploreNarrativeWebsiteOptions = {
+  enabled?: boolean;
+  prompt?: string;
+  productAnalysis?: ProductAnalysis;
+  repoAnalysis?: RepoAnalysis;
+  timeoutMs?: number;
+  createStagehand?: CreateNarrativeStagehand;
+};

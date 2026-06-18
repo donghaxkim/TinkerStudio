@@ -89,3 +89,82 @@ assert.throws(
     ),
   /workflowCandidates.0.visibleEvidence.0 must be at most 180 characters/,
 );
+
+import type {
+  ExploreNarrativeWebsiteOptions,
+  NarrativeStagehandClient,
+  NarrativeStagehandExtractInput,
+  NarrativeStagehandObserveInput,
+} from "./index.js";
+import { exploreNarrativeWebsite } from "./index.js";
+
+function createFakeStagehandClient(extracted: unknown, calls: string[]): NarrativeStagehandClient {
+  return {
+    async init() {
+      calls.push("init");
+    },
+    async close() {
+      calls.push("close");
+    },
+    page: {
+      async goto(url) {
+        calls.push(`goto:${url}`);
+      },
+      async observe(input: NarrativeStagehandObserveInput) {
+        calls.push(`observe:${input.instruction.includes("safe same-origin")}`);
+        return [{ description: "Start demo button", selector: "button" }];
+      },
+      async extract<T>(input: NarrativeStagehandExtractInput<T>) {
+        calls.push(`extract:${input.instruction.includes("NarrativeExploration")}`);
+        return extracted as T;
+      },
+    },
+  };
+}
+
+const disabledCalls: string[] = [];
+const disabledResult = await exploreNarrativeWebsite(productUrl, {
+  enabled: false,
+  createStagehand: () => createFakeStagehandClient(validExploration, disabledCalls),
+});
+assert.equal(disabledResult, undefined);
+assert.deepEqual(disabledCalls, []);
+
+const enabledCalls: string[] = [];
+const enabledResult = await exploreNarrativeWebsite(productUrl, {
+  enabled: true,
+  prompt: "Show the clearest workflow.",
+  productAnalysis: {
+    url: productUrl,
+    title: "Fixture Product",
+    headings: ["Build demos faster"],
+    bodySnippets: ["Export polished videos."],
+    links: [],
+    buttons: ["Start demo"],
+    inputs: [],
+    brandHints: { colors: [], fontFamilies: [] },
+  },
+  createStagehand: () => createFakeStagehandClient(validExploration, enabledCalls),
+});
+assert.deepEqual(enabledResult, validExploration);
+assert.deepEqual(enabledCalls, [
+  "init",
+  `goto:${productUrl}`,
+  "observe:true",
+  "extract:true",
+  "close",
+]);
+
+const invalidCalls: string[] = [];
+await assert.rejects(
+  () =>
+    exploreNarrativeWebsite(productUrl, {
+      enabled: true,
+      createStagehand: () => createFakeStagehandClient({ ...validExploration, strongestCopy: ["x".repeat(181)] }, invalidCalls),
+    }),
+  /strongestCopy.0 must be at most 180 characters/,
+);
+assert.equal(invalidCalls.at(-1), "close");
+
+const noFactoryOptions: ExploreNarrativeWebsiteOptions = { enabled: false };
+assert.equal(await exploreNarrativeWebsite(productUrl, noFactoryOptions), undefined);
