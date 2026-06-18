@@ -19,7 +19,8 @@
     "generate:ai-url-fixture-job": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/motion build && pnpm --filter @tinker/rendering build && tsx scripts/generateAiUrlFixtureJob.ts",
     "generate:ai-url-job": "tsx scripts/generateAiUrlJob.ts",
     "smoke:pipeline": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/motion build && pnpm --filter @tinker/rendering build && tsx src/pipeline.smoke.ts",
-    "smoke:pipeline:claude": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/motion build && pnpm --filter @tinker/rendering build && tsx src/pipeline.claudeBackend.smoke.ts"
+    "smoke:pipeline:claude": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/motion build && pnpm --filter @tinker/rendering build && tsx src/pipeline.claudeBackend.smoke.ts",
+    "smoke:understanding:claude": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/motion build && pnpm --filter @tinker/rendering build && tsx src/understanding.smoke.ts"
   },
   "dependencies": {
     "@tinker/browser-capture": "workspace:*",
