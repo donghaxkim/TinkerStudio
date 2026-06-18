@@ -121,7 +121,7 @@ for (const cap of understanding.capabilities) for (const r of cap.evidenceRefs) 
 for (const flow of understanding.demoableFlows) {
   assert.ok(poolIds.has(flow.evidenceRefs[0]), "flow cites a real evidence id");
   assert.ok(typeof flow.rank === "number");
-  assert.ok(flow.proves.length >= 0 && flow.viewerTakeaway.length >= 0);
+  assert.ok(typeof flow.proves === "string" && typeof flow.viewerTakeaway === "string");
 }
 // value narrative is populated from the strongest grounding available
 assert.ok(understanding.valueNarrative.problem.length > 0 || understanding.warnings.length > 0);

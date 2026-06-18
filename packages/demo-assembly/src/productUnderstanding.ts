@@ -43,7 +43,7 @@ export const ProductCapabilitySchema = z
 export const DemoableFlowSchema = z
   .object({
     id: nonEmpty,
-    rank: z.number().int().nonnegative(),
+    rank: z.number().int().min(1),
     rankReason: z.string(),
     name: nonEmpty,
     whyItMatters: z.string(),
@@ -209,7 +209,6 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
     whyItMatters: string,
     flowEvidenceRefs: string[],
     confidence: DemoableFlow["confidence"],
-    promptMatched: boolean,
   ): void {
     const trimmed = flowName.trim();
     if (!trimmed || flows.some((existing) => existing.name.toLowerCase() === trimmed.toLowerCase())) {
@@ -217,7 +216,7 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
     }
     flowCounter += 1;
     const requiredInputs = flowLikelyNeedsInput(trimmed) ? websiteInputs.slice(0, 2) : [];
-    const rankReason = `Confidence ${confidence}; ${promptMatched ? "matches prompt" : "grounded in analysis"}`;
+    const rankReason = `Confidence ${confidence}; grounded in analysis.`;
     flows.push({
       id: `flow-${flowCounter}`,
       rank: flowCounter, // will be re-assigned after sorting
@@ -248,7 +247,7 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
       );
       if (websiteRef) refs.push(websiteRef);
     }
-    addFlow(idea, "Surfaced as a demo-worthy flow in the repository analysis.", refs, confidence, false);
+    addFlow(idea, "Surfaced as a demo-worthy flow in the repository analysis.", refs, confidence);
   }
 
   if (flows.length === 0) {
@@ -264,7 +263,6 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
       "Fallback flow: no explicit demo flow was found, so guide the viewer through the visible product surface.",
       fallbackRef ? [fallbackRef] : [],
       hasVisibleAffordances ? "medium" : "low",
-      false,
     );
     warnings.push("No explicit demoable flow was found in the analysis; using a fallback walkthrough flow.");
   }
