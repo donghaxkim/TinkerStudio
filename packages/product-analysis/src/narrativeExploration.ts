@@ -1,4 +1,3 @@
-import { Stagehand } from "@browserbasehq/stagehand";
 import { z } from "zod";
 import type {
   ExploreNarrativeWebsiteOptions,
@@ -181,7 +180,9 @@ function hasDefaultStagehandCredentials() {
   return Boolean(process.env.BROWSERBASE_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY);
 }
 
-function createDefaultStagehand(): NarrativeStagehandClient {
+async function createDefaultStagehand(): Promise<NarrativeStagehandClient> {
+  const { Stagehand } = await import("@browserbasehq/stagehand");
+
   return new Stagehand({
     env: process.env.BROWSERBASE_API_KEY ? "BROWSERBASE" : "LOCAL",
     apiKey: process.env.BROWSERBASE_API_KEY,
@@ -242,8 +243,7 @@ function buildExplorationPrompt(productUrl: string, options: ExploreNarrativeWeb
 }
 
 async function runStagehandExploration(productUrl: string, options: ExploreNarrativeWebsiteOptions) {
-  const createStagehand = options.createStagehand ?? createDefaultStagehand;
-  const stagehand = createStagehand();
+  const stagehand = options.createStagehand === undefined ? await createDefaultStagehand() : options.createStagehand();
 
   try {
     await stagehand.init();
