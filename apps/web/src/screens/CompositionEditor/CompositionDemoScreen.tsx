@@ -276,7 +276,6 @@ export function CompositionDemoScreen({
   const [importError, setImportError] = useState<string | undefined>(undefined);
   const [repoDraft, setRepoDraft] = useState("");
   const [productDraft, setProductDraft] = useState("");
-  const [promptDraft, setPromptDraft] = useState("");
   const [directError, setDirectError] = useState<string | undefined>(undefined);
   const [planningMessage, setPlanningMessage] = useState("");
   const [repoShake, setRepoShake] = useState(false);
@@ -393,11 +392,10 @@ export function CompositionDemoScreen({
       productUrl,
       durationCapSeconds: 45,
       aspectRatio: "16:9",
-      ...(promptDraft.trim() === "" ? {} : { prompt: promptDraft.trim() }),
       renderer: "playwright",
     } as const;
     void job.start(request);
-  }, [job, productDraft, promptDraft, repoDraft, requireRepo]);
+  }, [job, productDraft, repoDraft, requireRepo]);
 
   const startImport = useCallback(
     (collected: Array<{ relativePath: string; file: File }>) => {
@@ -852,24 +850,6 @@ export function CompositionDemoScreen({
                         startDirectGeneration();
                       }
                     }}
-                  />
-                </div>
-              </div>
-
-              <div className="tk-cd-field" style={{ alignItems: "flex-start" }}>
-                <span className="tk-cd-field-icon" aria-hidden="true" style={{ marginTop: 8 }}>
-                  <LuSparkles size={16} style={{ color: "var(--tk-text-sec)" }} />
-                </span>
-                <div className="tk-cd-input-wrap">
-                  <textarea
-                    className="tk-cd-input"
-                    aria-label="Demo prompt"
-                    placeholder="What should the demo show? (optional)"
-                    rows={2}
-                    spellCheck={false}
-                    value={promptDraft}
-                    onChange={(event) => setPromptDraft(event.currentTarget.value)}
-                    style={{ resize: "vertical", minHeight: 40, fontFamily: "inherit" }}
                   />
                 </div>
               </div>
