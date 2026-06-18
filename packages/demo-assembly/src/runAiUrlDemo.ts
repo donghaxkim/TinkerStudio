@@ -30,8 +30,11 @@ import {
 } from "./aiPlanning.js";
 import { deriveProductUnderstanding, type UnderstandProduct } from "./productUnderstanding.js";
 import { deriveDemoStrategy, type Storyboard, type Strategize } from "./demoStrategy.js";
-import { createClaudeUnderstandingAgent } from "./understandingAgent.js";
-import { createClaudeStrategyAgent } from "./demoStrategyAgent.js";
+import { createClaudeUnderstandingAgent, UNDERSTANDING_FALLBACK_WARNINGS } from "./understandingAgent.js";
+import { createClaudeStrategyAgent, STRATEGY_FALLBACK_WARNING } from "./demoStrategyAgent.js";
+import { buildCoreCoverage } from "./coreCoverage.js";
+import type { CaptureLineage } from "./captureLineage.js";
+import type { RunExecution } from "./runSummary.js";
 import { beatIndexForPosition, buildCaptureLineage } from "./captureLineage.js";
 import { buildEditDecisionList } from "./editDecisionList.js";
 import { buildDirectorPlan } from "./directorPlan.js";
@@ -148,6 +151,11 @@ export type RunAiUrlDemoResult = {
 type InternalRendererResult = Omit<RunAiUrlDemoResult, "renderer" | "pipeline"> & {
   finalVideoProduced?: boolean;
   finalVideoPath?: string;
+  finalVideoMode?: "rendered" | "transcoded" | "none";
+  finalVideoSource?: "demo-project" | "raw-playwright-recording" | "none";
+  editDecisionListApplied?: boolean;
+  coverageActionTrace?: ActionTrace;
+  coverageCaptureLineage?: CaptureLineage;
 };
 
 function toPrettyJson(value: unknown) {
@@ -686,6 +694,9 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       renderPlan.fps,
     );
     const finalVideoProduced = finalVideoMode !== "none";
+    const finalVideoSource =
+      finalVideoMode === "rendered" ? "demo-project" : finalVideoMode === "transcoded" ? "raw-playwright-recording" : "none";
+    const editDecisionListApplied = editDecisionList.cuts.length > 0;
 
     const artifactPaths = [
       productAnalysisPath,
@@ -722,6 +733,11 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       },
       finalVideoProduced,
       ...(finalVideoProduced ? { finalVideoPath } : {}),
+      finalVideoMode,
+      finalVideoSource,
+      editDecisionListApplied,
+      coverageActionTrace: actionTrace,
+      coverageCaptureLineage: captureLineage,
     };
   }
 
@@ -748,6 +764,11 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
         },
         finalVideoProduced: playwrightResult.finalVideoProduced ?? false,
         ...(playwrightResult.finalVideoPath ? { finalVideoPath: playwrightResult.finalVideoPath } : {}),
+        finalVideoMode: playwrightResult.finalVideoMode,
+        finalVideoSource: playwrightResult.finalVideoSource,
+        editDecisionListApplied: playwrightResult.editDecisionListApplied,
+        coverageActionTrace: playwrightResult.coverageActionTrace,
+        coverageCaptureLineage: playwrightResult.coverageCaptureLineage,
       };
     }
 
@@ -755,6 +776,33 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     const finalVideoProduced = internal.finalVideoProduced ?? false;
     const runSummaryPath = join(input.outputRoot, "run-summary.json");
     const artifactPaths = mergeArtifactPaths(pipelineArtifactPaths, internal.artifactPaths, [runSummaryPath]);
+
+    const fellBack = (warnings: string[], markers: readonly string[]) => warnings.some((w) => markers.includes(w));
+    const phaseMode = (warnings: string[], markers: readonly string[]) =>
+      !agentBackendEnabled() ? "deterministic" : fellBack(warnings, markers) ? "deterministic-fallback" : "claude-code";
+
+    const coverage = buildCoreCoverage({
+      strategy,
+      storyboard: strategyStoryboard,
+      ...(internal.coverageActionTrace ? { actionTrace: internal.coverageActionTrace } : {}),
+      ...(internal.coverageCaptureLineage ? { captureLineage: internal.coverageCaptureLineage } : {}),
+      finalVideoProduced,
+    });
+
+    const execution: RunExecution = {
+      understandingMode: phaseMode(understanding.warnings, UNDERSTANDING_FALLBACK_WARNINGS),
+      strategyMode: phaseMode(strategy.warnings, [STRATEGY_FALLBACK_WARNING]),
+      playwrightPlannerMode: agentBackendEnabled() ? "claude-code" : "opencode",
+      finalVideoMode: internal.finalVideoMode ?? "none",
+      finalVideoSource: internal.finalVideoSource ?? "none",
+      directorPlanApplied: "none",
+      renderPlanApplied: "none",
+      editDecisionListApplied: internal.editDecisionListApplied ?? false,
+      finalVideoReflectsEditDecisionList: (internal.editDecisionListApplied ?? false) && internal.finalVideoMode === "rendered",
+      cameraSource: "demo-project.zooms (compileProject suggestInteractionZooms); render-plan.json is metadata only",
+      notes: ["director-plan.json and render-plan.json are metadata only in this build; not applied to final.mp4."],
+    };
+
     const runSummary = buildRunSummary({
       renderer,
       outputRoot: input.outputRoot,
@@ -762,7 +810,9 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       artifactPaths,
       captureSucceeded: true,
       finalVideoProduced,
-      warnings: pipelineWarnings,
+      warnings: dedupeStrings([...pipelineWarnings, ...coverage.warnings]),
+      execution,
+      coreCoverage: coverage.items,
     });
     await writeFile(runSummaryPath, toPrettyJson(runSummary));
 

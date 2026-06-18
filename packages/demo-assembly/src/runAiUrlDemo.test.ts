@@ -884,6 +884,18 @@ const runSummaryJson = JSON.parse(await readFile(join(outputRoot, "run-summary.j
 assert.equal(runSummaryJson.version, 1);
 assert.equal(runSummaryJson.storyboardCoverage.length, storyboardJson.beats.length);
 
+assert.ok(runSummaryJson.execution, "run-summary has an execution block");
+// backend is OFF in tests (no TINKER_AGENT_BACKEND) → deterministic modes.
+assert.equal(runSummaryJson.execution.understandingMode, "deterministic");
+assert.equal(runSummaryJson.execution.strategyMode, "deterministic");
+// director/render plans are NOT applied in this build.
+assert.equal(runSummaryJson.execution.directorPlanApplied, "none");
+assert.equal(runSummaryJson.execution.renderPlanApplied, "none");
+assert.ok(runSummaryJson.execution.cameraSource.length > 0);
+// coreCoverage exists with the stricter selected-flow item.
+assert.ok(Array.isArray(runSummaryJson.coreCoverage) && runSummaryJson.coreCoverage.length >= 1);
+assert.ok(runSummaryJson.coreCoverage.some((i: { sourceType: string; required: boolean }) => i.sourceType === "selected-flow" && i.required === true));
+
 // Both storyboards (strategic root + playwright capture) and the run summary exist on disk
 // AND are listed in run-summary.generatedArtifacts (clear, non-ambiguous artifact map).
 assert.ok(existsSync(join(outputRoot, "storyboard.json")), "root strategic storyboard.json must exist");
