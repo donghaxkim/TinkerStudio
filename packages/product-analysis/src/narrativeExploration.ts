@@ -177,7 +177,10 @@ function isExplorationEnabled(options: ExploreNarrativeWebsiteOptions) {
 }
 
 function hasDefaultStagehandCredentials() {
-  return Boolean(process.env.BROWSERBASE_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY);
+  const modelName = process.env.TINKER_NARRATIVE_EXPLORATION_MODEL ?? "openai/gpt-5";
+  return Boolean(
+    process.env.BROWSERBASE_API_KEY || (modelName.startsWith("anthropic/") ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY),
+  );
 }
 
 async function createDefaultStagehand(): Promise<NarrativeStagehandClient> {
@@ -198,22 +201,6 @@ function getStagehandPage(stagehand: NarrativeStagehandClient) {
   }
 
   return page;
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`Narrative exploration timed out after ${timeoutMs}ms`)), timeoutMs);
-    promise.then(
-      (value) => {
-        clearTimeout(timeout);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      },
-    );
-  });
 }
 
 function buildExplorationPrompt(productUrl: string, options: ExploreNarrativeWebsiteOptions, observedActions: unknown) {
@@ -244,27 +231,47 @@ function buildExplorationPrompt(productUrl: string, options: ExploreNarrativeWeb
 
 async function runStagehandExploration(productUrl: string, options: ExploreNarrativeWebsiteOptions) {
   const stagehand = options.createStagehand === undefined ? await createDefaultStagehand() : options.createStagehand();
+  const timeoutMs = options.timeoutMs ?? DEFAULT_EXPLORATION_TIMEOUT_MS;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
 
   try {
-    await stagehand.init();
-    const page: NarrativeStagehandPage = getStagehandPage(stagehand);
-    await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: options.timeoutMs ?? DEFAULT_EXPLORATION_TIMEOUT_MS });
-    const observedActions = await page.observe({
-      instruction:
-        "Find safe same-origin navigation choices, visible workflow entry points, product proof areas, and CTA elements. Do not submit forms or interact with private, payment, auth, destructive, download, extension, or external-navigation flows.",
-      drawOverlay: false,
-      iframes: false,
-    });
-    const extracted = await page.extract<NarrativeExploration>({
-      instruction: buildExplorationPrompt(productUrl, options, observedActions),
-      schema: narrativeExplorationSchema,
-      domSettleTimeoutMs: DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS,
-      iframes: false,
-    });
+    return await Promise.race([
+      (async () => {
+        await stagehand.init();
+        const page: NarrativeStagehandPage = getStagehandPage(stagehand);
+        await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+        const observedActions = await page.observe({
+          instruction:
+            "Find safe same-origin navigation choices, visible workflow entry points, product proof areas, and CTA elements. Do not submit forms or interact with private, payment, auth, destructive, download, extension, or external-navigation flows.",
+          drawOverlay: false,
+          iframes: false,
+        });
+        const extracted = await page.extract<NarrativeExploration>({
+          instruction: buildExplorationPrompt(productUrl, options, observedActions),
+          schema: narrativeExplorationSchema,
+          domSettleTimeoutMs: DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS,
+          iframes: false,
+        });
 
-    return parseNarrativeExploration(extracted, productUrl);
+        return parseNarrativeExploration(extracted, productUrl);
+      })(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          timedOut = true;
+          void stagehand.close().catch(() => undefined);
+          reject(new Error(`Narrative exploration timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
   } finally {
-    await stagehand.close();
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+
+    if (!timedOut) {
+      await stagehand.close();
+    }
   }
 }
 
@@ -280,5 +287,5 @@ export async function exploreNarrativeWebsite(
     return undefined;
   }
 
-  return withTimeout(runStagehandExploration(productUrl, options), options.timeoutMs ?? DEFAULT_EXPLORATION_TIMEOUT_MS);
+  return runStagehandExploration(productUrl, options);
 }

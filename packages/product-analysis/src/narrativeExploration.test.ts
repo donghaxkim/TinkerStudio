@@ -168,3 +168,35 @@ assert.equal(invalidCalls.at(-1), "close");
 
 const noFactoryOptions: ExploreNarrativeWebsiteOptions = { enabled: false };
 assert.equal(await exploreNarrativeWebsite(productUrl, noFactoryOptions), undefined);
+
+const timeoutCalls: string[] = [];
+await assert.rejects(
+  () =>
+    exploreNarrativeWebsite(productUrl, {
+      enabled: true,
+      timeoutMs: 1,
+      createStagehand: () => ({
+        async init() {
+          timeoutCalls.push("init");
+        },
+        async close() {
+          timeoutCalls.push("close");
+        },
+        page: {
+          async goto(url) {
+            timeoutCalls.push(`goto:${url}`);
+          },
+          async observe() {
+            timeoutCalls.push("observe");
+            return new Promise<never>(() => {});
+          },
+          async extract<T>() {
+            timeoutCalls.push("extract");
+            return validExploration as T;
+          },
+        },
+      }),
+    }),
+  /Narrative exploration timed out after 1ms/,
+);
+assert.equal(timeoutCalls.at(-1), "close");
