@@ -10,9 +10,12 @@ import {
 import {
   analyzeRepo as defaultAnalyzeRepo,
   analyzeWebsite as defaultAnalyzeWebsite,
+  exploreNarrativeWebsite as defaultExploreNarrativeWebsite,
   parseRepoAnalysis,
   type AnalyzeRepoOptions,
   type AnalyzeWebsiteOptions,
+  type ExploreNarrativeWebsiteOptions,
+  type NarrativeExploration,
   type ProductAnalysis,
   type RepoAnalysis,
 } from "@tinker/product-analysis";
@@ -37,6 +40,10 @@ const PRODUCT_ANALYSIS_SCREENSHOT_FILE_NAME = "product-analysis.png";
 
 type AnalyzeWebsiteDependency = (url: string, options: AnalyzeWebsiteOptions) => Promise<ProductAnalysis>;
 type AnalyzeRepoDependency = (repoUrl: string, options: AnalyzeRepoOptions) => Promise<RepoAnalysis>;
+type ExploreNarrativeWebsiteDependency = (
+  productUrl: string,
+  options: ExploreNarrativeWebsiteOptions,
+) => Promise<NarrativeExploration | undefined>;
 type RunCaptureDependency = (
   plan: CapturePlan,
   options: { outputDir: string; headless?: boolean },
@@ -75,6 +82,9 @@ export type RunAiUrlDemoInput = {
   onPhase?: (phase: AiUrlDemoPhase) => void;
   analyzeWebsite?: AnalyzeWebsiteDependency;
   analyzeRepo?: AnalyzeRepoDependency;
+  enableNarrativeExploration?: boolean;
+  exploreNarrativeWebsite?: ExploreNarrativeWebsiteDependency;
+  onWarning?: (message: string) => void;
   planner?: AiUrlPlanner;
   runCapture?: RunCaptureDependency;
   generateHyperframes?: GenerateHyperframesProjectDependency;
@@ -128,6 +138,10 @@ async function cleanupRepoScratch(repoScratchDir: string | undefined, priorError
 
 function formatErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isNarrativeExplorationEnabled(value: boolean | undefined) {
+  return value ?? process.env.TINKER_NARRATIVE_EXPLORATION === "1";
 }
 
 function classifyHyperframesRunFailure(error: unknown) {
@@ -208,6 +222,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const captureOutputDir = join(playwrightOutputRoot, "capture");
   const analyzeWebsite = input.analyzeWebsite ?? defaultAnalyzeWebsite;
   const analyzeRepo = input.analyzeRepo ?? defaultAnalyzeRepo;
+  const exploreNarrativeWebsite = input.exploreNarrativeWebsite ?? defaultExploreNarrativeWebsite;
   const planner = input.planner ?? createOpencodeAiUrlPlanner();
   const runCapture = input.runCapture ?? runPlaywrightCapture;
   const generateHyperframes = input.generateHyperframes ?? createOpencodeHyperframesGenerator();
@@ -243,6 +258,27 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     } catch (error) {
       await cleanupRepoScratch(repoScratchDir, error);
       throw error;
+    }
+  }
+
+  let narrativeExploration: NarrativeExploration | undefined;
+  let narrativeExplorationPath: string | undefined;
+
+  if (isNarrativeExplorationEnabled(input.enableNarrativeExploration)) {
+    try {
+      narrativeExploration = await exploreNarrativeWebsite(analysis.url, {
+        enabled: true,
+        prompt: input.prompt,
+        productAnalysis: analysis,
+        repoAnalysis,
+      });
+
+      if (narrativeExploration !== undefined) {
+        narrativeExplorationPath = join(input.outputRoot, "narrative-exploration.json");
+        await writeFile(narrativeExplorationPath, toPrettyJson(narrativeExploration));
+      }
+    } catch (error) {
+      input.onWarning?.(`Narrative exploration failed: ${formatErrorMessage(error)}`);
     }
   }
 
@@ -322,6 +358,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     const artifactPaths = [
       productAnalysisPath,
       ...(repoAnalysisPath ? [repoAnalysisPath] : []),
+      ...(narrativeExplorationPath ? [narrativeExplorationPath] : []),
       ...(analysis.screenshotPath ? [analysis.screenshotPath] : []),
       validated.indexPath,
       validated.assetManifestPath,
@@ -363,6 +400,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       aspectRatio: input.aspectRatio,
       analysis,
       ...(repoAnalysis === undefined ? {} : { repoAnalysis, repoCheckoutDirectory }),
+      ...(narrativeExploration === undefined ? {} : { narrativeExploration }),
     });
 
     const { storyboard, capturePlan } = plannerResult!;
@@ -400,6 +438,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     const artifactPaths = [
       productAnalysisPath,
       ...(repoAnalysisPath ? [repoAnalysisPath] : []),
+      ...(narrativeExplorationPath ? [narrativeExplorationPath] : []),
       ...(analysis.screenshotPath ? [analysis.screenshotPath] : []),
       storyboardPath,
       capturePlanPath,
