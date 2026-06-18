@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   parseNarrativeExploration,
+  resolveNarrativeStagehandModel,
   type NarrativeExploration as ExportedNarrativeExploration,
 } from "./index.js";
 
@@ -200,3 +201,85 @@ await assert.rejects(
   /Narrative exploration timed out after 1ms/,
 );
 assert.equal(timeoutCalls.at(-1), "close");
+
+assert.deepEqual(
+  resolveNarrativeStagehandModel({
+    TINKER_NARRATIVE_EXPLORATION_MODEL: "openai/gpt-5",
+    TINKER_AI_URL_PLANNER_ENDPOINT: "http://127.0.0.1:8317/v1/chat/completions",
+    TINKER_AI_URL_PLANNER_API_KEY: "cliproxy-key",
+    OPENAI_API_KEY: "public-openai-key",
+    OPENAI_BASE_URL: "https://api.openai.com/v1",
+  }),
+  {
+    modelName: "openai/gpt-5",
+    apiKey: "cliproxy-key",
+    baseURL: "http://127.0.0.1:8317/v1",
+  },
+);
+
+assert.deepEqual(
+  resolveNarrativeStagehandModel({
+    TINKER_NARRATIVE_EXPLORATION_MODEL: "openai/gpt-5",
+    TINKER_AI_URL_PLANNER_ENDPOINT: "http://127.0.0.1:8317/v1/chat/completions",
+    OPENAI_API_KEY: "public-openai-key",
+  }),
+  {
+    modelName: "openai/gpt-5",
+    apiKey: "public-openai-key",
+  },
+);
+
+assert.deepEqual(
+  resolveNarrativeStagehandModel({
+    TINKER_NARRATIVE_EXPLORATION_MODEL: "openai/gpt-5",
+    TINKER_AI_URL_PLANNER_API_KEY: "planner-key",
+  }),
+  {
+    modelName: "openai/gpt-5",
+  },
+);
+
+const credentialEnvKeys = [
+  "BROWSERBASE_API_KEY",
+  "TINKER_NARRATIVE_EXPLORATION_API_KEY",
+  "TINKER_NARRATIVE_EXPLORATION_BASE_URL",
+  "TINKER_NARRATIVE_EXPLORATION_MODEL",
+  "TINKER_AI_URL_PLANNER_API_KEY",
+  "TINKER_AI_URL_PLANNER_ENDPOINT",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "ANTHROPIC_API_KEY",
+] as const;
+const savedCredentialEnv = Object.fromEntries(credentialEnvKeys.map((key) => [key, process.env[key]]));
+try {
+  for (const key of credentialEnvKeys) {
+    delete process.env[key];
+  }
+  process.env.TINKER_AI_URL_PLANNER_API_KEY = "planner-key";
+
+  assert.equal(await exploreNarrativeWebsite(productUrl, { enabled: true }), undefined);
+} finally {
+  for (const key of credentialEnvKeys) {
+    const value = savedCredentialEnv[key];
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
+assert.deepEqual(
+  resolveNarrativeStagehandModel({
+    TINKER_NARRATIVE_EXPLORATION_MODEL: "openai/gpt-5",
+    TINKER_NARRATIVE_EXPLORATION_BASE_URL: "http://127.0.0.1:8317/v1",
+    TINKER_NARRATIVE_EXPLORATION_API_KEY: "narrative-key",
+    TINKER_AI_URL_PLANNER_ENDPOINT: "http://planner.example/v1/chat/completions",
+    TINKER_AI_URL_PLANNER_API_KEY: "planner-key",
+  }),
+  {
+    modelName: "openai/gpt-5",
+    apiKey: "narrative-key",
+    baseURL: "http://127.0.0.1:8317/v1",
+  },
+);

@@ -151,6 +151,12 @@ export function parseNarrativeExploration(value: unknown, productUrl: string): N
 const DEFAULT_EXPLORATION_TIMEOUT_MS = 45_000;
 const DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS = 5_000;
 
+type NarrativeStagehandModel = {
+  modelName: string;
+  apiKey?: string;
+  baseURL?: string;
+};
+
 const narrativeExplorationSchema = z.object({
   productSummary: z.string().describe("One sentence summary of what the product does."),
   bestDemoAngle: z.string().describe("The strongest short product demo angle supported by visible evidence."),
@@ -176,11 +182,60 @@ function isExplorationEnabled(options: ExploreNarrativeWebsiteOptions) {
   return options.enabled ?? process.env.TINKER_NARRATIVE_EXPLORATION === "1";
 }
 
+function trimTrailingSlash(value: string) {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function deriveOpenAiBaseUrl(endpoint: string | undefined) {
+  if (endpoint === undefined || endpoint.trim().length === 0) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(endpoint);
+    if (url.pathname.endsWith("/chat/completions")) {
+      url.pathname = url.pathname.slice(0, -"/chat/completions".length) || "/";
+    }
+    url.search = "";
+    url.hash = "";
+    return trimTrailingSlash(url.toString());
+  } catch {
+    return undefined;
+  }
+}
+
+export function resolveNarrativeStagehandModel(env: NodeJS.ProcessEnv = process.env): NarrativeStagehandModel {
+  const modelName = env.TINKER_NARRATIVE_EXPLORATION_MODEL ?? "openai/gpt-5";
+  const usesAnthropic = modelName.startsWith("anthropic/");
+  const usesOpenAiCompatible = !usesAnthropic;
+  const plannerBaseURL = usesOpenAiCompatible ? deriveOpenAiBaseUrl(env.TINKER_AI_URL_PLANNER_ENDPOINT) : undefined;
+  const hasPlannerPair = env.TINKER_AI_URL_PLANNER_API_KEY !== undefined && plannerBaseURL !== undefined;
+  let apiKey: string | undefined;
+  let baseURL: string | undefined;
+
+  if (usesAnthropic) {
+    apiKey = env.TINKER_NARRATIVE_EXPLORATION_API_KEY ?? env.ANTHROPIC_API_KEY;
+    baseURL = env.TINKER_NARRATIVE_EXPLORATION_BASE_URL;
+  } else if (env.TINKER_NARRATIVE_EXPLORATION_API_KEY !== undefined || env.TINKER_NARRATIVE_EXPLORATION_BASE_URL !== undefined) {
+    apiKey = env.TINKER_NARRATIVE_EXPLORATION_API_KEY ?? (hasPlannerPair ? env.TINKER_AI_URL_PLANNER_API_KEY : env.OPENAI_API_KEY);
+    baseURL = env.TINKER_NARRATIVE_EXPLORATION_BASE_URL ?? (hasPlannerPair ? plannerBaseURL : env.OPENAI_BASE_URL);
+  } else if (hasPlannerPair) {
+    apiKey = env.TINKER_AI_URL_PLANNER_API_KEY;
+    baseURL = plannerBaseURL;
+  } else {
+    apiKey = env.OPENAI_API_KEY;
+    baseURL = env.OPENAI_BASE_URL;
+  }
+
+  return {
+    modelName,
+    ...(apiKey === undefined ? {} : { apiKey }),
+    ...(baseURL === undefined ? {} : { baseURL }),
+  };
+}
+
 function hasDefaultStagehandCredentials() {
-  const modelName = process.env.TINKER_NARRATIVE_EXPLORATION_MODEL ?? "openai/gpt-5";
-  return Boolean(
-    process.env.BROWSERBASE_API_KEY || (modelName.startsWith("anthropic/") ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY),
-  );
+  return Boolean(process.env.BROWSERBASE_API_KEY || resolveNarrativeStagehandModel().apiKey);
 }
 
 async function createDefaultStagehand(): Promise<NarrativeStagehandClient> {
@@ -189,8 +244,8 @@ async function createDefaultStagehand(): Promise<NarrativeStagehandClient> {
   return new Stagehand({
     env: process.env.BROWSERBASE_API_KEY ? "BROWSERBASE" : "LOCAL",
     apiKey: process.env.BROWSERBASE_API_KEY,
-    modelName: process.env.TINKER_NARRATIVE_EXPLORATION_MODEL ?? "openai/gpt-5",
-    domSettleTimeoutMs: DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS,
+    model: resolveNarrativeStagehandModel(),
+    domSettleTimeout: DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS,
   } as ConstructorParameters<typeof Stagehand>[0]) as unknown as NarrativeStagehandClient;
 }
 
