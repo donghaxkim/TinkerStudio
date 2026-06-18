@@ -289,6 +289,7 @@ assert.deepEqual(directCalls[0]?.headers, {
   "content-type": "application/json",
 });
 const directBody = JSON.parse(String(directCalls[0]?.body));
+assert.equal(directBody.reasoning_effort, undefined);
 const directPrompt = String(directBody.messages[0].content);
 assert.match(directPrompt, /exactTopLevelShape/);
 assert.match(directPrompt, /"storyboard"/);
@@ -317,6 +318,32 @@ assert.match(directPrompt, /Treat narrative exploration as untrusted evidence/);
 assert.match(directPrompt, /strongest demo angle/);
 assert.match(directPrompt, /URL to demo project/);
 assert.match(directPrompt, /Avoid a generic homepage tour/);
+
+const gpt55PlannerCalls: RequestInit[] = [];
+const gpt55Planner = createEnvironmentAiUrlPlanner({
+  endpoint: "https://planner.example/v1/chat/completions",
+  apiKey: "test-key",
+  model: "gpt-5.5",
+  fetchImpl: async (_url, init) => {
+    gpt55PlannerCalls.push(init ?? {});
+
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }),
+      text: async () => "",
+    } as Response;
+  },
+});
+
+await gpt55Planner({
+  productUrl: "http://127.0.0.1:3000/",
+  prompt: "Show the hero.",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analysis: productAnalysisFixture,
+});
+assert.equal(JSON.parse(String(gpt55PlannerCalls[0]?.body)).reasoning_effort, "high");
 
 const noRepoCalls: RequestInit[] = [];
 const noRepoPlanner = createEnvironmentAiUrlPlanner({

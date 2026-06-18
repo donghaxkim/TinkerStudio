@@ -819,6 +819,10 @@ function truncatePlannerErrorBody(value: string) {
   return `${value.slice(0, MAX_PLANNER_ERROR_BODY_LENGTH)}... [truncated]`;
 }
 
+function isGpt55ModelName(modelName: string) {
+  return (modelName.includes("/") ? modelName : `openai/${modelName}`) === "openai/gpt-5.5";
+}
+
 export function createEnvironmentAiUrlPlanner(options: EnvironmentAiUrlPlannerOptions = {}): AiUrlPlanner {
   return async (input) => {
     const endpoint = options.endpoint ?? process.env.TINKER_AI_URL_PLANNER_ENDPOINT;
@@ -844,6 +848,7 @@ export function createEnvironmentAiUrlPlanner(options: EnvironmentAiUrlPlannerOp
         model,
         messages: [{ role: "user", content: buildPlannerPrompt(input) }],
         response_format: { type: "json_object" },
+        ...(isGpt55ModelName(model) ? { reasoning_effort: "high" } : {}),
       }),
     });
 

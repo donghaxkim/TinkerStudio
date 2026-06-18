@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   parseNarrativeExploration,
+  resolveNarrativeStagehandConfig,
   resolveNarrativeStagehandModel,
   type NarrativeExploration as ExportedNarrativeExploration,
 } from "./index.js";
@@ -91,12 +92,7 @@ assert.throws(
   /workflowCandidates.0.visibleEvidence.0 must be at most 180 characters/,
 );
 
-import type {
-  ExploreNarrativeWebsiteOptions,
-  NarrativeStagehandClient,
-  NarrativeStagehandExtractInput,
-  NarrativeStagehandObserveInput,
-} from "./index.js";
+import type { ExploreNarrativeWebsiteOptions, NarrativeStagehandClient } from "./index.js";
 import { exploreNarrativeWebsite } from "./index.js";
 
 function createFakeStagehandClient(extracted: unknown, calls: string[]): NarrativeStagehandClient {
@@ -108,19 +104,19 @@ function createFakeStagehandClient(extracted: unknown, calls: string[]): Narrati
       calls.push("close");
     },
     page: {
-      async goto(url) {
+      async goto(url: string) {
         calls.push(`goto:${url}`);
       },
-      async observe(input: NarrativeStagehandObserveInput) {
-        calls.push(`observe:${input.instruction.includes("safe same-origin")}`);
-        return [{ description: "Start demo button", selector: "button" }];
-      },
-      async extract<T>(input: NarrativeStagehandExtractInput<T>) {
-        calls.push(`extract:${input.instruction.includes("NarrativeExploration")}`);
-        return extracted as T;
-      },
     },
-  };
+    async observe(instruction: string) {
+      calls.push(`observe:${instruction.includes("safe same-origin")}`);
+      return [{ description: "Start demo button", selector: "button" }];
+    },
+    async extract<T>(instruction: string) {
+      calls.push(`extract:${instruction.includes("NarrativeExploration")}`);
+      return extracted as T;
+    },
+  } as unknown as NarrativeStagehandClient;
 }
 
 const disabledCalls: string[] = [];
@@ -156,6 +152,34 @@ assert.deepEqual(enabledCalls, [
   "close",
 ]);
 
+const overlongEvidenceCalls: string[] = [];
+const overlongEvidenceResult = await exploreNarrativeWebsite(productUrl, {
+  enabled: true,
+  createStagehand: () =>
+    createFakeStagehandClient(
+      {
+        ...validExploration,
+        workflowCandidates: [
+          {
+            ...validExploration.workflowCandidates[0],
+            visibleEvidence: Array.from({ length: 9 }, (_, index) => `Evidence ${index}`),
+          },
+        ],
+      },
+      overlongEvidenceCalls,
+    ),
+});
+assert.deepEqual(overlongEvidenceResult?.workflowCandidates[0]?.visibleEvidence, [
+  "Evidence 0",
+  "Evidence 1",
+  "Evidence 2",
+  "Evidence 3",
+  "Evidence 4",
+  "Evidence 5",
+  "Evidence 6",
+  "Evidence 7",
+]);
+
 const invalidCalls: string[] = [];
 await assert.rejects(
   () =>
@@ -184,19 +208,19 @@ await assert.rejects(
           timeoutCalls.push("close");
         },
         page: {
-          async goto(url) {
+          async goto(url: string) {
             timeoutCalls.push(`goto:${url}`);
           },
-          async observe() {
-            timeoutCalls.push("observe");
-            return new Promise<never>(() => {});
-          },
-          async extract<T>() {
-            timeoutCalls.push("extract");
-            return validExploration as T;
-          },
         },
-      }),
+        async observe() {
+          timeoutCalls.push("observe");
+          return new Promise<never>(() => {});
+        },
+        async extract<T>() {
+          timeoutCalls.push("extract");
+          return validExploration as T;
+        },
+      }) as unknown as NarrativeStagehandClient,
     }),
   /Narrative exploration timed out after 1ms/,
 );
@@ -216,6 +240,51 @@ assert.deepEqual(
     baseURL: "http://127.0.0.1:8317/v1",
   },
 );
+
+assert.deepEqual(
+  resolveNarrativeStagehandModel({
+    TINKER_AI_URL_PLANNER_MODEL: "gpt-5.5",
+    TINKER_AI_URL_PLANNER_ENDPOINT: "http://127.0.0.1:8317/v1/chat/completions",
+    TINKER_AI_URL_PLANNER_API_KEY: "planner-key",
+  }),
+  {
+    modelName: "openai/gpt-5.5",
+    apiKey: "planner-key",
+    baseURL: "http://127.0.0.1:8317/v1",
+    reasoningEffort: "high",
+  },
+);
+
+assert.deepEqual(
+  resolveNarrativeStagehandModel({
+    TINKER_NARRATIVE_EXPLORATION_MODEL: "gpt-5.5",
+    OPENAI_API_KEY: "public-openai-key",
+  }),
+  {
+    modelName: "openai/gpt-5.5",
+    apiKey: "public-openai-key",
+    reasoningEffort: "high",
+  },
+);
+
+const browserbaseConfig = resolveNarrativeStagehandConfig({
+  BROWSERBASE_API_KEY: "browserbase-key",
+  TINKER_AI_URL_PLANNER_MODEL: "gpt-5.5",
+  TINKER_AI_URL_PLANNER_ENDPOINT: "http://127.0.0.1:8317/v1/chat/completions",
+  TINKER_AI_URL_PLANNER_API_KEY: "planner-key",
+});
+assert.deepEqual(browserbaseConfig, {
+  env: "BROWSERBASE",
+  apiKey: "browserbase-key",
+  model: {
+    modelName: "openai/gpt-5.5",
+    apiKey: "planner-key",
+    baseURL: "http://127.0.0.1:8317/v1",
+    reasoningEffort: "high",
+  },
+  domSettleTimeout: 5_000,
+  disableAPI: true,
+});
 
 assert.deepEqual(
   resolveNarrativeStagehandModel({

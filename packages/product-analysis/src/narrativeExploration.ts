@@ -99,6 +99,36 @@ function parseVisibleEvidence(value: unknown, fieldName: string) {
   return value.map((entry, index) => requireString(entry, `${fieldName}.${index}`, 180));
 }
 
+function takeArrayEntries(value: unknown, maxEntries: number) {
+  return Array.isArray(value) ? value.slice(0, maxEntries) : value;
+}
+
+function boundStagehandNarrativeExtraction(value: unknown) {
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  return {
+    ...value,
+    workflowCandidates: Array.isArray(value.workflowCandidates)
+      ? value.workflowCandidates.slice(0, 6).map((candidate) => {
+          if (!isRecord(candidate)) {
+            return candidate;
+          }
+
+          return {
+            ...candidate,
+            routeHints: takeArrayEntries(candidate.routeHints, 8),
+            visibleEvidence: takeArrayEntries(candidate.visibleEvidence, 8),
+          };
+        })
+      : value.workflowCandidates,
+    strongestCopy: takeArrayEntries(value.strongestCopy, 10),
+    avoidNarratives: takeArrayEntries(value.avoidNarratives, 10),
+    explorationNotes: takeArrayEntries(value.explorationNotes, 10),
+  };
+}
+
 function parseStoryboardUse(value: unknown, fieldName: string): NarrativeWorkflowCandidate["storyboardUse"] {
   if (value === "hook" || value === "main-demo" || value === "proof" || value === "cta") {
     return value;
@@ -148,13 +178,22 @@ export function parseNarrativeExploration(value: unknown, productUrl: string): N
   };
 }
 
-const DEFAULT_EXPLORATION_TIMEOUT_MS = 45_000;
+const DEFAULT_EXPLORATION_TIMEOUT_MS = 90_000;
 const DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS = 5_000;
 
 type NarrativeStagehandModel = {
   modelName: string;
   apiKey?: string;
   baseURL?: string;
+  reasoningEffort?: string;
+};
+
+type NarrativeStagehandConfig = {
+  env: "BROWSERBASE" | "LOCAL";
+  apiKey?: string;
+  model: NarrativeStagehandModel;
+  domSettleTimeout: number;
+  disableAPI: true;
 };
 
 const narrativeExplorationSchema = z.object({
@@ -204,12 +243,32 @@ function deriveOpenAiBaseUrl(endpoint: string | undefined) {
   }
 }
 
+function normalizeOpenAiModelName(modelName: string | undefined) {
+  if (modelName === undefined || modelName.trim().length === 0) {
+    return undefined;
+  }
+
+  return modelName.includes("/") ? modelName : `openai/${modelName}`;
+}
+
+function isGpt55ModelName(modelName: string) {
+  return normalizeOpenAiModelName(modelName) === "openai/gpt-5.5";
+}
+
 export function resolveNarrativeStagehandModel(env: NodeJS.ProcessEnv = process.env): NarrativeStagehandModel {
-  const modelName = env.TINKER_NARRATIVE_EXPLORATION_MODEL ?? "openai/gpt-5";
+  const plannerBaseURL = deriveOpenAiBaseUrl(env.TINKER_AI_URL_PLANNER_ENDPOINT);
+  const hasPlannerPair = env.TINKER_AI_URL_PLANNER_API_KEY !== undefined && plannerBaseURL !== undefined;
+  const explicitNarrativeModel = env.TINKER_NARRATIVE_EXPLORATION_MODEL;
+  const modelName =
+    (explicitNarrativeModel !== undefined && isGpt55ModelName(explicitNarrativeModel)
+      ? normalizeOpenAiModelName(explicitNarrativeModel)
+      : explicitNarrativeModel) ??
+    (hasPlannerPair ? normalizeOpenAiModelName(env.TINKER_AI_URL_PLANNER_MODEL) : undefined) ??
+    "openai/gpt-5";
   const usesAnthropic = modelName.startsWith("anthropic/");
   const usesOpenAiCompatible = !usesAnthropic;
-  const plannerBaseURL = usesOpenAiCompatible ? deriveOpenAiBaseUrl(env.TINKER_AI_URL_PLANNER_ENDPOINT) : undefined;
-  const hasPlannerPair = env.TINKER_AI_URL_PLANNER_API_KEY !== undefined && plannerBaseURL !== undefined;
+  const openAiPlannerBaseURL = usesOpenAiCompatible ? plannerBaseURL : undefined;
+  const hasOpenAiPlannerPair = env.TINKER_AI_URL_PLANNER_API_KEY !== undefined && openAiPlannerBaseURL !== undefined;
   let apiKey: string | undefined;
   let baseURL: string | undefined;
 
@@ -217,11 +276,11 @@ export function resolveNarrativeStagehandModel(env: NodeJS.ProcessEnv = process.
     apiKey = env.TINKER_NARRATIVE_EXPLORATION_API_KEY ?? env.ANTHROPIC_API_KEY;
     baseURL = env.TINKER_NARRATIVE_EXPLORATION_BASE_URL;
   } else if (env.TINKER_NARRATIVE_EXPLORATION_API_KEY !== undefined || env.TINKER_NARRATIVE_EXPLORATION_BASE_URL !== undefined) {
-    apiKey = env.TINKER_NARRATIVE_EXPLORATION_API_KEY ?? (hasPlannerPair ? env.TINKER_AI_URL_PLANNER_API_KEY : env.OPENAI_API_KEY);
-    baseURL = env.TINKER_NARRATIVE_EXPLORATION_BASE_URL ?? (hasPlannerPair ? plannerBaseURL : env.OPENAI_BASE_URL);
-  } else if (hasPlannerPair) {
+    apiKey = env.TINKER_NARRATIVE_EXPLORATION_API_KEY ?? (hasOpenAiPlannerPair ? env.TINKER_AI_URL_PLANNER_API_KEY : env.OPENAI_API_KEY);
+    baseURL = env.TINKER_NARRATIVE_EXPLORATION_BASE_URL ?? (hasOpenAiPlannerPair ? openAiPlannerBaseURL : env.OPENAI_BASE_URL);
+  } else if (hasOpenAiPlannerPair) {
     apiKey = env.TINKER_AI_URL_PLANNER_API_KEY;
-    baseURL = plannerBaseURL;
+    baseURL = openAiPlannerBaseURL;
   } else {
     apiKey = env.OPENAI_API_KEY;
     baseURL = env.OPENAI_BASE_URL;
@@ -231,6 +290,17 @@ export function resolveNarrativeStagehandModel(env: NodeJS.ProcessEnv = process.
     modelName,
     ...(apiKey === undefined ? {} : { apiKey }),
     ...(baseURL === undefined ? {} : { baseURL }),
+    ...(isGpt55ModelName(modelName) ? { reasoningEffort: "high" } : {}),
+  };
+}
+
+export function resolveNarrativeStagehandConfig(env: NodeJS.ProcessEnv = process.env): NarrativeStagehandConfig {
+  return {
+    env: env.BROWSERBASE_API_KEY ? "BROWSERBASE" : "LOCAL",
+    ...(env.BROWSERBASE_API_KEY === undefined ? {} : { apiKey: env.BROWSERBASE_API_KEY }),
+    model: resolveNarrativeStagehandModel(env),
+    domSettleTimeout: DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS,
+    disableAPI: true,
   };
 }
 
@@ -241,12 +311,7 @@ function hasDefaultStagehandCredentials() {
 async function createDefaultStagehand(): Promise<NarrativeStagehandClient> {
   const { Stagehand } = await import("@browserbasehq/stagehand");
 
-  return new Stagehand({
-    env: process.env.BROWSERBASE_API_KEY ? "BROWSERBASE" : "LOCAL",
-    apiKey: process.env.BROWSERBASE_API_KEY,
-    model: resolveNarrativeStagehandModel(),
-    domSettleTimeout: DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS,
-  } as ConstructorParameters<typeof Stagehand>[0]) as unknown as NarrativeStagehandClient;
+  return new Stagehand(resolveNarrativeStagehandConfig() as ConstructorParameters<typeof Stagehand>[0]) as unknown as NarrativeStagehandClient;
 }
 
 function getStagehandPage(stagehand: NarrativeStagehandClient) {
@@ -296,20 +361,17 @@ async function runStagehandExploration(productUrl: string, options: ExploreNarra
         await stagehand.init();
         const page: NarrativeStagehandPage = getStagehandPage(stagehand);
         await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-        const observedActions = await page.observe({
-          instruction:
-            "Find safe same-origin navigation choices, visible workflow entry points, product proof areas, and CTA elements. Do not submit forms or interact with private, payment, auth, destructive, download, extension, or external-navigation flows.",
-          drawOverlay: false,
-          iframes: false,
-        });
-        const extracted = await page.extract<NarrativeExploration>({
-          instruction: buildExplorationPrompt(productUrl, options, observedActions),
-          schema: narrativeExplorationSchema,
-          domSettleTimeoutMs: DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS,
-          iframes: false,
-        });
+        const observedActions = await stagehand.observe(
+          "Find safe same-origin navigation choices, visible workflow entry points, product proof areas, and CTA elements. Do not submit forms or interact with private, payment, auth, destructive, download, extension, or external-navigation flows.",
+          { page, timeout: DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS },
+        );
+        const extracted = await stagehand.extract<NarrativeExploration>(
+          buildExplorationPrompt(productUrl, options, observedActions),
+          narrativeExplorationSchema,
+          { page, timeout: DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS },
+        );
 
-        return parseNarrativeExploration(extracted, productUrl);
+        return parseNarrativeExploration(boundStagehandNarrativeExtraction(extracted), productUrl);
       })(),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(() => {

@@ -98,8 +98,6 @@ export type NarrativeStagehandExtractInput<T> = {
 
 export type NarrativeStagehandPage = {
   goto: (url: string, options?: { waitUntil?: "domcontentloaded" | "load" | "networkidle"; timeout?: number }) => Promise<unknown>;
-  observe: (input: NarrativeStagehandObserveInput) => Promise<unknown>;
-  extract: <T>(input: NarrativeStagehandExtractInput<T>) => Promise<T>;
 };
 
 export type NarrativeStagehandClient = {
@@ -107,6 +105,12 @@ export type NarrativeStagehandClient = {
   close: () => Promise<void>;
   page?: NarrativeStagehandPage;
   context?: { pages: () => NarrativeStagehandPage[] };
+  observe: (instruction: string, options?: { page?: NarrativeStagehandPage; timeout?: number }) => Promise<unknown>;
+  extract: <T>(
+    instruction: string,
+    schema: unknown,
+    options?: { page?: NarrativeStagehandPage; timeout?: number },
+  ) => Promise<T>;
 };
 
 export type CreateNarrativeStagehand = () => NarrativeStagehandClient;
