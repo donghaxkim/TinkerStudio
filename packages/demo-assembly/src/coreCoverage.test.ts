@@ -68,4 +68,20 @@ assert.ok(noTrace.warnings.some((w) => /no capture-lineage|storyboard-only|no .*
 assert.ok(captured.warnings.some((w) => /heuristic/i.test(w)));
 assert.ok(captured.items[0].artifactRefs.some((r) => r.startsWith("storyboard.json#")));
 
+// (6) Strategy message with NO mapped storyboard beat → status "missing"; final.mp4 NOT cited.
+const storyboardAllMsg2: typeof storyboard = {
+  ...storyboard,
+  beats: storyboard.beats.map((b) => ({ ...b, strategyMessageId: "message-2" })),
+};
+const missingCoverage = buildCoreCoverage({
+  strategy,
+  storyboard: storyboardAllMsg2,
+  actionTrace: trace([{ id: "click-1", type: "click", beatId: storyboard.beats[0].id }]),
+  finalVideoProduced: true,
+});
+const missingItem = missingCoverage.items.find((i) => i.id === "core-message-1")!;
+assert.ok(missingItem, "core-message-1 item must exist");
+assert.equal(missingItem.status, "missing");
+assert.ok(!missingItem.artifactRefs.includes("playwright/final.mp4"), "missing item must NOT cite final.mp4");
+
 console.log("coreCoverage.test PASS");

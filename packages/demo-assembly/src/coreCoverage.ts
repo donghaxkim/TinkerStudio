@@ -54,11 +54,11 @@ export function buildCoreCoverage(input: BuildCoreCoverageInput): { items: CoreC
   );
   const hasMeaningful = (beatIds: string[]) => beatIds.some((id) => meaningfulBeatIds.has(id));
 
-  function refsFor(beatIds: string[], meaningful: boolean): string[] {
+  function refsFor(beatIds: string[], meaningful: boolean, includeFinalVideo: boolean): string[] {
     const refs = beatIds.map((id) => `storyboard.json#${id}`);
     if (meaningful && actionTrace) refs.push(...beatIds.filter((id) => meaningfulBeatIds.has(id)).map((id) => `playwright/action-trace.json#${id}`));
     if (meaningful && captureLineage) refs.push("playwright/capture-lineage.json");
-    if (finalVideoProduced) refs.push("playwright/final.mp4");
+    if (includeFinalVideo) refs.push("playwright/final.mp4");
     return refs;
   }
 
@@ -89,7 +89,7 @@ export function buildCoreCoverage(input: BuildCoreCoverageInput): { items: CoreC
       required: false,
       status,
       beatIds,
-      artifactRefs: refsFor(beatIds, status === "captured" && hasMeaningful(beatIds)),
+      artifactRefs: refsFor(beatIds, status === "captured" && hasMeaningful(beatIds), finalVideoProduced && status === "captured"),
       warnings: itemWarnings,
     });
   });
@@ -122,7 +122,7 @@ export function buildCoreCoverage(input: BuildCoreCoverageInput): { items: CoreC
     required: true,
     status: flowStatus,
     beatIds: flowBeatIds,
-    artifactRefs: refsFor(flowBeatIds, flowStatus === "captured"),
+    artifactRefs: refsFor(flowBeatIds, flowStatus === "captured", finalVideoProduced && flowStatus === "captured"),
     warnings: flowWarnings,
   });
 
