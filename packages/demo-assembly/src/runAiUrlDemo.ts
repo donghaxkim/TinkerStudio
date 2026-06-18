@@ -30,6 +30,8 @@ import {
 } from "./aiPlanning.js";
 import { deriveProductUnderstanding, type UnderstandProduct } from "./productUnderstanding.js";
 import { deriveDemoStrategy, type Storyboard, type Strategize } from "./demoStrategy.js";
+import { createClaudeUnderstandingAgent } from "./understandingAgent.js";
+import { createClaudeStrategyAgent } from "./demoStrategyAgent.js";
 import { beatIndexForPosition, buildCaptureLineage } from "./captureLineage.js";
 import { buildEditDecisionList } from "./editDecisionList.js";
 import { buildDirectorPlan } from "./directorPlan.js";
@@ -92,7 +94,7 @@ export type RunAiUrlDemoInput = {
   projectId: string;
   createdAt: string;
   productUrl: string;
-  prompt: string;
+  prompt?: string;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
   repoUrl?: string;
@@ -280,6 +282,16 @@ function mergeArtifactPaths(...artifactPathGroups: string[][]) {
 }
 
 /**
+ * Returns true when TINKER_AGENT_BACKEND is set to "claude-code" or "claude", enabling
+ * the real Claude-backed Understanding and Strategy agents instead of the deterministic
+ * fallbacks.
+ */
+function agentBackendEnabled(): boolean {
+  const b = (process.env.TINKER_AGENT_BACKEND ?? "").trim().toLowerCase();
+  return b === "claude-code" || b === "claude";
+}
+
+/**
  * Choose the agent backend for the Playwright planner. opencode by default; the local
  * Claude Code CLI when TINKER_AGENT_BACKEND=claude-code (so the full pipeline can run
  * without opencode installed). The planner contract is identical for both backends.
@@ -290,6 +302,20 @@ function selectDefaultAiUrlPlanner(): AiUrlPlanner {
     return createClaudeCodeAiUrlPlanner();
   }
   return createOpencodeAiUrlPlanner();
+}
+
+function selectDefaultUnderstandProduct(): UnderstandProduct {
+  if (agentBackendEnabled()) {
+    return createClaudeUnderstandingAgent();
+  }
+  return async (a) => deriveProductUnderstanding(a);
+}
+
+function selectDefaultStrategize(): Strategize {
+  if (agentBackendEnabled()) {
+    return createClaudeStrategyAgent();
+  }
+  return async (a) => deriveDemoStrategy(a);
 }
 
 function dedupeStrings(values: string[]) {
@@ -353,14 +379,15 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const captureOutputDir = join(playwrightOutputRoot, "capture");
   const analyzeWebsite = input.analyzeWebsite ?? defaultAnalyzeWebsite;
   const analyzeRepo = input.analyzeRepo ?? defaultAnalyzeRepo;
+  const prompt = input.prompt ?? "";
   const planner = input.planner ?? selectDefaultAiUrlPlanner();
   const runCapture = input.runCapture ?? runPlaywrightCapture;
   const generateHyperframes = input.generateHyperframes ?? createOpencodeHyperframesGenerator();
   const repairHyperframes = input.repairHyperframes ?? createOpencodeHyperframesRepairer();
   const runHyperframes = input.runHyperframes ?? runHyperframesRender;
   const maxHyperframesRepairAttempts = normalizeRepairAttempts(input.maxHyperframesRepairAttempts);
-  const understandProduct: UnderstandProduct = input.understandProduct ?? (async (args) => deriveProductUnderstanding(args));
-  const strategize: Strategize = input.strategize ?? (async (args) => deriveDemoStrategy(args));
+  const understandProduct: UnderstandProduct = input.understandProduct ?? selectDefaultUnderstandProduct();
+  const strategize: Strategize = input.strategize ?? selectDefaultStrategize();
 
   await rm(input.outputRoot, { recursive: true, force: true });
   await mkdir(input.outputRoot, { recursive: true });
@@ -371,7 +398,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     createdAt: input.createdAt,
     productUrl: input.productUrl,
     ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
-    prompt: input.prompt,
+    prompt: prompt,
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,
     renderer,
@@ -412,9 +439,10 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const understanding = await understandProduct({
     productUrl: input.productUrl,
     ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
-    prompt: input.prompt,
+    prompt,
     websiteAnalysis: analysis,
     ...(repoAnalysis === undefined ? {} : { repoAnalysis }),
+    ...(repoCheckoutDirectory === undefined ? {} : { repoCheckoutDirectory }),
   });
   const productUnderstandingPath = join(input.outputRoot, "product-understanding.json");
   await writeFile(productUnderstandingPath, toPrettyJson(understanding));
@@ -423,7 +451,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   input.onPhase?.("strategy");
   const { strategy, storyboard: strategyStoryboard } = await strategize({
     understanding,
-    prompt: input.prompt,
+    prompt: prompt,
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,
   });
@@ -448,7 +476,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     await generateHyperframes({
       productUrl: analysis.url,
       repoUrl: input.repoUrl,
-      prompt: input.prompt,
+      prompt: prompt,
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
       websiteAnalysis: hyperframesWebsiteAnalysis,
@@ -547,7 +575,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     input.onPhase?.("planning");
     const plannerResult: AiUrlPlannerResult = await planner({
       productUrl: analysis.url,
-      prompt: input.prompt,
+      prompt: prompt,
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
       analysis,
@@ -633,7 +661,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       createdAt: input.createdAt,
       productUrl: input.productUrl,
       ...(input.repoUrl === undefined ? {} : { sourceRepoUrl: input.repoUrl }),
-      prompt: input.prompt,
+      prompt: prompt,
     });
     const project = applyEditDecisionList(compiledProject, editDecisionList);
     const projectPath = join(playwrightOutputRoot, "demo-project.json");

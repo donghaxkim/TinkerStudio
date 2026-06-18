@@ -7,6 +7,7 @@ import type { CapturePlan, CaptureResult } from "@tinker/browser-capture";
 import { DemoProjectSchema } from "@tinker/project-schema";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { runAiUrlDemo, type AiUrlDemoPhase } from "./runAiUrlDemo.js";
+import { deriveProductUnderstanding } from "./productUnderstanding.js";
 
 const outputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-"));
 const playwrightOutputRoot = join(outputRoot, "playwright");
@@ -1047,5 +1048,47 @@ await assert.rejects(
 
 assert.equal(noRepoWebsiteAnalyzerCalled, false);
 assert.equal(noRepoPlannerCalled, false);
+
+// understandProduct receives repoCheckoutDirectory; prompt is optional (undefined is accepted).
+const repoCheckoutDirOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-repo-checkout-dir-"));
+let sawCheckout = false;
+await runAiUrlDemo({
+  outputRoot: repoCheckoutDirOutputRoot,
+  projectId: "ai-url-demo-repo-checkout-dir-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "hyperframes",
+  prompt: undefined,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  understandProduct: async (i) => {
+    sawCheckout = typeof i.repoCheckoutDirectory === "string";
+    return deriveProductUnderstanding(i);
+  },
+  generateHyperframes: async (input) => {
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+  },
+  runHyperframes: async (input) => {
+    await writeFile(input.outputVideoPath, "fake mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async () => {
+    throw new Error("repair should not run for repo-checkout-dir test");
+  },
+  runCapture: async () => {
+    throw new Error("runCapture should not run for repo-checkout-dir test");
+  },
+});
+assert.equal(sawCheckout, true, "understandProduct gets the repo checkout dir");
 
 console.log("run ai url demo tests passed");
