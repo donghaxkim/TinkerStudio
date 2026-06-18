@@ -62,6 +62,10 @@ assert.equal(strategy.selectedFlow.name, chosen.name);
 assert.ok(strategy.messageHierarchy.length >= 1, "message hierarchy must not be empty");
 assert.ok(strategy.successCriteria.some((criterion) => /45s/.test(criterion)), "duration criterion should be present");
 
+// strategy seeds its angle/messages from the value narrative when present
+assert.ok(strategy.messageHierarchy.length >= 1);
+assert.ok(strategy.selectedAngle.primaryProof.length > 0);
+
 // ---- Storyboard lineage: beats reference real strategy messages + capabilities ----
 assert.equal(storyboard.durationTargetSeconds, 45);
 assert.equal(storyboard.aspectRatio, "16:9");

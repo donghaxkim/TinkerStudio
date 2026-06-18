@@ -134,7 +134,7 @@ export function selectFlow(flows: readonly Flow[], prompt: string): Flow {
 
   flows.forEach((flow) => {
     const promptMatch = overlapCount(promptTokens, tokenize(flow.name)) > 0 ? 2 : 0;
-    const evidenceScore = 0.5 * Math.min(flow.evidence.length, 3);
+    const evidenceScore = 0.5 * Math.min(flow.evidenceRefs.length, 3);
     const score = CONFIDENCE_WEIGHT[flow.confidence] + promptMatch + evidenceScore;
     if (score > bestScore) {
       best = flow;
@@ -181,8 +181,8 @@ export function deriveDemoStrategy(input: DeriveDemoStrategyInput): DemoStrategy
   const { product } = understanding;
   const flow = selectFlow(understanding.demoableFlows, prompt);
 
-  const headline = firstNonEmpty(product.primaryValueProposition, product.oneLine, product.name);
-  const primaryProof = firstNonEmpty(flow.expectedOutcome, product.primaryValueProposition, product.oneLine);
+  const headline = firstNonEmpty(understanding.valueNarrative.viewerTakeaway, product.primaryValueProposition, product.oneLine, product.name);
+  const primaryProof = firstNonEmpty(flow.proves, flow.expectedOutcome, understanding.valueNarrative.whyItMatters);
   const ctaMessage = `Try ${product.name} for yourself.`;
 
   // ---- Message hierarchy (ordered, de-duplicated). Beats reference these by id. ----
@@ -193,6 +193,7 @@ export function deriveDemoStrategy(input: DeriveDemoStrategyInput): DemoStrategy
 
   const promptMatched = overlapCount(tokenize(prompt), tokenize(flow.name)) > 0;
   const targetAudience = firstNonEmpty(
+    understanding.valueNarrative.audience,
     product.targetUsers[0],
     product.category ? `${product.category} users evaluating ${product.name}` : undefined,
     `prospective ${product.name} users`,
@@ -267,7 +268,7 @@ export function deriveDemoStrategy(input: DeriveDemoStrategyInput): DemoStrategy
         type: "proof",
         goal: `Reveal the result: ${primaryProof}`,
         visual: "Generated result / success state",
-        narrative: primaryProof,
+        narrative: flow.viewerTakeaway || primaryProof,
         strategyMessageId: messageId(2),
         proofPointId,
         expectedUserAction: null,
