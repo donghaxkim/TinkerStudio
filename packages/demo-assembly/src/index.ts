@@ -3,6 +3,7 @@ export * from "./compileProject.js";
 export * from "./localGenerationJob.js";
 export * from "./aiPlanning.js";
 export * from "./claudeCodeAgent.js";
+export * from "./understandingAgent.js";
 export * from "./captureLineage.js";
 export * from "./editDecisionList.js";
 export * from "./applyEditDecisionList.js";
