@@ -12,10 +12,15 @@
 import type { Page } from "playwright";
 import type { Point } from "./cursorPath.js";
 
-/** A small black macOS-style arrow with a white outline so it reads on any background. */
+/**
+ * A clean macOS-style arrow with a white outline so it reads on any background.
+ * Symmetric arrowhead: left edge vertical, top-right edge a true 45°, tip at (1,1)
+ * so it lands on the pointer point (the 1px inset keeps the white stroke from clipping).
+ * The previous path was a hand-drawn, lopsided wedge that read as "crooked" when scaled.
+ */
 const CURSOR_SVG =
-  '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M3 2l13 6.2-5.3 1.4 3.1 6.6-2.5 1.2-3.1-6.6L4 14.5z" fill="#111" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>' +
+  '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M1 1 L1 17.8 L5.2 13.6 L8 20 L10.6 18.9 L7.8 12.6 L12.6 12.6 Z" fill="#111" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>' +
   "</svg>";
 
 /**
@@ -37,8 +42,8 @@ export const SMOOTH_LAYER_SOURCE = `
   const cursor = document.createElement('div');
   cursor.setAttribute('data-tinker-cursor', '');
   Object.assign(cursor.style, {
-    position: 'fixed', left: '0px', top: '0px', width: '22px', height: '22px', margin: '0', padding: '0',
-    zIndex: '2147483647', pointerEvents: 'none', transformOrigin: '2px 2px',
+    position: 'fixed', left: '0px', top: '0px', width: '24px', height: '24px', margin: '0', padding: '0',
+    zIndex: '2147483647', pointerEvents: 'none', transformOrigin: '1px 1px',
     transform: 'scale(1)', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.35))', willChange: 'left, top, transform',
   });
   cursor.innerHTML = ${JSON.stringify(CURSOR_SVG)};
