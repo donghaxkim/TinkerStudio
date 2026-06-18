@@ -478,6 +478,7 @@ function openCodeRole(parsed: Record<string, unknown>) {
 function isOpenCodeAssistantMessageEvent(parsed: Record<string, unknown>) {
   const eventType = normalizedStringValue(parsed.type);
   if (eventType === "assistant" || eventType === "assistant_message" || eventType === "assistant_delta") return true;
+  if (eventType === "text") return textFromOpenCodePayload(parsed) !== "";
   if (eventType !== undefined && eventType !== "message" && eventType !== "message_delta" && eventType !== "delta") return false;
   return openCodeRole(parsed) === "assistant";
 }

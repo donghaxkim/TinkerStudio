@@ -119,6 +119,24 @@ describe("parseOpenCodePlanningOutput", () => {
     expect(result).toEqual({ assistantMessage: "Nested session parsed.", agentResumeHandle: "opencode-session-nested" });
   });
 
+  it("extracts assistant text from OpenCode text part events", () => {
+    const result = parseOpenCodePlanningOutput(
+      [
+        JSON.stringify({ type: "step_start", sessionID: "opencode-session-text-part", part: { type: "step-start" } }),
+        JSON.stringify({
+          type: "text",
+          sessionID: "opencode-session-text-part",
+          part: { type: "text", text: "Drafted from the current OpenCode JSON stream." },
+        }),
+      ].join("\n"),
+    );
+
+    expect(result).toEqual({
+      assistantMessage: "Drafted from the current OpenCode JSON stream.",
+      agentResumeHandle: "opencode-session-text-part",
+    });
+  });
+
   it("throws when OpenCode output has no resume handle", () => {
     expect(() => parseOpenCodePlanningOutput(JSON.stringify({ content: "No session id." }))).toThrow(
       "OpenCode planning output did not include a session id",
