@@ -60,7 +60,13 @@ describe("useCompositionPlanningSession", () => {
     };
 
     const { result } = renderHook(() => useCompositionPlanningSession(client));
-    act(() => result.current.start({ repoUrl: "https://github.com/acme/driftboard", agent: "claude" }));
+    act(() =>
+      result.current.start({
+        repoUrl: "https://github.com/acme/driftboard",
+        productUrl: "https://driftboard.example.com",
+        agent: "claude",
+      }),
+    );
 
     expect(result.current.busy).toBe(true);
     const sentRequest = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
@@ -92,7 +98,11 @@ describe("useCompositionPlanningSession", () => {
 
     const { result } = renderHook(() => useCompositionPlanningSession(client));
     await act(async () => {
-      result.current.start({ repoUrl: "https://github.com/acme/driftboard", agent: "claude" });
+      result.current.start({
+        repoUrl: "https://github.com/acme/driftboard",
+        productUrl: "https://driftboard.example.com",
+        agent: "claude",
+      });
       await Promise.resolve();
     });
     expect(result.current.session?.status).toBe("ready");

@@ -791,6 +791,20 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByRole("button", { name: "Generate video" })).toBeDisabled();
   });
 
+  it("keeps the post-plan generation action outside the scrollable planning transcript", async () => {
+    const client = createLocalCompositionGenerationClient();
+    render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
+
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+
+    const transcript = await screen.findByRole("log", { name: "Planning transcript" });
+    const generateButton = await screen.findByRole("button", { name: "Generate video" });
+
+    expect(transcript).not.toContainElement(generateButton);
+  });
+
   it("shows an error when generation fails", async () => {
     const client = {
       createJob: async () => ({ id: "j" }),
