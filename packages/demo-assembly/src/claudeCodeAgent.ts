@@ -24,21 +24,46 @@ function parsePositiveInt(value: string | undefined): number | undefined {
 }
 
 /**
- * Run the Claude Code CLI non-interactively (`claude -p`) with no tools, feeding the
- * prompt over stdin (so arbitrarily large planner prompts are safe) and returning stdout.
- *
- * Honors `TINKER_CLAUDE_CODE_MODEL` (optional `--model`) and
- * `TINKER_CLAUDE_CODE_TIMEOUT_MS` (default 5 min). Inherits the process env so Claude Code
- * can find its existing credentials.
+ * Build the `claude` CLI argument list from the given options.
+ * Pure function — no side effects, fully testable without spawning.
  */
-export function runClaudeCodeAgent(prompt: string, options: { cwd: string }): Promise<string> {
-  const timeoutMs = parsePositiveInt(process.env.TINKER_CLAUDE_CODE_TIMEOUT_MS) ?? DEFAULT_TIMEOUT_MS;
-  const model = process.env.TINKER_CLAUDE_CODE_MODEL?.trim();
+export function buildClaudeArgs(options: {
+  allowedTools?: string;
+  mcpConfigPath?: string;
+  model?: string;
+}): string[] {
+  const args = ["-p", "--allowedTools", options.allowedTools ?? "", "--output-format", "text"];
+  if (options.mcpConfigPath) args.push("--mcp-config", options.mcpConfigPath);
+  if (options.model?.trim()) args.push("--model", options.model.trim());
+  return args;
+}
 
-  const args = ["-p", "--allowedTools", "", "--output-format", "text"];
-  if (model) {
-    args.push("--model", model);
-  }
+/**
+ * Run the Claude Code CLI non-interactively (`claude -p`), feeding the prompt over stdin
+ * and returning stdout. Supports optional tool list, MCP config, model override, and
+ * per-call timeout.
+ *
+ * Honors `TINKER_CLAUDE_CODE_MODEL` (optional `--model` fallback when `options.model` is
+ * absent) and `TINKER_CLAUDE_CODE_TIMEOUT_MS` (default 5 min). Inherits the process env
+ * so Claude Code can find its existing credentials.
+ */
+export function runClaudeAgent(
+  prompt: string,
+  options: {
+    cwd: string;
+    allowedTools?: string;
+    mcpConfigPath?: string;
+    model?: string;
+    timeoutMs?: number;
+  },
+): Promise<string> {
+  const timeoutMs =
+    options.timeoutMs ??
+    parsePositiveInt(process.env.TINKER_CLAUDE_CODE_TIMEOUT_MS) ??
+    DEFAULT_TIMEOUT_MS;
+  const model = options.model?.trim() ?? process.env.TINKER_CLAUDE_CODE_MODEL?.trim();
+
+  const args = buildClaudeArgs({ allowedTools: options.allowedTools, mcpConfigPath: options.mcpConfigPath, model });
 
   return new Promise<string>((resolve, reject) => {
     let stdout = "";
@@ -93,4 +118,12 @@ export function runClaudeCodeAgent(prompt: string, options: { cwd: string }): Pr
     child.stdin.write(prompt);
     child.stdin.end();
   });
+}
+
+/**
+ * Thin wrapper kept for backward-compatibility with the existing planner path.
+ * Runs with no tools (`--allowedTools ""`), which is the original behavior.
+ */
+export function runClaudeCodeAgent(prompt: string, options: { cwd: string }): Promise<string> {
+  return runClaudeAgent(prompt, { cwd: options.cwd, allowedTools: "" });
 }
