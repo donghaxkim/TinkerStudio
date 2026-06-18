@@ -77,7 +77,7 @@ export type Storyboard = z.infer<typeof StoryboardSchema>;
 
 export type DeriveDemoStrategyInput = {
   understanding: ProductUnderstanding;
-  prompt: string;
+  prompt?: string;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
 };
@@ -177,7 +177,7 @@ function withTiming(beats: TimedBeat[], durationTargetSeconds: number): Storyboa
 }
 
 export function deriveDemoStrategy(input: DeriveDemoStrategyInput): DemoStrategyResult {
-  const { understanding, prompt, durationCapSeconds, aspectRatio } = input;
+  const { understanding, prompt = "", durationCapSeconds, aspectRatio } = input;
   const { product } = understanding;
   const flow = selectFlow(understanding.demoableFlows, prompt);
 
