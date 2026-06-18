@@ -32,4 +32,14 @@ const outC = await agentC({ ...input, repoUrl: undefined, repoCheckoutDirectory:
 assert.equal(called, false, "no repo → skip agent");
 ProductUnderstandingSchema.parse(outC);
 
+// (d) valid JSON that fails the usability gate (demoableFlows: []) → retry then fallback
+const unusable = JSON.stringify({ ...JSON.parse(valid), demoableFlows: [] });
+let callsD = 0;
+const agentD = createClaudeUnderstandingAgent({ runAgent: async () => { callsD += 1; return unusable; } });
+const outD = await agentD(input);
+assert.equal(callsD, 2, "two attempts before fallback");
+assert.ok(outD.warnings.some((w) => /agent/i.test(w)), "fallback warns about agent");
+ProductUnderstandingSchema.parse(outD);
+assert.ok(outD.demoableFlows.length >= 1, "fallback has at least one demoableFlow");
+
 console.log("understandingAgent.test PASS");
