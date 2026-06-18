@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx src/analyzeWebsite.test.ts && tsx src/analyzeRepo.test.ts"
+    "test": "tsx src/analyzeWebsite.test.ts && tsx src/analyzeRepo.test.ts && tsx src/narrativeExploration.test.ts"
   },
   "dependencies": {
     "@tinker/browser-capture": "workspace:*",

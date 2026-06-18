@@ -63,3 +63,22 @@ export type AnalyzeRepoOptions = {
   fetchRepo?: AnalyzeRepoFetch;
   runOpencode?: AnalyzeRepoOpencodeRun;
 };
+
+export type NarrativeWorkflowCandidate = {
+  name: string;
+  whyItMatters: string;
+  routeHints: string[];
+  visibleEvidence: string[];
+  storyboardUse: "hook" | "main-demo" | "proof" | "cta";
+};
+
+export type NarrativeExploration = {
+  productSummary: string;
+  bestDemoAngle: string;
+  userProblem: string;
+  promisedOutcome: string;
+  workflowCandidates: NarrativeWorkflowCandidate[];
+  strongestCopy: string[];
+  avoidNarratives: string[];
+  explorationNotes: string[];
+};
