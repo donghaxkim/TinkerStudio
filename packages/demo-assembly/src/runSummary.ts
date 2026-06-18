@@ -11,8 +11,33 @@ import { z } from "zod";
 import type { AiUrlRenderer } from "./aiUrlRenderer.js";
 import type { Storyboard } from "./demoStrategy.js";
 import type { AspectRatio } from "./types.js";
+import { CoreCoverageItemSchema, type CoreCoverageItem } from "./coreCoverage.js";
 
 const RendererSchema = z.enum(["hyperframes", "playwright", "both"]);
+
+const ExecutionModeSchema = z.enum(["claude-code", "deterministic-fallback", "deterministic"]);
+const PlannerModeSchema = z.enum(["claude-code", "opencode"]);
+const FinalVideoModeSchema = z.enum(["rendered", "transcoded", "none"]);
+const FinalVideoSourceSchema = z.enum(["demo-project", "raw-playwright-recording", "none"]);
+const AppliedSchema = z.enum(["none", "partial", "full"]);
+
+export const RunExecutionSchema = z
+  .object({
+    understandingMode: ExecutionModeSchema,
+    strategyMode: ExecutionModeSchema,
+    playwrightPlannerMode: PlannerModeSchema,
+    finalVideoMode: FinalVideoModeSchema,
+    finalVideoSource: FinalVideoSourceSchema,
+    directorPlanApplied: AppliedSchema,
+    renderPlanApplied: AppliedSchema,
+    editDecisionListApplied: z.boolean(),
+    finalVideoReflectsEditDecisionList: z.boolean(),
+    cameraSource: z.string(),
+    notes: z.array(z.string()),
+  })
+  .strict();
+
+export type RunExecution = z.infer<typeof RunExecutionSchema>;
 
 export const RunInputSchema = z
   .object({
@@ -41,6 +66,8 @@ export const RunSummarySchema = z
     version: z.literal(1),
     status: z.enum(["success", "partial", "failed"]),
     renderer: RendererSchema,
+    execution: RunExecutionSchema,
+    coreCoverage: z.array(CoreCoverageItemSchema),
     generatedArtifacts: z.array(z.string()),
     storyboardCoverage: z.array(StoryboardCoverageSchema),
     warnings: z.array(z.string()),
@@ -85,6 +112,8 @@ export type BuildRunSummaryArgs = {
   captureSucceeded: boolean;
   finalVideoProduced: boolean;
   warnings: string[];
+  execution: RunExecution;
+  coreCoverage: CoreCoverageItem[];
 };
 
 /** Make artifact paths run-relative (readable) while leaving outside paths absolute. */
@@ -127,10 +156,19 @@ export function buildRunSummary(args: BuildRunSummaryArgs): RunSummary {
     evidence: beatEvidence,
   }));
 
+  const allCaptured = args.coreCoverage.every((item) => item.status === "captured");
+  const status: RunSummary["status"] = !args.captureSucceeded
+    ? "failed"
+    : args.execution.finalVideoMode === "rendered" && allCaptured
+      ? "success"
+      : "partial";
+
   return RunSummarySchema.parse({
     version: 1,
-    status: args.captureSucceeded ? "success" : "partial",
+    status,
     renderer: args.renderer,
+    execution: args.execution,
+    coreCoverage: args.coreCoverage,
     generatedArtifacts,
     storyboardCoverage,
     warnings: args.warnings,

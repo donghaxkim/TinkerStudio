@@ -3,9 +3,12 @@ import { join } from "node:path";
 import {
   RunInputSchema,
   RunSummarySchema,
+  RunExecutionSchema,
   buildRunInput,
   buildRunSummary,
+  type RunExecution,
 } from "./runSummary.js";
+import type { CoreCoverageItem } from "./coreCoverage.js";
 import { deriveDemoStrategy } from "./demoStrategy.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
 import type { ProductAnalysis } from "@tinker/product-analysis";
@@ -62,6 +65,15 @@ const inputNoRepo = buildRunInput({
 RunInputSchema.parse(inputNoRepo);
 assert.equal("repoUrl" in inputNoRepo, false);
 
+// ---- shared execution fixture (used by all buildRunSummary calls) ----
+const execution: RunExecution = {
+  understandingMode: "claude-code", strategyMode: "claude-code", playwrightPlannerMode: "claude-code",
+  finalVideoMode: "rendered", finalVideoSource: "demo-project",
+  directorPlanApplied: "none", renderPlanApplied: "none",
+  editDecisionListApplied: true, finalVideoReflectsEditDecisionList: true,
+  cameraSource: "demo-project.zooms (compileProject)", notes: ["director/render plans metadata only"],
+};
+
 // ---- run-summary.json: success path with final.mp4 ----
 const outputRoot = "/tmp/generated/run-123";
 const artifactPaths = [
@@ -83,6 +95,8 @@ const summary = buildRunSummary({
   captureSucceeded: true,
   finalVideoProduced: true,
   warnings: ["a warning"],
+  execution,
+  coreCoverage: [],
 });
 RunSummarySchema.parse(summary);
 assert.equal(summary.status, "success");
@@ -104,10 +118,33 @@ const noVideoSummary = buildRunSummary({
   captureSucceeded: true,
   finalVideoProduced: false,
   warnings: [],
+  execution: { ...execution, finalVideoMode: "none", finalVideoSource: "none" },
+  coreCoverage: [],
 });
 RunSummarySchema.parse(noVideoSummary);
-assert.equal(noVideoSummary.status, "success");
+assert.equal(noVideoSummary.status, "partial");
 assert.match(noVideoSummary.nextRecommendedAction, /ffmpeg/);
 assert.ok(!noVideoSummary.storyboardCoverage[0].evidence.includes("playwright/final.mp4"));
 
 console.log("runSummary.test PASS");
+
+// ---- execution + coreCoverage block ----
+RunExecutionSchema.parse(execution);
+
+const allCaptured: CoreCoverageItem[] = [{ id: "core-selected-flow", sourceType: "selected-flow", concept: "f", flowId: "flow-1", required: true, status: "captured", beatIds: ["beat-2"], artifactRefs: [], warnings: [] }];
+const rendered = buildRunSummary({
+  renderer: "playwright", outputRoot, storyboard, artifactPaths,
+  captureSucceeded: true, finalVideoProduced: true, warnings: [],
+  execution, coreCoverage: [...allCaptured],
+});
+RunSummarySchema.parse(rendered);
+assert.equal(rendered.status, "success", "rendered + all captured → success");
+assert.deepEqual(rendered.execution, execution);
+
+// A planned item OR transcoded video → partial.
+const plannedItem: CoreCoverageItem[] = [{ ...allCaptured[0], status: "planned" }];
+const partial1 = buildRunSummary({ renderer: "playwright", outputRoot, storyboard, artifactPaths, captureSucceeded: true, finalVideoProduced: true, warnings: [], execution, coreCoverage: plannedItem });
+assert.equal(partial1.status, "partial", "planned coverage → partial");
+const partial2 = buildRunSummary({ renderer: "playwright", outputRoot, storyboard, artifactPaths, captureSucceeded: true, finalVideoProduced: false, warnings: [], execution: { ...execution, finalVideoMode: "transcoded", finalVideoSource: "raw-playwright-recording" }, coreCoverage: [...allCaptured] });
+assert.equal(partial2.status, "partial", "transcoded video → partial");
+console.log("runSummary execution+coverage PASS");
