@@ -1,4 +1,6 @@
 import { runClaudeAgent } from "./claudeCodeAgent.js";
+
+export const STRATEGY_FALLBACK_WARNING = "Strategy agent failed; used deterministic strategy.";
 import { DemoStrategySchema, StoryboardSchema, deriveDemoStrategy,
   type DemoStrategyResult, type DeriveDemoStrategyInput, type Strategize } from "./demoStrategy.js";
 
@@ -39,6 +41,6 @@ export function createClaudeStrategyAgent(deps: { runSynthesis?: typeof runClaud
       } catch { /* retry then fall through */ }
     }
     const r = await fallback(input);
-    return { strategy: { ...r.strategy, warnings: [...r.strategy.warnings, "Strategy agent failed; used deterministic strategy."] }, storyboard: r.storyboard };
+    return { strategy: { ...r.strategy, warnings: [...r.strategy.warnings, STRATEGY_FALLBACK_WARNING] }, storyboard: r.storyboard };
   };
 }

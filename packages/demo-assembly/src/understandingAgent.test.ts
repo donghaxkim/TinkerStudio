@@ -43,3 +43,11 @@ ProductUnderstandingSchema.parse(outD);
 assert.ok(outD.demoableFlows.length >= 1, "fallback has at least one demoableFlow");
 
 console.log("understandingAgent.test PASS");
+
+import { UNDERSTANDING_FALLBACK_INVALID, UNDERSTANDING_FALLBACK_WARNINGS } from "./understandingAgent.js";
+// The malformed-output fallback emits the exported constant verbatim.
+const agentConst = createClaudeUnderstandingAgent({ runAgent: async () => "not json" });
+const outConst = await agentConst(input);
+assert.ok(outConst.warnings.includes(UNDERSTANDING_FALLBACK_INVALID), "fallback emits the exported constant");
+assert.ok(UNDERSTANDING_FALLBACK_WARNINGS.includes(UNDERSTANDING_FALLBACK_INVALID));
+console.log("understandingAgent fallback-constants PASS");

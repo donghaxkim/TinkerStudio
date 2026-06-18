@@ -5,6 +5,15 @@ import { runClaudeAgent } from "./claudeCodeAgent.js";
 import { ProductUnderstandingSchema, deriveProductUnderstanding,
   type DeriveProductUnderstandingInput, type ProductUnderstanding, type UnderstandProduct } from "./productUnderstanding.js";
 
+export const UNDERSTANDING_FALLBACK_NO_REPO =
+  "Understanding agent skipped (no repo); used deterministic understanding.";
+export const UNDERSTANDING_FALLBACK_INVALID =
+  "Understanding agent failed validation; used deterministic understanding.";
+export const UNDERSTANDING_FALLBACK_WARNINGS: readonly string[] = [
+  UNDERSTANDING_FALLBACK_NO_REPO,
+  UNDERSTANDING_FALLBACK_INVALID,
+];
+
 const DEEPWIKI_MCP = { mcpServers: { deepwiki: { type: "http", url: "https://mcp.deepwiki.com/mcp" } } };
 const ALLOWED_TOOLS = "Read,Grep,Glob,mcp__deepwiki__read_wiki_structure,mcp__deepwiki__read_wiki_contents,mcp__deepwiki__ask_question";
 
@@ -47,7 +56,7 @@ export function createClaudeUnderstandingAgent(deps: { runAgent?: typeof runClau
     const repo = input.repoUrl ? ownerRepo(input.repoUrl) : undefined;
     if (!repo || !input.repoCheckoutDirectory) {
       const u = await fallback(input);
-      return { ...u, warnings: [...u.warnings, "Understanding agent skipped (no repo); used deterministic understanding."] };
+      return { ...u, warnings: [...u.warnings, UNDERSTANDING_FALLBACK_NO_REPO] };
     }
     let mcpDir: string | undefined;
     try {
@@ -64,7 +73,7 @@ export function createClaudeUnderstandingAgent(deps: { runAgent?: typeof runClau
         } catch { /* retry then fall through */ }
       }
       const u = await fallback(input);
-      return { ...u, warnings: [...u.warnings, "Understanding agent failed validation; used deterministic understanding."] };
+      return { ...u, warnings: [...u.warnings, UNDERSTANDING_FALLBACK_INVALID] };
     } finally {
       if (mcpDir) await rm(mcpDir, { recursive: true, force: true }).catch(() => undefined);
     }

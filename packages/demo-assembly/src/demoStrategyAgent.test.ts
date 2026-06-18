@@ -26,3 +26,9 @@ const rb = await bad(baseInput);
 assert.equal(n, 2, "retry then fallback");
 DemoStrategySchema.parse(rb.strategy); // deterministic fallback shape
 console.log("demoStrategyAgent.test PASS");
+
+import { STRATEGY_FALLBACK_WARNING } from "./demoStrategyAgent.js";
+const sFallback = createClaudeStrategyAgent({ runSynthesis: async () => "nope" });
+const sOut = await sFallback(baseInput);
+assert.ok(sOut.strategy.warnings.includes(STRATEGY_FALLBACK_WARNING), "strategy fallback emits the exported constant");
+console.log("demoStrategyAgent fallback-constant PASS");
