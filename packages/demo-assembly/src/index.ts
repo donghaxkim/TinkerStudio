@@ -17,3 +17,4 @@ export * from "./hyperframesRender.js";
 export * from "./runAiUrlDemo.js";
 export * from "./aiUrlRenderer.js";
 export * from "./demoStrategyAgent.js";
+export * from "./coreCoverage.js";
