@@ -439,6 +439,24 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByText("Show repo-backed details")).toBeInTheDocument();
   });
 
+  it("keeps planning disabled until both Product URL and GitHub repo URL are valid", () => {
+    const client = createLocalCompositionGenerationClient();
+    const planningClient = createPlanningClient();
+    render(<CompositionDemoScreen client={client} planningClient={planningClient} />);
+
+    const planButton = screen.getByRole("button", { name: "Plan" });
+    expect(planButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    expect(planButton).toBeDisabled();
+    fireEvent.click(planButton);
+
+    expect(planningClient.createSession).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    expect(planButton).not.toBeDisabled();
+  });
+
   it("Generate now sends repo + URL only — no prompt key", async () => {
     let capturedRequest: CreateCompositionJobRequest | undefined;
     const client: CompositionGenerationClient = {

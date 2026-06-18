@@ -84,7 +84,6 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     now,
     idGenerator,
     runner: options.planningRunner ?? createClaudePlanningAgentRunner(),
-    productUrlResolver: options.productUrlResolver,
   });
   registerArtifactsRoutes(server, { store });
   registerImportRoutes(server, {

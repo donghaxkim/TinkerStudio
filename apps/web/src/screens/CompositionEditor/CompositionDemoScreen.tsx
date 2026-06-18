@@ -302,7 +302,7 @@ export function CompositionDemoScreen({
   const outline = session?.outline;
   const outlineValid = session?.outlineValid === true && outline !== undefined;
 
-  const canPlan = !planningBusy && normalizedRepo !== undefined;
+  const canPlan = !planningBusy && normalizedRepo !== undefined && normalizedProductUrl !== undefined;
   const canGenerate = !planningBusy && !jobRunning && outlineValid;
   const canGenerateDirect = !planningBusy && !jobRunning && normalizedRepo !== undefined;
   const canUseGlobalNavigation = !planningBusy && !jobRunning;
@@ -337,9 +337,14 @@ export function CompositionDemoScreen({
       return;
     }
     const productUrl = normalizePublicUrl(productDraft);
+    if (productUrl === undefined) {
+      setDirectError("Add your product / website URL before planning.");
+      return;
+    }
+    setDirectError(undefined);
     planning.start({
       repoUrl: `https://github.com/${repo}`,
-      ...(productUrl === undefined ? {} : { productUrl }),
+      productUrl,
       agent: planningAgent,
     });
   }, [planning, planningAgent, productDraft, repoDraft, requireRepo]);

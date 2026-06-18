@@ -1312,6 +1312,7 @@ describe("artifact indexing", () => {
         join(outputRoot, "playwright", "storyboard.json"),
         join(outputRoot, "playwright", "capture-plan.json"),
         join(outputRoot, "playwright", "capture-result.json"),
+        join(outputRoot, "playwright", "final.mp4"),
         join(outputRoot, "playwright", "capture", "videos", "clip.webm"),
         join(outputRoot, "playwright", "capture", "screenshots", "frame.png"),
         join(outputRoot, "playwright", "capture", "trace.zip"),
@@ -1325,16 +1326,22 @@ describe("artifact indexing", () => {
       "playwright-capture-plan",
       "playwright-capture-result",
       "playwright-video",
+      "playwright-video",
       "playwright-screenshot",
       "playwright-trace",
       "other",
     ]);
     expect(artifacts[4]).toMatchObject({
+      relativePath: "playwright/final.mp4",
+      url: "/api/jobs/job-test/artifacts/playwright/final.mp4",
+      mediaType: "video/mp4",
+    });
+    expect(artifacts[5]).toMatchObject({
       relativePath: "playwright/capture/videos/clip.webm",
       url: "/api/jobs/job-test/artifacts/playwright/capture/videos/clip.webm",
       mediaType: "video/webm",
     });
-    expect(artifacts[5]).toMatchObject({
+    expect(artifacts[6]).toMatchObject({
       relativePath: "playwright/capture/screenshots/frame.png",
       mediaType: "image/png",
     });

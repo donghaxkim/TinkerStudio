@@ -8,7 +8,6 @@ import {
 } from "@tinker/generation-contract";
 import type { PlanningSessionStore } from "../planning/planningSessionStore.js";
 import { readValidatedOutline, type PlanningAgentRunner } from "../planning/planningRunner.js";
-import { resolveProductUrlFromGithubRepo, type ProductUrlResolver } from "./jobs.js";
 
 export type PlanningSessionsRoutesOptions = {
   store: PlanningSessionStore;
@@ -16,8 +15,6 @@ export type PlanningSessionsRoutesOptions = {
   now: () => string;
   idGenerator: () => string;
   runner: PlanningAgentRunner;
-  /** Derives a product URL from the repo when the client omits one (repo-first planning). */
-  productUrlResolver?: ProductUrlResolver;
 };
 
 function validationError(message: string) {
@@ -59,15 +56,12 @@ export function registerPlanningSessionsRoutes(server: FastifyInstance, options:
     }
 
     const id = parsed.data.id ?? options.idGenerator();
-    // Repo-first: derive a product URL from the repo when one was not supplied.
-    // Planning still proceeds repo-only when nothing can be derived.
-    const productUrl =
-      parsed.data.productUrl ?? (await (options.productUrlResolver ?? resolveProductUrlFromGithubRepo)(parsed.data.repoUrl));
+    const productUrl = parsed.data.productUrl;
     const workspaceRoot = resolve(options.repoRoot, "generated", "planning", id);
     const outlinePath = resolve(workspaceRoot, "outline.json");
     options.store.create({
       id,
-      ...(productUrl === undefined ? {} : { productUrl }),
+      productUrl,
       repoUrl: parsed.data.repoUrl,
       agent: parsed.data.agent,
       workspaceRoot,
@@ -80,7 +74,7 @@ export function registerPlanningSessionsRoutes(server: FastifyInstance, options:
       await mkdir(workspaceRoot, { recursive: true });
       const result = await options.runner({
         kind: "initial",
-        ...(productUrl === undefined ? {} : { productUrl }),
+        productUrl,
         repoUrl: parsed.data.repoUrl,
         agent: parsed.data.agent,
         workspaceRoot,
@@ -111,6 +105,10 @@ export function registerPlanningSessionsRoutes(server: FastifyInstance, options:
       return reply.status(409).send({ message: "Planning session cannot be resumed" });
     }
 
+    if (record.productUrl === undefined) {
+      return reply.status(409).send({ message: "Planning session is missing a product URL" });
+    }
+
     const parsed = ContinuePlanningSessionRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(422).send(validationError(formatZodIssues(parsed.error.issues)));
@@ -122,7 +120,7 @@ export function registerPlanningSessionsRoutes(server: FastifyInstance, options:
       options.store.markRunning(record.id, options.now());
       const result = await options.runner({
         kind: "followup",
-        ...(record.productUrl === undefined ? {} : { productUrl: record.productUrl }),
+        productUrl: record.productUrl,
         repoUrl: record.repoUrl,
         agent: record.agent,
         workspaceRoot: record.workspaceRoot,

@@ -27,6 +27,7 @@ function classifyArtifact(relativePath: string): ApiArtifactKind {
   if (relativePath === "playwright/storyboard.json") return "playwright-storyboard";
   if (relativePath === "playwright/capture-plan.json") return "playwright-capture-plan";
   if (relativePath === "playwright/capture-result.json") return "playwright-capture-result";
+  if (relativePath === "playwright/final.mp4") return "playwright-video";
   if (relativePath.startsWith("playwright/capture/videos/")) return "playwright-video";
   if (relativePath.startsWith("playwright/capture/screenshots/")) return "playwright-screenshot";
   if (relativePath.startsWith("playwright/") && (relativePath.endsWith(".zip") || relativePath.endsWith(".trace"))) {

@@ -225,18 +225,19 @@ assert.equal(
   true,
 );
 
-// Repo-first planning: the product URL is optional now.
+// Planning requires both repo and product URLs.
 assert.equal(
   CreatePlanningSessionRequestSchema.safeParse({
     repoUrl: "https://github.com/example/product",
   }).success,
-  true,
+  false,
 );
 
 // The optional client-supplied id must be a UUID so it is a safe path segment.
 assert.equal(
   CreatePlanningSessionRequestSchema.safeParse({
     id: "123e4567-e89b-42d3-a456-426614174000",
+    productUrl: "https://example.com",
     repoUrl: "https://github.com/example/product",
   }).success,
   true,

@@ -388,46 +388,35 @@ describe("createClaudePlanningAgentRunner", () => {
     expect(promptJson).toContain("Do not require exactly four scenes");
   });
 
-  it("plans repo-only and streams stages when no product URL is provided", async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-planning-repo-only-${randomUUID()}-`));
+  it("rejects initial planning without a product URL before analysis or agent execution", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-claude-planning-missing-product-${randomUUID()}-`));
     const outlinePath = join(workspaceRoot, "outline.json");
     const runClaude = vi.fn(async (input: ClaudePlanningProcessInput) => {
       void input;
       return {
         stdout: [
-          JSON.stringify({ type: "system", session_id: "claude-session-repo-only" }),
-          JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Drafted from the repo." }] } }),
+          JSON.stringify({ type: "system", session_id: "claude-session-missing-product" }),
+          JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Should not run." }] } }),
         ].join("\n"),
       };
     });
     const analyzeWebsite = vi.fn(async () => websiteAnalysis);
     const analyzeRepo = vi.fn(async () => repoAnalysis);
-    const progress: Array<[string, string]> = [];
     const runner = createClaudePlanningAgentRunner({ runClaude, analyzeWebsite, analyzeRepo });
 
-    const result = await runner({
-      kind: "initial",
-      repoUrl: "https://github.com/example/product",
-      agent: "claude",
-      workspaceRoot,
-      outlinePath,
-      onProgress: (stage, status) => progress.push([stage, status]),
-    });
+    await expect(
+      runner({
+        kind: "initial",
+        repoUrl: "https://github.com/example/product",
+        agent: "claude",
+        workspaceRoot,
+        outlinePath,
+      } as Parameters<typeof runner>[0]),
+    ).rejects.toThrow("Initial planning requires a product URL.");
 
-    expect(result.assistantMessage).toBe("Drafted from the repo.");
     expect(analyzeWebsite).not.toHaveBeenCalled();
-    expect(analyzeRepo).toHaveBeenCalledWith("https://github.com/example/product", {
-      checkoutDirectory: join(workspaceRoot, "repository"),
-    });
-    await expect(readFile(join(workspaceRoot, "website-analysis.json"), "utf8")).rejects.toThrow();
-    const prompt = JSON.parse(runClaude.mock.calls[0][0].prompt) as Record<string, unknown>;
-    expect(prompt).not.toHaveProperty("productUrl");
-    expect(prompt).not.toHaveProperty("websiteAnalysis");
-    expect(JSON.stringify(prompt)).toContain("No product URL was provided");
-    expect(progress).toContainEqual(["preparing", "done"]);
-    expect(progress).toContainEqual(["analyzing-repo", "done"]);
-    expect(progress).toContainEqual(["drafting", "done"]);
-    expect(progress.some(([stage]) => stage === "analyzing-website")).toBe(false);
+    expect(analyzeRepo).not.toHaveBeenCalled();
+    expect(runClaude).not.toHaveBeenCalled();
   });
 
   it("runs initial planning with OpenCode when requested", async () => {
@@ -781,7 +770,13 @@ describe("createClaudePlanningAgentRunner", () => {
     expect(runClaude).toHaveBeenCalledTimes(1);
     expect(runClaudeCalls[0]).toMatchObject({ cwd: workspaceRoot, resumeHandle: "claude-session-1" });
     const prompt = JSON.parse(runClaudeCalls[0].prompt) as Record<string, unknown>;
-    expect(prompt).toMatchObject({ task: expect.any(String), userMessage: "Make it more technical.", outlinePath });
+    expect(prompt).toMatchObject({
+      task: expect.any(String),
+      productUrl: "https://product.example.com",
+      repoUrl: "https://github.com/example/product",
+      userMessage: "Make it more technical.",
+      outlinePath,
+    });
     expect(JSON.stringify(prompt)).toContain("Make it more technical.");
     const followupPromptJson = JSON.stringify(prompt);
     expect(followupPromptJson).toContain("preserve Hook -> Demo: Use Case -> End Result -> CTA unless the user asks for a different narrative structure");
