@@ -53,7 +53,7 @@ assert.deepEqual(
   ["Highlight detection", "Transcript chat", "Notes export"],
 );
 assert.ok(
-  understanding.capabilities.every((capability) => capability.evidence.length >= 1),
+  understanding.capabilities.every((capability) => capability.evidenceRefs.length >= 1),
   "every capability must cite evidence",
 );
 
@@ -93,3 +93,37 @@ assert.ok(
 assert.notEqual(websiteOnly.confidence, "high");
 
 console.log("productUnderstanding.test PASS");
+
+// ---- Task 1: expanded schema smoke test ----
+// A fully-expanded object validates and evidenceRefs resolve into the evidence pool.
+const expanded = {
+  version: 1,
+  product: { name: "X", category: "", oneLine: "", targetUsers: ["devs"], primaryProblem: "P", primaryValueProposition: "V" },
+  valueNarrative: { problem: "P", audience: "devs", howItSolves: "M", whyItMatters: "W", viewerTakeaway: "T", evidenceRefs: ["evidence-1"] },
+  capabilities: [{ id: "capability-1", name: "C", description: "", evidenceRefs: ["evidence-1"] }],
+  demoableFlows: [{ id: "flow-1", rank: 1, rankReason: "best", name: "F", whyItMatters: "w",
+    requiredInputs: [], expectedOutcome: "o", proves: "pr", viewerTakeaway: "vt", confidence: "high", evidenceRefs: ["evidence-1"] }],
+  evidence: [{ id: "evidence-1", sourceType: "repo", source: "README.md", quoteOrReference: "q", claim: "c" }],
+  constraints: [], unknowns: [], confidence: "high", warnings: [],
+};
+const parsed = ProductUnderstandingSchema.parse(expanded);
+const ids = new Set(parsed.evidence.map((e) => e.id));
+for (const ref of parsed.valueNarrative.evidenceRefs) assert.ok(ids.has(ref), `dangling ref ${ref}`);
+for (const flow of parsed.demoableFlows) for (const ref of flow.evidenceRefs) assert.ok(ids.has(ref));
+assert.equal(parsed.demoableFlows[0].rank, 1);
+assert.equal(parsed.valueNarrative.viewerTakeaway, "T");
+console.log("productUnderstanding schema (expanded) PASS");
+
+// ---- Task 2: deriveProductUnderstanding emits expanded shape ----
+// every capability/flow references real evidence ids
+const poolIds = new Set(understanding.evidence.map((e) => e.id));
+for (const cap of understanding.capabilities) for (const r of cap.evidenceRefs) assert.ok(poolIds.has(r));
+for (const flow of understanding.demoableFlows) {
+  assert.ok(poolIds.has(flow.evidenceRefs[0]), "flow cites a real evidence id");
+  assert.ok(typeof flow.rank === "number");
+  assert.ok(flow.proves.length >= 0 && flow.viewerTakeaway.length >= 0);
+}
+// value narrative is populated from the strongest grounding available
+assert.ok(understanding.valueNarrative.problem.length > 0 || understanding.warnings.length > 0);
+assert.ok(understanding.demoableFlows[0].rank === 1, "first flow is rank 1");
+console.log("productUnderstanding derive (expanded) PASS");

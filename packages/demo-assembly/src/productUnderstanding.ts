@@ -17,6 +17,7 @@ const ConfidenceSchema = z.enum(["high", "medium", "low"]);
 
 export const ProductUnderstandingEvidenceSchema = z
   .object({
+    id: nonEmpty,
     sourceType: z.enum(["repo", "website", "prompt", "docs"]),
     source: z.string(),
     claim: nonEmpty,
@@ -24,24 +25,34 @@ export const ProductUnderstandingEvidenceSchema = z
   })
   .strict();
 
-export const ProductCapabilitySchema = z
+export const ValueNarrativeSchema = z
   .object({
-    id: nonEmpty,
-    name: nonEmpty,
-    description: z.string(),
-    evidence: z.array(ProductUnderstandingEvidenceSchema),
+    problem: z.string(),
+    audience: z.string(),
+    howItSolves: z.string(),
+    whyItMatters: z.string(),
+    viewerTakeaway: z.string(),
+    evidenceRefs: z.array(z.string()),
   })
+  .strict();
+
+export const ProductCapabilitySchema = z
+  .object({ id: nonEmpty, name: nonEmpty, description: z.string(), evidenceRefs: z.array(z.string()) })
   .strict();
 
 export const DemoableFlowSchema = z
   .object({
     id: nonEmpty,
+    rank: z.number().int().nonnegative(),
+    rankReason: z.string(),
     name: nonEmpty,
     whyItMatters: z.string(),
     requiredInputs: z.array(z.string()),
     expectedOutcome: z.string(),
+    proves: z.string(),
+    viewerTakeaway: z.string(),
     confidence: ConfidenceSchema,
-    evidence: z.array(ProductUnderstandingEvidenceSchema),
+    evidenceRefs: z.array(z.string()),
   })
   .strict();
 
@@ -58,6 +69,7 @@ export const ProductUnderstandingSchema = z
         primaryValueProposition: z.string(),
       })
       .strict(),
+    valueNarrative: ValueNarrativeSchema,
     capabilities: z.array(ProductCapabilitySchema),
     demoableFlows: z.array(DemoableFlowSchema).min(1),
     constraints: z.array(z.string()),
@@ -69,6 +81,7 @@ export const ProductUnderstandingSchema = z
   .strict();
 
 export type ProductUnderstandingEvidence = z.infer<typeof ProductUnderstandingEvidenceSchema>;
+export type ValueNarrative = z.infer<typeof ValueNarrativeSchema>;
 export type ProductCapability = z.infer<typeof ProductCapabilitySchema>;
 export type DemoableFlow = z.infer<typeof DemoableFlowSchema>;
 export type ProductUnderstanding = z.infer<typeof ProductUnderstandingSchema>;
@@ -76,9 +89,10 @@ export type ProductUnderstanding = z.infer<typeof ProductUnderstandingSchema>;
 export type DeriveProductUnderstandingInput = {
   productUrl: string;
   repoUrl?: string;
-  prompt: string;
+  prompt?: string;
   websiteAnalysis: ProductAnalysis;
   repoAnalysis?: RepoAnalysis;
+  repoCheckoutDirectory?: string;
 };
 
 /** Seam for a future LLM-backed understander; the default is deterministic. */
@@ -122,16 +136,20 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
   const websiteSource = websiteAnalysis.url || productUrl;
   const repoSource = repoAnalysis?.repoUrl ?? repoUrl ?? "repository";
 
-  function add(
+  let evidenceCounter = 0;
+  function addEvidence(
     sourceType: ProductUnderstandingEvidence["sourceType"],
     source: string,
     claim: string,
     quoteOrReference: string,
-  ): void {
+  ): string {
     if (!claim.trim()) {
-      return;
+      return "";
     }
-    evidence.push({ sourceType, source, claim, quoteOrReference });
+    evidenceCounter += 1;
+    const id = `evidence-${evidenceCounter}`;
+    evidence.push({ id, sourceType, source, claim, quoteOrReference });
+    return id;
   }
 
   // ---- Product narrative (grounded fields filled, weak fields left as unknowns) ----
@@ -145,41 +163,40 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
   const category = firstNonEmpty(repoAnalysis?.importantTerms?.[0]);
 
   if (repoAnalysis?.productName) {
-    add("repo", repoSource, `Product is named "${repoAnalysis.productName}".`, "repoAnalysis.productName");
+    addEvidence("repo", repoSource, `Product is named "${repoAnalysis.productName}".`, "repoAnalysis.productName");
   } else if (websiteAnalysis.title) {
-    add("website", websiteSource, `Page title is "${websiteAnalysis.title}".`, websiteAnalysis.title);
+    addEvidence("website", websiteSource, `Page title is "${websiteAnalysis.title}".`, websiteAnalysis.title);
   }
   if (repoAnalysis?.summary) {
-    add("repo", repoSource, repoAnalysis.summary, "repoAnalysis.summary");
+    addEvidence("repo", repoSource, repoAnalysis.summary, "repoAnalysis.summary");
   }
   for (const heading of websiteAnalysis.headings.slice(0, 3)) {
-    add("website", websiteSource, `Visible heading: "${heading}".`, heading);
+    addEvidence("website", websiteSource, `Visible heading: "${heading}".`, heading);
   }
-  if (prompt.trim()) {
-    add("prompt", "user prompt", `User asked: ${prompt.trim()}`, prompt.trim());
+  const promptText = prompt?.trim() ?? "";
+  if (promptText) {
+    addEvidence("prompt", "user prompt", `User asked: ${promptText}`, promptText);
   }
 
   // ---- Capabilities (repo features first, falling back to visible UI affordances) ----
   const capabilities: ProductCapability[] = [];
   let capabilityCounter = 0;
-  function addCapability(capName: string, description: string, capEvidence: ProductUnderstandingEvidence[]): void {
+  function addCapability(capName: string, description: string, capEvidenceRefs: string[]): void {
     if (!capName.trim() || capabilities.some((existing) => existing.name.toLowerCase() === capName.trim().toLowerCase())) {
       return;
     }
     capabilityCounter += 1;
-    capabilities.push({ id: `capability-${capabilityCounter}`, name: capName.trim(), description, evidence: capEvidence });
+    capabilities.push({ id: `capability-${capabilityCounter}`, name: capName.trim(), description, evidenceRefs: capEvidenceRefs });
   }
 
   for (const feature of repoAnalysis?.features ?? []) {
-    addCapability(feature, feature, [
-      { sourceType: "repo", source: repoSource, claim: feature, quoteOrReference: "repoAnalysis.features" },
-    ]);
+    const ref = addEvidence("repo", repoSource, feature, "repoAnalysis.features");
+    addCapability(feature, feature, ref ? [ref] : []);
   }
   if (capabilities.length === 0) {
     for (const button of websiteAnalysis.buttons.slice(0, 5)) {
-      addCapability(button, `Visible action labelled "${button}".`, [
-        { sourceType: "website", source: websiteSource, claim: `Button labelled "${button}".`, quoteOrReference: button },
-      ]);
+      const ref = addEvidence("website", websiteSource, `Button labelled "${button}".`, button);
+      addCapability(button, `Visible action labelled "${button}".`, ref ? [ref] : []);
     }
   }
 
@@ -190,8 +207,9 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
   function addFlow(
     flowName: string,
     whyItMatters: string,
-    flowEvidence: ProductUnderstandingEvidence[],
+    flowEvidenceRefs: string[],
     confidence: DemoableFlow["confidence"],
+    promptMatched: boolean,
   ): void {
     const trimmed = flowName.trim();
     if (!trimmed || flows.some((existing) => existing.name.toLowerCase() === trimmed.toLowerCase())) {
@@ -199,14 +217,19 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
     }
     flowCounter += 1;
     const requiredInputs = flowLikelyNeedsInput(trimmed) ? websiteInputs.slice(0, 2) : [];
+    const rankReason = `Confidence ${confidence}; ${promptMatched ? "matches prompt" : "grounded in analysis"}`;
     flows.push({
       id: `flow-${flowCounter}`,
+      rank: flowCounter, // will be re-assigned after sorting
+      rankReason,
       name: trimmed,
       whyItMatters,
       requiredInputs,
       expectedOutcome: `"${trimmed}" runs in the product and its result is visible on screen.`,
+      proves: `Shows that ${trimmed} works end to end.`,
+      viewerTakeaway: `${name} handles ${trimmed} for you.`,
       confidence,
-      evidence: flowEvidence,
+      evidenceRefs: flowEvidenceRefs,
     });
   }
 
@@ -214,34 +237,43 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
   for (const idea of repoAnalysis?.demoIdeas ?? []) {
     // High when the repo idea is corroborated by something the page actually shows.
     const confidence: DemoableFlow["confidence"] = hasVisibleAffordances ? "high" : "medium";
-    addFlow(idea, "Surfaced as a demo-worthy flow in the repository analysis.", [
-      { sourceType: "repo", source: repoSource, claim: idea, quoteOrReference: "repoAnalysis.demoIdeas" },
-      ...(hasVisibleAffordances
-        ? [
-            {
-              sourceType: "website" as const,
-              source: websiteSource,
-              claim: "Product exposes interactive controls that can drive this flow.",
-              quoteOrReference: [...websiteAnalysis.buttons.slice(0, 3), ...websiteInputs.slice(0, 2)].join(", "),
-            },
-          ]
-        : []),
-    ], confidence);
+    const repoRef = addEvidence("repo", repoSource, idea, "repoAnalysis.demoIdeas");
+    const refs: string[] = repoRef ? [repoRef] : [];
+    if (hasVisibleAffordances) {
+      const websiteRef = addEvidence(
+        "website",
+        websiteSource,
+        "Product exposes interactive controls that can drive this flow.",
+        [...websiteAnalysis.buttons.slice(0, 3), ...websiteInputs.slice(0, 2)].join(", "),
+      );
+      if (websiteRef) refs.push(websiteRef);
+    }
+    addFlow(idea, "Surfaced as a demo-worthy flow in the repository analysis.", refs, confidence, false);
   }
 
   if (flows.length === 0) {
     const headline = firstNonEmpty(websiteAnalysis.headings[0], websiteAnalysis.title, name);
+    let fallbackRef: string;
+    if (websiteAnalysis.title) {
+      fallbackRef = addEvidence("website", websiteSource, `Landing experience for "${websiteAnalysis.title}".`, websiteAnalysis.title);
+    } else {
+      fallbackRef = addEvidence("prompt", "user prompt", promptText || "Demo the product.", promptText || "(no prompt)");
+    }
     addFlow(
       `Walk through ${headline}`,
       "Fallback flow: no explicit demo flow was found, so guide the viewer through the visible product surface.",
-      [
-        websiteAnalysis.title
-          ? { sourceType: "website", source: websiteSource, claim: `Landing experience for "${websiteAnalysis.title}".`, quoteOrReference: websiteAnalysis.title }
-          : { sourceType: "prompt", source: "user prompt", claim: prompt.trim() || "Demo the product.", quoteOrReference: prompt.trim() || "(no prompt)" },
-      ],
+      fallbackRef ? [fallbackRef] : [],
       hasVisibleAffordances ? "medium" : "low",
+      false,
     );
     warnings.push("No explicit demoable flow was found in the analysis; using a fallback walkthrough flow.");
+  }
+
+  // Sort flows: high → medium → low, then assign final rank by position.
+  const confidenceOrder = { high: 0, medium: 1, low: 2 };
+  flows.sort((a, b) => confidenceOrder[a.confidence] - confidenceOrder[b.confidence]);
+  for (let i = 0; i < flows.length; i++) {
+    flows[i] = { ...flows[i], rank: i + 1 };
   }
 
   // ---- Honest unknowns / constraints ----
@@ -266,6 +298,16 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
   const hasBothSources = repoAnalysis !== undefined && hasVisibleAffordances;
   const confidence: ProductUnderstanding["confidence"] = hasBothSources && hasStrongFlow ? "high" : repoAnalysis !== undefined || hasVisibleAffordances ? "medium" : "low";
 
+  // ---- Value narrative (best-effort from existing fields) ----
+  const valueNarrative: ValueNarrative = {
+    problem: firstNonEmpty(repoAnalysis?.summary, websiteAnalysis.headings[1], ""),
+    audience: targetUsers[0] ?? (category ? `${category} users` : ""),
+    howItSolves: firstNonEmpty(repoAnalysis?.summary, oneLine, ""),
+    whyItMatters: primaryValueProposition,
+    viewerTakeaway: firstNonEmpty(primaryValueProposition, oneLine, `${name} in action.`),
+    evidenceRefs: evidence.slice(0, 3).map((e) => e.id),
+  };
+
   return ProductUnderstandingSchema.parse({
     version: 1,
     product: {
@@ -273,9 +315,10 @@ export function deriveProductUnderstanding(input: DeriveProductUnderstandingInpu
       category,
       oneLine,
       targetUsers,
-      primaryProblem: "",
+      primaryProblem: valueNarrative.problem,
       primaryValueProposition,
     },
+    valueNarrative,
     capabilities,
     demoableFlows: flows,
     constraints,
