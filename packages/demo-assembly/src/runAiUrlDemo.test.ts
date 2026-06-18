@@ -7,6 +7,7 @@ import type { CapturePlan, CaptureResult } from "@tinker/browser-capture";
 import { DemoProjectSchema } from "@tinker/project-schema";
 import type { NarrativeExploration, ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { runAiUrlDemo, type AiUrlDemoPhase } from "./runAiUrlDemo.js";
+import { deriveProductUnderstanding } from "./productUnderstanding.js";
 
 const outputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-"));
 const playwrightOutputRoot = join(outputRoot, "playwright");
@@ -930,13 +931,13 @@ const result = await runAiUrlDemo({
   },
   runCapture: async (plan, options) => {
     assert.deepEqual(plan, capturePlan);
-    assert.deepEqual(options, { outputDir: join(outputRoot, "playwright", "capture"), headless: true });
+    assert.deepEqual(options, { outputDir: join(outputRoot, "playwright", "capture"), headless: true, smooth: true });
 
     return captureResult;
   },
 });
 
-assert.deepEqual(phases, ["analysis", "planning", "verification", "capture", "assembly"]);
+assert.deepEqual(phases, ["analysis", "understanding", "strategy", "planning", "verification", "capture", "assembly"]);
 
 const expectedPaths = [
   join(playwrightOutputRoot, "demo-project.json"),
@@ -950,6 +951,83 @@ const expectedPaths = [
 for (const path of expectedPaths) {
   assert.ok(result.artifactPaths.includes(path), `Expected artifact path ${path}`);
 }
+
+// ---- New multi-phase pipeline artifacts (Understanding -> Strategy -> Capture) ----
+const pipelinePaths = [
+  join(outputRoot, "input.json"),
+  join(outputRoot, "product-understanding.json"),
+  join(outputRoot, "demo-strategy.json"),
+  join(outputRoot, "storyboard.json"),
+  join(outputRoot, "run-summary.json"),
+];
+for (const path of pipelinePaths) {
+  assert.ok(result.artifactPaths.includes(path), `Expected pipeline artifact path ${path}`);
+  assert.ok(existsSync(path), `Expected pipeline artifact on disk ${path}`);
+}
+assert.equal(result.pipeline.productUnderstandingPath, join(outputRoot, "product-understanding.json"));
+assert.equal(result.pipeline.demoStrategyPath, join(outputRoot, "demo-strategy.json"));
+assert.equal(result.pipeline.storyboardPath, join(outputRoot, "storyboard.json"));
+assert.equal(result.pipeline.runSummaryPath, join(outputRoot, "run-summary.json"));
+
+// product-understanding.json is evidence-backed and schema-shaped.
+const understandingJson = JSON.parse(await readFile(join(outputRoot, "product-understanding.json"), "utf8"));
+assert.equal(understandingJson.version, 1);
+assert.ok(understandingJson.demoableFlows.length >= 1, "understanding should expose >=1 flow");
+assert.ok(understandingJson.evidence.length >= 1, "understanding should cite evidence");
+
+// demo-strategy.json selected a flow that actually exists in the understanding.
+const strategyJson = JSON.parse(await readFile(join(outputRoot, "demo-strategy.json"), "utf8"));
+assert.ok(
+  understandingJson.demoableFlows.some((flow: { id: string }) => flow.id === strategyJson.selectedFlow.sourceFlowId),
+  "strategy must select a real understanding flow",
+);
+
+// run-summary.json covers every storyboard beat.
+const storyboardJson = JSON.parse(await readFile(join(outputRoot, "storyboard.json"), "utf8"));
+const runSummaryJson = JSON.parse(await readFile(join(outputRoot, "run-summary.json"), "utf8"));
+assert.equal(runSummaryJson.version, 1);
+assert.equal(runSummaryJson.storyboardCoverage.length, storyboardJson.beats.length);
+
+assert.ok(runSummaryJson.execution, "run-summary has an execution block");
+// backend is OFF in tests (no TINKER_AGENT_BACKEND) → deterministic modes.
+assert.equal(runSummaryJson.execution.understandingMode, "deterministic");
+assert.equal(runSummaryJson.execution.strategyMode, "deterministic");
+// director/render plans are NOT applied in this build.
+assert.equal(runSummaryJson.execution.directorPlanApplied, "none");
+assert.equal(runSummaryJson.execution.renderPlanApplied, "none");
+assert.ok(runSummaryJson.execution.cameraSource.length > 0);
+// coreCoverage exists with the stricter selected-flow item.
+assert.ok(Array.isArray(runSummaryJson.coreCoverage) && runSummaryJson.coreCoverage.length >= 1);
+assert.ok(runSummaryJson.coreCoverage.some((i: { sourceType: string; required: boolean }) => i.sourceType === "selected-flow" && i.required === true));
+
+// Both storyboards (strategic root + playwright capture) and the run summary exist on disk
+// AND are listed in run-summary.generatedArtifacts (clear, non-ambiguous artifact map).
+assert.ok(existsSync(join(outputRoot, "storyboard.json")), "root strategic storyboard.json must exist");
+assert.ok(existsSync(join(playwrightOutputRoot, "storyboard.json")), "playwright capture storyboard.json must exist");
+assert.ok(existsSync(join(outputRoot, "run-summary.json")), "run-summary.json must exist");
+for (const listed of ["storyboard.json", "playwright/storyboard.json", "run-summary.json"]) {
+  assert.ok(
+    runSummaryJson.generatedArtifacts.includes(listed),
+    `run-summary.generatedArtifacts should list ${listed}`,
+  );
+}
+
+// capture-lineage.json is a first-class artifact mapping every capture step to a beat.
+const captureLineageJson = JSON.parse(await readFile(join(playwrightOutputRoot, "capture-lineage.json"), "utf8"));
+assert.equal(captureLineageJson.version, 1);
+assert.ok(captureLineageJson.steps.length >= 1, "capture-lineage should have step entries");
+assert.ok(
+  captureLineageJson.steps.every((step: { beatId?: string }) => typeof step.beatId === "string" && step.beatId.length > 0),
+  "every capture-lineage step should reference a beat",
+);
+assert.ok(runSummaryJson.generatedArtifacts.includes("playwright/capture-lineage.json"));
+
+// action-trace.json entries carry best-effort storyboard-beat lineage.
+const actionTraceJson = JSON.parse(await readFile(join(playwrightOutputRoot, "action-trace.json"), "utf8"));
+assert.ok(
+  actionTraceJson.actions.every((action: { beatId?: string }) => typeof action.beatId === "string" && action.beatId.length > 0),
+  "every traced action should be stamped with a storyboard beatId",
+);
 
 const projectJson = JSON.parse(await readFile(join(playwrightOutputRoot, "demo-project.json"), "utf8"));
 assert.equal(projectJson.metadata.productUrl, productUrl);
@@ -1086,5 +1164,47 @@ await assert.rejects(
 
 assert.equal(noRepoWebsiteAnalyzerCalled, false);
 assert.equal(noRepoPlannerCalled, false);
+
+// understandProduct receives repoCheckoutDirectory; prompt is optional (undefined is accepted).
+const repoCheckoutDirOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-repo-checkout-dir-"));
+let sawCheckout = false;
+await runAiUrlDemo({
+  outputRoot: repoCheckoutDirOutputRoot,
+  projectId: "ai-url-demo-repo-checkout-dir-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "hyperframes",
+  prompt: undefined,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  understandProduct: async (i) => {
+    sawCheckout = typeof i.repoCheckoutDirectory === "string";
+    return deriveProductUnderstanding(i);
+  },
+  generateHyperframes: async (input) => {
+    await writeValidHyperframesArtifacts(input.hyperframesDir);
+  },
+  runHyperframes: async (input) => {
+    await writeFile(input.outputVideoPath, "fake mp4\n");
+    return {
+      lintLogPath: join(input.hyperframesDir, "lint.log"),
+      renderLogPath: join(input.hyperframesDir, "render.log"),
+      outputVideoPath: input.outputVideoPath,
+    };
+  },
+  repairHyperframes: async () => {
+    throw new Error("repair should not run for repo-checkout-dir test");
+  },
+  runCapture: async () => {
+    throw new Error("runCapture should not run for repo-checkout-dir test");
+  },
+});
+assert.equal(sawCheckout, true, "understandProduct gets the repo checkout dir");
 
 console.log("run ai url demo tests passed");

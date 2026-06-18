@@ -14,6 +14,8 @@ export type CreateCompositionJobRequest = {
   durationCapSeconds: number;
   aspectRatio: "16:9" | "9:16" | "1:1";
   prompt?: string;
+  /** Optional user-edited directive for the generation agents (defaults server-side). */
+  systemPrompt?: string;
   /** Renderer to use. Composition generation defaults this to "hyperframes". */
   renderer?: "hyperframes" | "playwright";
   /** Agent used by the Hyperframes renderer. */

@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { CreateDemoRequest } from "@tinker/generation-contract";
 import { isAiUrlRenderer } from "../src/aiUrlRenderer.js";
 import { loadLocalEnvFile, resolveWorkspaceEnvPath } from "../src/localEnv.js";
@@ -44,9 +47,45 @@ function buildRequiredPackages() {
   }
 }
 
+async function printPipelineSummary(outputDirectory: string, renderer: string) {
+  const at = (...parts: string[]) => join(outputDirectory, ...parts);
+  let warnings: string[] = [];
+  try {
+    const summary = JSON.parse(await readFile(at("run-summary.json"), "utf8")) as { warnings?: unknown };
+    warnings = Array.isArray(summary.warnings) ? summary.warnings.map(String) : [];
+  } catch {
+    // run-summary is best-effort for the printout.
+  }
+
+  const usesPlaywright = renderer === "playwright" || renderer === "both";
+  const finalMp4 = at("playwright", "final.mp4");
+  const backend = (process.env.TINKER_AGENT_BACKEND ?? "").trim().toLowerCase() || "opencode";
+
+  console.log("\n=== Pipeline complete ===");
+  console.log(`run folder            : ${outputDirectory}`);
+  console.log(`agent backend         : ${backend}${backend === "opencode" ? "  (set TINKER_AGENT_BACKEND=claude-code for the local Claude Code CLI)" : ""}`);
+  console.log(`input.json            : ${at("input.json")}`);
+  console.log(`product-understanding : ${at("product-understanding.json")}`);
+  console.log(`demo-strategy         : ${at("demo-strategy.json")}`);
+  console.log(`storyboard            : ${at("storyboard.json")}`);
+  if (usesPlaywright) {
+    console.log(`capture-plan          : ${at("playwright", "capture-plan.json")}`);
+    console.log(`action-trace          : ${at("playwright", "action-trace.json")}`);
+    console.log(`capture-lineage       : ${at("playwright", "capture-lineage.json")}`);
+    console.log(`render-plan           : ${at("playwright", "render-plan.json")}`);
+    console.log(`director-plan         : ${at("playwright", "director-plan.json")}`);
+    console.log(`edit-decision-list    : ${at("playwright", "edit-decision-list.json")}`);
+    console.log(`final.mp4             : ${existsSync(finalMp4) ? finalMp4 : "(not produced — ffmpeg unavailable)"}`);
+  }
+  console.log(`run-summary           : ${at("run-summary.json")}`);
+  console.log(`warnings              : ${warnings.length ? warnings.join(" | ") : "(none)"}`);
+}
+
 const productUrl = readArg("--url");
 const repoUrl = readArg("--repo");
-const rendererValue = readArg("--renderer") ?? "hyperframes";
+// Default to the smooth Playwright video path: it produces final.mp4 + action-trace +
+// render-plan, which is the demo this command is meant to deliver.
+const rendererValue = readArg("--renderer") ?? "playwright";
 
 if (!productUrl) {
   console.error("--url is required");
@@ -95,7 +134,7 @@ if (!productUrl) {
         },
       });
 
-      console.log(JSON.stringify(result, null, 2));
+      await printPipelineSummary(result.outputDirectory, rendererValue);
     } catch (error) {
       if (error instanceof LocalGenerationJobError) {
         console.error(JSON.stringify(error.generationError, null, 2));

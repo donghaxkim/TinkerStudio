@@ -61,7 +61,6 @@ export const PlanningSessionStatusSchema = z.enum(["starting", "ready", "running
 export const PlanningMessageSchema = z.object({ role: z.enum(["user", "assistant"]), content: nonEmptyString }).strict();
 
 // Stages the planning runner streams while it works, in the order they begin.
-// `analyzing-website` is omitted when no product URL is available (repo-only planning).
 export const PlanningStageSchema = z.enum(["preparing", "analyzing-repo", "analyzing-website", "drafting"]);
 export const PlanningProgressStatusSchema = z.enum(["active", "done"]);
 export const PlanningProgressEntrySchema = z
@@ -74,7 +73,7 @@ export const CreatePlanningSessionRequestSchema = z
     // create request is still in flight. Constrained to a UUID so it is always a
     // safe filesystem path segment; the server falls back to its own id when absent.
     id: z.string().uuid().optional(),
-    productUrl: PublicUrlSchema.optional(),
+    productUrl: PublicUrlSchema,
     repoUrl: PublicGithubRepoUrlSchema,
     agent: PlanningAgentSchema.default("opencode"),
   })

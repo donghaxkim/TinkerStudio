@@ -12,7 +12,7 @@ export type PlanningProgressReporter = (stage: PlanningStage, status: PlanningPr
 
 export type InitialPlanningAgentTurnInput = {
   kind: "initial";
-  productUrl?: string;
+  productUrl: string;
   repoUrl: string;
   agent: PlanningAgent;
   workspaceRoot: string;
@@ -22,7 +22,7 @@ export type InitialPlanningAgentTurnInput = {
 
 export type FollowupPlanningAgentTurnInput = {
   kind: "followup";
-  productUrl?: string;
+  productUrl: string;
   repoUrl: string;
   agent: PlanningAgent;
   workspaceRoot: string;

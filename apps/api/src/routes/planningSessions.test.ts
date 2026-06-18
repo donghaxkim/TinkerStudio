@@ -74,9 +74,9 @@ describe("planning session routes", () => {
 
   it("continues a session with the stored resume handle", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-continue-${randomUUID()}-`));
-    const calls: Array<{ kind: string; agent: string; resumeHandle?: string }> = [];
+    const calls: Array<{ kind: string; agent: string; productUrl: string; resumeHandle?: string }> = [];
     const runner: PlanningAgentRunner = async (input) => {
-      calls.push({ kind: input.kind, agent: input.agent, resumeHandle: input.kind === "followup" ? input.agentResumeHandle : undefined });
+      calls.push({ kind: input.kind, agent: input.agent, productUrl: input.productUrl, resumeHandle: input.kind === "followup" ? input.agentResumeHandle : undefined });
       await writeFile(input.outlinePath, `${JSON.stringify(outline, null, 2)}\n`);
       return {
         assistantMessage: input.kind === "initial" ? "Initial outline." : `Updated after: ${input.message}`,
@@ -99,8 +99,8 @@ describe("planning session routes", () => {
 
       expect(response.statusCode).toBe(200);
       expect(calls).toEqual([
-        { kind: "initial", agent: "opencode", resumeHandle: undefined },
-        { kind: "followup", agent: "opencode", resumeHandle: "session-initial" },
+        { kind: "initial", agent: "opencode", productUrl: "https://product.example.com", resumeHandle: undefined },
+        { kind: "followup", agent: "opencode", productUrl: "https://product.example.com", resumeHandle: "session-initial" },
       ]);
       expect(JSON.parse(response.body)).toMatchObject({
         status: "ready",
@@ -256,11 +256,11 @@ describe("planning session routes", () => {
     }
   });
 
-  it("plans repo-only and exposes a snapshot via GET for progress polling", async () => {
+  it("rejects planning session creation without a product URL before starting planning", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-get-${randomUUID()}-`));
-    let receivedProductUrl: string | undefined = "unset";
+    let runnerCalled = false;
     const runner: PlanningAgentRunner = async (input) => {
-      receivedProductUrl = input.productUrl;
+      runnerCalled = true;
       input.onProgress?.("preparing", "done");
       input.onProgress?.("drafting", "done");
       await writeFile(input.outlinePath, `${JSON.stringify(outline, null, 2)}\n`);
@@ -270,7 +270,6 @@ describe("planning session routes", () => {
       config: testConfig(repoRoot),
       idGenerator: () => "plan-get",
       planningRunner: runner,
-      productUrlResolver: async () => undefined,
     });
 
     try {
@@ -279,13 +278,12 @@ describe("planning session routes", () => {
         url: "/api/planning-sessions",
         payload: { repoUrl: "https://github.com/example/product", agent: "claude" },
       });
-      expect(created.statusCode).toBe(201);
-      expect(receivedProductUrl).toBeUndefined();
-      expect(JSON.parse(created.body).productUrl).toBeUndefined();
+      expect(created.statusCode).toBe(422);
+      expect(JSON.parse(created.body)).toMatchObject({ status: "failed", stage: "validation" });
+      expect(runnerCalled).toBe(false);
 
       const got = await server.inject({ method: "GET", url: "/api/planning-sessions/plan-get" });
-      expect(got.statusCode).toBe(200);
-      expect(JSON.parse(got.body)).toMatchObject({ id: "plan-get", status: "ready", outlineValid: true });
+      expect(got.statusCode).toBe(404);
 
       const missing = await server.inject({ method: "GET", url: "/api/planning-sessions/does-not-exist" });
       expect(missing.statusCode).toBe(404);
@@ -304,7 +302,6 @@ describe("planning session routes", () => {
       config: testConfig(repoRoot),
       idGenerator: () => "server-id",
       planningRunner: runner,
-      productUrlResolver: async () => undefined,
     });
     const clientId = randomUUID();
 
@@ -312,7 +309,7 @@ describe("planning session routes", () => {
       const created = await server.inject({
         method: "POST",
         url: "/api/planning-sessions",
-        payload: { id: clientId, repoUrl: "https://github.com/example/product", agent: "claude" },
+        payload: { id: clientId, productUrl: "https://product.example.com", repoUrl: "https://github.com/example/product", agent: "claude" },
       });
       expect(created.statusCode).toBe(201);
       expect(JSON.parse(created.body).id).toBe(clientId);

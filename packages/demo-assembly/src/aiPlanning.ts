@@ -17,6 +17,8 @@ import {
   type RepoAnalysis,
 } from "@tinker/product-analysis";
 import { z } from "zod";
+import { runClaudeCodeAgent } from "./claudeCodeAgent.js";
+import type { DemoStrategy, Storyboard } from "./demoStrategy.js";
 import type { AspectRatio, ManualStoryboard } from "./types.js";
 
 const MISSING_ENV_MESSAGE =
@@ -35,6 +37,10 @@ export type AiUrlPlannerInput = {
   analysis: ProductAnalysis;
   repoAnalysis?: RepoAnalysis;
   repoCheckoutDirectory?: string;
+  /** Optional strategy context: when present, the capture plan should realize this flow. */
+  demoStrategy?: DemoStrategy;
+  /** Optional storyboard whose beats the capture plan should follow in order. */
+  storyboard?: Storyboard;
   narrativeExploration?: NarrativeExploration;
 };
 
@@ -492,6 +498,31 @@ function parsePlannerRepoAnalysis(repoAnalysis: RepoAnalysis | undefined) {
   }
 }
 
+/**
+ * Compact, model-facing view of the demo strategy + storyboard. When provided, the
+ * planner should realize `selectedFlow` and walk the storyboard beats in order rather
+ * than inventing its own arc.
+ */
+function buildStrategyContext(input: AiUrlPlannerInput) {
+  if (input.demoStrategy === undefined || input.storyboard === undefined) {
+    return undefined;
+  }
+
+  return {
+    selectedAngle: input.demoStrategy.selectedAngle,
+    selectedFlow: input.demoStrategy.selectedFlow,
+    messageHierarchy: input.demoStrategy.messageHierarchy,
+    storyboardBeats: input.storyboard.beats.map((beat) => ({
+      id: beat.id,
+      goal: beat.goal,
+      expectedUserAction: beat.expectedUserAction,
+    })),
+  };
+}
+
+const strategyDrivenInstruction =
+  "If a strategy is provided, build the capture plan to perform strategy.selectedFlow and to support strategy.storyboardBeats in order; do not invent an unrelated arc.";
+
 function parsePlannerNarrativeExploration(narrativeExploration: NarrativeExploration | undefined, productUrl: string) {
   if (narrativeExploration === undefined) {
     return undefined;
@@ -522,6 +553,7 @@ function buildPlannerPrompt(input: AiUrlPlannerInput) {
         "Return one JSON object only.",
         "Use exactly the top-level keys storyboard and capturePlan.",
         "Do not include schema, scenes, captions, audio, style, metadata, or editableTextFields.",
+        strategyDrivenInstruction,
         "Prefer simple visible UI actions and avoid auth, payments, destructive actions, or external navigation.",
         "Do not type into inputs unless the user prompt provides a safe value; for external websites prefer goto, wait, hover, scroll, and pause.",
         ...defaultStoryboardNarrativeInstructions,
@@ -546,6 +578,7 @@ function buildPlannerPrompt(input: AiUrlPlannerInput) {
       prompt: input.prompt,
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
+      strategy: buildStrategyContext(input),
       analysis: input.analysis,
       repositoryContext: repoAnalysis
         ? {
@@ -608,6 +641,7 @@ function buildOpencodePlannerPrompt(input: AiUrlPlannerInput) {
       instructions: [
         "Return one JSON object only with top-level keys storyboard and capturePlan.",
         "You may inspect the checked-out repository in your working directory as read-only evidence.",
+        strategyDrivenInstruction,
         "You may use available web research tools to choose safe public sample inputs when the product workflow requires external content, such as a public YouTube URL.",
         "Prefer a real product workflow over a homepage-only scroll. Website analysis is initial visible-state evidence, not a veto when repository context shows a deeper workflow.",
         "If repo context implies the product needs sample data, choose safe public sample inputs and include them in capturePlan type steps rather than asking the user for them.",
@@ -632,6 +666,7 @@ function buildOpencodePlannerPrompt(input: AiUrlPlannerInput) {
       prompt: input.prompt,
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
+      strategy: buildStrategyContext(input),
       websiteAnalysis: input.analysis,
       repositoryContext: repoAnalysis
         ? {
@@ -880,6 +915,35 @@ export function createOpencodeAiUrlPlanner(options: OpencodeAiUrlPlannerOptions 
     }
 
     const result = parseOpencodePlannerResult(await runOpencode(buildOpencodePlannerPrompt(input), { cwd: input.repoCheckoutDirectory }));
+    assertStoryboardMatchesInput(result.storyboard, input);
+    assertCapturePlanMatchesProductUrl(result.capturePlan, input.productUrl);
+
+    return result;
+  };
+}
+
+export type ClaudeCodePlannerRun = (prompt: string, options: { cwd: string }) => Promise<string>;
+
+type ClaudeCodeAiUrlPlannerOptions = {
+  runClaudeCode?: ClaudeCodePlannerRun;
+};
+
+/**
+ * Planner backed by the local Claude Code CLI instead of opencode. It reuses the exact
+ * same planner prompt + validation as the opencode planner, but parses the model's raw
+ * text output directly (the opencode JSONL event collector would discard a single-line
+ * JSON answer, so it must not be used here).
+ */
+export function createClaudeCodeAiUrlPlanner(options: ClaudeCodeAiUrlPlannerOptions = {}): AiUrlPlanner {
+  const runClaudeCode = options.runClaudeCode ?? runClaudeCodeAgent;
+
+  return async (input) => {
+    if (!input.repoCheckoutDirectory) {
+      throw new Error("repoCheckoutDirectory is required for Claude Code demo planning");
+    }
+
+    const output = await runClaudeCode(buildOpencodePlannerPrompt(input), { cwd: input.repoCheckoutDirectory });
+    const result = parsePlannerResult(findLastPlannerJsonObject(output));
     assertStoryboardMatchesInput(result.storyboard, input);
     assertCapturePlanMatchesProductUrl(result.capturePlan, input.productUrl);
 

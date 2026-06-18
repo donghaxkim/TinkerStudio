@@ -81,12 +81,16 @@ assert.equal(project.assets[0]?.height, 720);
 assert.equal(project.assets[0]?.mimeType, "video/webm");
 assert.equal(project.assets[0]?.sizeBytes, 1234);
 assert.deepEqual(project.assets[0]?.metadata, { recorder: "playwright", frameRate: 25 });
-assert.equal(project.fps, 60);
+// FPS honesty: the raw DemoProject reports the source recording's frame rate (25), not a
+// 60fps aspiration. 60 is only a fallback when the clip reports no source rate.
+assert.equal(project.fps, 25);
 assert.equal(project.tracks[0]?.clips[0]?.assetId, "capture-video-main");
 assert.equal(project.tracks[0]?.clips[0]?.end, 12);
 assert.equal(project.tracks[0]?.clips[0]?.sourceEnd, 12);
 assert.equal(project.cursorEvents.length, 3);
-assert.equal(project.cursor, undefined);
+// The synthetic cursor is baked into the captured webm, so the overlay cursor is hidden
+// (otherwise the render/editor would draw a second, unsynced pointer on top).
+assert.deepEqual(project.cursor, { hidden: true });
 assert.equal(project.zooms.length, 1);
 assert.equal(project.zooms[0]?.id, "zoom_001");
 assert.equal(project.metadata.productUrl, "http://127.0.0.1:4173/");

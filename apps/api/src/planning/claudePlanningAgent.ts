@@ -519,27 +519,23 @@ function pathsForWorkspace(workspaceRoot: string) {
 
 export function buildInitialPrompt(
   input: InitialPlanningAgentTurnInput,
-  websiteAnalysis: ProductAnalysis | undefined,
+  websiteAnalysis: ProductAnalysis,
   repoAnalysis: RepoAnalysis,
 ) {
   const { repoCheckoutDirectory } = pathsForWorkspace(input.workspaceRoot);
   const safetyInstructions = planningInstructions(input.agent === "opencode" ? "OpenCode" : "Claude");
-  const repoOnlyInstructions =
-    websiteAnalysis === undefined
-      ? ['No product URL was provided. Plan from repository evidence only; every scene\'s evidence must be "repo".']
-      : [];
   return JSON.stringify(
     {
       task: "Plan a Hyperframes product demo by maintaining the demo outline only.",
-      instructions: [...safetyInstructions, ...initialPlanningNarrativeInstructions, ...repoOnlyInstructions],
+      instructions: [...safetyInstructions, ...initialPlanningNarrativeInstructions],
       safetyInstructions,
-      ...(input.productUrl === undefined ? {} : { productUrl: input.productUrl }),
+      productUrl: input.productUrl,
       repoUrl: input.repoUrl,
       repositoryDirectory: repoCheckoutDirectory,
       outlinePath: input.outlinePath,
       outlineSchema,
       defaultDemoStructure,
-      ...(websiteAnalysis === undefined ? {} : { websiteAnalysis }),
+      websiteAnalysis,
       repoAnalysis,
     },
     null,
@@ -554,6 +550,8 @@ export function buildFollowupPrompt(input: FollowupPlanningAgentTurnInput) {
       task: "Continue planning the Hyperframes product demo by updating outline.json when needed.",
       instructions: [...safetyInstructions, ...followupPlanningNarrativeInstructions],
       defaultDemoStructure,
+      productUrl: input.productUrl,
+      repoUrl: input.repoUrl,
       userMessage: input.message,
       outlinePath: input.outlinePath,
     },
@@ -906,6 +904,10 @@ export function createClaudePlanningAgentRunner(options: ClaudePlanningAgentRunn
   const runRepoAnalysis = options.analyzeRepo ?? analyzeRepo;
 
   return async (input) => {
+    if (typeof input.productUrl !== "string" || input.productUrl.trim() === "") {
+      throw new Error(`${input.kind === "initial" ? "Initial" : "Follow-up"} planning requires a product URL.`);
+    }
+
     input.onProgress?.("preparing", "active");
     await mkdir(input.workspaceRoot, { recursive: true });
     const paths = pathsForWorkspace(input.workspaceRoot);
@@ -958,30 +960,26 @@ export function createClaudePlanningAgentRunner(options: ClaudePlanningAgentRunn
       return { ...parsed, ...paths };
     }
 
-    // Clone + read the repo, and analyze the live site when a product URL is available.
+    // Clone + read the repo, and analyze the live site for every initial planning run.
     // Each analysis reports `done` as it resolves so the frontend checklist reflects real progress.
     input.onProgress?.("analyzing-repo", "active");
-    if (input.productUrl !== undefined) input.onProgress?.("analyzing-website", "active");
+    input.onProgress?.("analyzing-website", "active");
 
     const repoAnalysisPromise = runRepoAnalysis(input.repoUrl, { checkoutDirectory: paths.repoCheckoutDirectory }).then((analysis) => {
       input.onProgress?.("analyzing-repo", "done");
       return analysis;
     });
-    const websiteAnalysisPromise =
-      input.productUrl === undefined
-        ? Promise.resolve(undefined)
-        : runWebsiteAnalysis(input.productUrl, { outputDirectory: input.workspaceRoot, screenshotFileName: "website.png" }).then((analysis) => {
-            input.onProgress?.("analyzing-website", "done");
-            return analysis;
-          });
+    const websiteAnalysisPromise = runWebsiteAnalysis(input.productUrl, { outputDirectory: input.workspaceRoot, screenshotFileName: "website.png" }).then((analysis) => {
+      input.onProgress?.("analyzing-website", "done");
+      return analysis;
+    });
 
     const [repoAnalysis, websiteAnalysis] = await Promise.all([repoAnalysisPromise, websiteAnalysisPromise]);
 
-    const analysisWrites = [writeFile(paths.repoAnalysisPath, `${JSON.stringify(repoAnalysis, null, 2)}\n`)];
-    if (websiteAnalysis !== undefined) {
-      analysisWrites.push(writeFile(paths.websiteAnalysisPath, `${JSON.stringify(websiteAnalysis, null, 2)}\n`));
-    }
-    await Promise.all(analysisWrites);
+    await Promise.all([
+      writeFile(paths.repoAnalysisPath, `${JSON.stringify(repoAnalysis, null, 2)}\n`),
+      writeFile(paths.websiteAnalysisPath, `${JSON.stringify(websiteAnalysis, null, 2)}\n`),
+    ]);
 
     input.onProgress?.("drafting", "active");
     const prompt = buildInitialPrompt(input, websiteAnalysis, repoAnalysis);

@@ -172,7 +172,10 @@ function captureFrameRate(asset: CaptureAsset) {
   return typeof frameRate === "number" && Number.isFinite(frameRate) && frameRate > 0 ? frameRate : undefined;
 }
 
-const EXPORT_FRAME_RATE = 60;
+// Frame rate used only when the captured clip reports no source rate. A composed/export
+// pass that re-renders from screenshots/DemoProject may legitimately target 60fps; the raw
+// DemoProject must NOT claim 60fps over a 25fps Playwright recording (FPS honesty).
+const FALLBACK_FRAME_RATE = 60;
 
 function captureFrameSize(asset: CaptureAsset, fallback: CompileProjectInput["capturePlan"]["viewport"]): FrameSize | undefined {
   const width = isPositiveFinite(asset.width) ? asset.width : fallback.width;
@@ -208,7 +211,7 @@ export function compileProject(input: CompileProjectInput): DemoProject {
     id: input.projectId,
     title: input.storyboard.title,
     duration,
-    fps: Math.max(captureFrameRate(videoAsset) ?? EXPORT_FRAME_RATE, EXPORT_FRAME_RATE),
+    fps: captureFrameRate(videoAsset) ?? FALLBACK_FRAME_RATE,
     aspectRatio: input.storyboard.aspectRatio,
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
@@ -238,6 +241,10 @@ export function compileProject(input: CompileProjectInput): DemoProject {
     ],
     zooms,
     cursorEvents,
+    // The smooth synthetic cursor is baked INTO the captured webm, so the render/editor
+    // overlay cursor must stay hidden or it would draw a second, unsynced pointer on top.
+    // cursorEvents are retained (telemetry, zoom suggestion, future un-baked modes).
+    cursor: { hidden: true },
     aiEditHistory: [],
     metadata: {
       ...(input.sourceRepoUrl ? { sourceRepoUrl: input.sourceRepoUrl } : {}),

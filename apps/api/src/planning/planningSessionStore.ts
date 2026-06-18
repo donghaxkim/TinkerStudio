@@ -33,7 +33,7 @@ export type PlanningSessionRecord = {
 
 export type CreatePlanningSessionRecordInput = {
   id: string;
-  productUrl?: string;
+  productUrl: string;
   repoUrl: string;
   agent: PlanningAgent;
   workspaceRoot: string;
@@ -75,7 +75,7 @@ export function createPlanningSessionStore() {
     create(input: CreatePlanningSessionRecordInput) {
       const record: PlanningSessionRecord = {
         id: input.id,
-        ...(input.productUrl === undefined ? {} : { productUrl: input.productUrl }),
+        productUrl: input.productUrl,
         repoUrl: input.repoUrl,
         agent: input.agent,
         status: "starting",
