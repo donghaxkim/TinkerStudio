@@ -16,7 +16,9 @@ export function createCursorEvent(input: EventTiming & { x: number; y: number })
   return { time: secondsSince(input.startedAtMs, input.nowMs), type: "cursor", x: input.x, y: input.y };
 }
 
-const DEFAULT_CURSOR_PATH_DURATION_MS = 450;
+// Director Mode: snappier default cursor-event move (was 450ms). Callers that know the
+// target geometry pass an explicit, distance-aware duration via `cursorMoveDurationMs`.
+const DEFAULT_CURSOR_PATH_DURATION_MS = 220;
 const DEFAULT_CURSOR_PATH_STEP_MS = 1_000 / 30;
 
 function easeInOutProgress(t: number) {

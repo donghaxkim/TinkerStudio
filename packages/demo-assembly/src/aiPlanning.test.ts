@@ -5,6 +5,7 @@ import { delimiter, join } from "node:path";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import {
   createEnvironmentAiUrlPlanner,
+  createClaudeCodeAiUrlPlanner,
   createFixtureAiUrlPlanner,
   createOpencodeAiUrlPlanner,
   defaultRunAiPlannerOpencode,
@@ -421,6 +422,61 @@ await assert.rejects(
       repoAnalysis: repoAnalysisFixture,
     }),
   /repoCheckoutDirectory is required/,
+);
+
+// ---- Claude Code planner backend ----
+// Regression: Claude Code returns the planner JSON as a single RAW line (not opencode's
+// JSONL event stream). The opencode collector would discard it; the Claude parser must
+// read the raw output directly.
+const claudeCalls: { prompt: string; cwd: string }[] = [];
+const claudePlanner = createClaudeCodeAiUrlPlanner({
+  runClaudeCode: async (prompt, options) => {
+    claudeCalls.push({ prompt, cwd: options.cwd });
+    return JSON.stringify({ storyboard: storyboardFixture, capturePlan: capturePlanFixture });
+  },
+});
+
+const claudeResult = await claudePlanner({
+  productUrl: "http://127.0.0.1:3000/",
+  prompt: "Show a real workflow.",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analysis: productAnalysisFixture,
+  repoAnalysis: repoAnalysisFixture,
+  repoCheckoutDirectory: "/tmp/repo-checkout",
+});
+assert.equal(claudeResult.storyboard.title, "Fixture demo");
+assert.equal(claudeResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
+assert.equal(claudeCalls.length, 1);
+assert.equal(claudeCalls[0]?.cwd, "/tmp/repo-checkout");
+
+// It also tolerates prose / code fences around the JSON object.
+const fencedClaudePlanner = createClaudeCodeAiUrlPlanner({
+  runClaudeCode: async () =>
+    "Here is the plan:\n\n```json\n" + JSON.stringify({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }) + "\n```\n",
+});
+const fencedResult = await fencedClaudePlanner({
+  productUrl: "http://127.0.0.1:3000/",
+  prompt: "Show a real workflow.",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  analysis: productAnalysisFixture,
+  repoAnalysis: repoAnalysisFixture,
+  repoCheckoutDirectory: "/tmp/repo-checkout",
+});
+assert.equal(fencedResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
+
+await assert.rejects(
+  () =>
+    claudePlanner({
+      productUrl: "http://127.0.0.1:3000/",
+      prompt: "Show the workflow.",
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      analysis: productAnalysisFixture,
+      repoAnalysis: repoAnalysisFixture,
+    }),
+  /repoCheckoutDirectory is required for Claude Code/,
 );
 
 const opencodeRunnerRoot = await mkdtemp(join(tmpdir(), "tinker-ai-planning-opencode-"));

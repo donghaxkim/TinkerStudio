@@ -24,6 +24,12 @@ docs/superpowers/plans/
 # Stray Playwright/audit screenshots at repo root (scratch)
 /*.png
 
+# Exported session transcripts at repo root (scratch, dated YYYY-MM-DD-HHMMSS-*.txt)
+/20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.txt
+
+# Local Claude Code project settings (not committed)
+.claude/
+
 # Code-review tool scratch output (screenshots, not committed)
 .codex-review/
 

@@ -98,6 +98,28 @@ function statusForPhase(phase: GenerationFailureStage): GenerationStatus {
   return "running";
 }
 
+// The pipeline now reports two extra phases ("understanding", "strategy") that are not
+// part of the shared GenerationFailureStage contract. Map them onto "planning" so failure
+// reporting stays contract-valid while progress messages keep the real phase name.
+function toFailureStage(phase: AiUrlDemoPhase): GenerationFailureStage {
+  switch (phase) {
+    case "analysis":
+      return "analysis";
+    case "understanding":
+    case "strategy":
+    case "planning":
+      return "planning";
+    case "validation":
+      return "validation";
+    case "verification":
+      return "verification";
+    case "capture":
+      return "capture";
+    case "assembly":
+      return "assembly";
+  }
+}
+
 export async function runLocalGenerationJob(
   rawRequest: unknown,
   options: RunLocalGenerationJobOptions = {},
@@ -179,8 +201,8 @@ export async function runLocalGenerationJob(
       durationCapSeconds: request.durationCapSeconds,
       aspectRatio: request.aspectRatio,
       onPhase: (phase: AiUrlDemoPhase) => {
-        activeStage = phase;
-        emit(statusForPhase(phase), `AI URL ${phase} started`);
+        activeStage = toFailureStage(phase);
+        emit(statusForPhase(activeStage), `AI URL ${phase} started`);
       },
     });
 

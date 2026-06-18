@@ -82,7 +82,9 @@ assert.equal(clamped.length, 3);
 assert.equal(clamped[0]?.time, 0);
 assert.deepEqual(clamped[2], { time: 0.2, type: "cursor", x: 100, y: 200 });
 
-// Defaults produce a path dense enough for 30fps camera-follow export.
+// Defaults produce a path dense enough for 30fps camera-follow export. The Director Mode
+// default move is a snappier 220ms (was 450ms), so the path ends ~0.78s before the action
+// moment and uses ~8 samples (still <= 1/30s spacing).
 const defaults = createCursorPathEvents({
   startedAtMs: 1_000,
   nowMs: 2_000,
@@ -90,9 +92,9 @@ const defaults = createCursorPathEvents({
   to: { x: 90, y: 0 },
 });
 
-assert.equal(defaults.length, 15);
-assert.equal(defaults[0]?.time, 0.55);
-assert.equal(defaults[14]?.time, 1);
+assert.equal(defaults.length, 8);
+assert.equal(defaults[0]?.time, 0.78);
+assert.equal(defaults[7]?.time, 1);
 for (let index = 1; index < defaults.length; index += 1) {
   const previous = defaults[index - 1]!;
   const current = defaults[index]!;

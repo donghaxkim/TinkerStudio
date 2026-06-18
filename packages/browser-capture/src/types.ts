@@ -1,3 +1,5 @@
+import type { ActionTrace } from "./actionTrace.js";
+
 export type CaptureStep =
   | { type: "goto"; url: string }
   | { type: "click"; selector?: string; text?: string; label?: string }
@@ -58,6 +60,8 @@ export type CaptureResult = {
   clips: CaptureAsset[];
   screenshots: CaptureAsset[];
   events: CaptureEvent[];
+  /** Structured per-action trace (populated when capture runs with `smooth`/tracing). */
+  actionTrace?: ActionTrace;
   tracePath?: string;
   checkpoints: CheckpointResult[];
   metadata: {

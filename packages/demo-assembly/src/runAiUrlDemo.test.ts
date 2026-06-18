@@ -826,13 +826,13 @@ const result = await runAiUrlDemo({
   },
   runCapture: async (plan, options) => {
     assert.deepEqual(plan, capturePlan);
-    assert.deepEqual(options, { outputDir: join(outputRoot, "playwright", "capture"), headless: true });
+    assert.deepEqual(options, { outputDir: join(outputRoot, "playwright", "capture"), headless: true, smooth: true });
 
     return captureResult;
   },
 });
 
-assert.deepEqual(phases, ["analysis", "planning", "verification", "capture", "assembly"]);
+assert.deepEqual(phases, ["analysis", "understanding", "strategy", "planning", "verification", "capture", "assembly"]);
 
 const expectedPaths = [
   join(playwrightOutputRoot, "demo-project.json"),
@@ -846,6 +846,71 @@ const expectedPaths = [
 for (const path of expectedPaths) {
   assert.ok(result.artifactPaths.includes(path), `Expected artifact path ${path}`);
 }
+
+// ---- New multi-phase pipeline artifacts (Understanding -> Strategy -> Capture) ----
+const pipelinePaths = [
+  join(outputRoot, "input.json"),
+  join(outputRoot, "product-understanding.json"),
+  join(outputRoot, "demo-strategy.json"),
+  join(outputRoot, "storyboard.json"),
+  join(outputRoot, "run-summary.json"),
+];
+for (const path of pipelinePaths) {
+  assert.ok(result.artifactPaths.includes(path), `Expected pipeline artifact path ${path}`);
+  assert.ok(existsSync(path), `Expected pipeline artifact on disk ${path}`);
+}
+assert.equal(result.pipeline.productUnderstandingPath, join(outputRoot, "product-understanding.json"));
+assert.equal(result.pipeline.demoStrategyPath, join(outputRoot, "demo-strategy.json"));
+assert.equal(result.pipeline.storyboardPath, join(outputRoot, "storyboard.json"));
+assert.equal(result.pipeline.runSummaryPath, join(outputRoot, "run-summary.json"));
+
+// product-understanding.json is evidence-backed and schema-shaped.
+const understandingJson = JSON.parse(await readFile(join(outputRoot, "product-understanding.json"), "utf8"));
+assert.equal(understandingJson.version, 1);
+assert.ok(understandingJson.demoableFlows.length >= 1, "understanding should expose >=1 flow");
+assert.ok(understandingJson.evidence.length >= 1, "understanding should cite evidence");
+
+// demo-strategy.json selected a flow that actually exists in the understanding.
+const strategyJson = JSON.parse(await readFile(join(outputRoot, "demo-strategy.json"), "utf8"));
+assert.ok(
+  understandingJson.demoableFlows.some((flow: { id: string }) => flow.id === strategyJson.selectedFlow.sourceFlowId),
+  "strategy must select a real understanding flow",
+);
+
+// run-summary.json covers every storyboard beat.
+const storyboardJson = JSON.parse(await readFile(join(outputRoot, "storyboard.json"), "utf8"));
+const runSummaryJson = JSON.parse(await readFile(join(outputRoot, "run-summary.json"), "utf8"));
+assert.equal(runSummaryJson.version, 1);
+assert.equal(runSummaryJson.storyboardCoverage.length, storyboardJson.beats.length);
+
+// Both storyboards (strategic root + playwright capture) and the run summary exist on disk
+// AND are listed in run-summary.generatedArtifacts (clear, non-ambiguous artifact map).
+assert.ok(existsSync(join(outputRoot, "storyboard.json")), "root strategic storyboard.json must exist");
+assert.ok(existsSync(join(playwrightOutputRoot, "storyboard.json")), "playwright capture storyboard.json must exist");
+assert.ok(existsSync(join(outputRoot, "run-summary.json")), "run-summary.json must exist");
+for (const listed of ["storyboard.json", "playwright/storyboard.json", "run-summary.json"]) {
+  assert.ok(
+    runSummaryJson.generatedArtifacts.includes(listed),
+    `run-summary.generatedArtifacts should list ${listed}`,
+  );
+}
+
+// capture-lineage.json is a first-class artifact mapping every capture step to a beat.
+const captureLineageJson = JSON.parse(await readFile(join(playwrightOutputRoot, "capture-lineage.json"), "utf8"));
+assert.equal(captureLineageJson.version, 1);
+assert.ok(captureLineageJson.steps.length >= 1, "capture-lineage should have step entries");
+assert.ok(
+  captureLineageJson.steps.every((step: { beatId?: string }) => typeof step.beatId === "string" && step.beatId.length > 0),
+  "every capture-lineage step should reference a beat",
+);
+assert.ok(runSummaryJson.generatedArtifacts.includes("playwright/capture-lineage.json"));
+
+// action-trace.json entries carry best-effort storyboard-beat lineage.
+const actionTraceJson = JSON.parse(await readFile(join(playwrightOutputRoot, "action-trace.json"), "utf8"));
+assert.ok(
+  actionTraceJson.actions.every((action: { beatId?: string }) => typeof action.beatId === "string" && action.beatId.length > 0),
+  "every traced action should be stamped with a storyboard beatId",
+);
 
 const projectJson = JSON.parse(await readFile(join(playwrightOutputRoot, "demo-project.json"), "utf8"));
 assert.equal(projectJson.metadata.productUrl, productUrl);

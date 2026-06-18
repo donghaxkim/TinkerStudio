@@ -276,6 +276,8 @@ export function CompositionDemoScreen({
   const [importError, setImportError] = useState<string | undefined>(undefined);
   const [repoDraft, setRepoDraft] = useState("");
   const [productDraft, setProductDraft] = useState("");
+  const [promptDraft, setPromptDraft] = useState("");
+  const [directError, setDirectError] = useState<string | undefined>(undefined);
   const [planningMessage, setPlanningMessage] = useState("");
   const [repoShake, setRepoShake] = useState(false);
   const [renderer, setRenderer] = useState<GenerationRenderer>("hyperframes");
@@ -300,6 +302,7 @@ export function CompositionDemoScreen({
 
   const canPlan = !planningBusy && normalizedRepo !== undefined;
   const canGenerate = !planningBusy && !jobRunning && outlineValid;
+  const canGenerateDirect = !planningBusy && !jobRunning && normalizedRepo !== undefined;
   const canUseGlobalNavigation = !planningBusy && !jobRunning;
 
   const repoLabel = parseGithubRepo(session?.repoUrl ?? "") ?? normalizedRepo;
@@ -368,6 +371,33 @@ export function CompositionDemoScreen({
 
     void job.start(request);
   }, [hyperframesAgent, job, planningBusy, renderer, session]);
+
+  // Direct generation: skip the planning chat entirely. Build the job straight from the
+  // typed repo + product URL + optional prompt and render with Playwright (the smooth-video
+  // pipeline runs its own internal understanding -> strategy -> capture phases).
+  const startDirectGeneration = useCallback(() => {
+    const repo = parseGithubRepo(repoDraft);
+    if (repo === undefined) {
+      requireRepo();
+      return;
+    }
+    const productUrl = normalizePublicUrl(productDraft);
+    if (productUrl === undefined) {
+      setDirectError("Add your product / website URL — the Playwright renderer captures it live.");
+      return;
+    }
+    setDirectError(undefined);
+    const request = {
+      mode: "ai-url-planning",
+      repoUrl: `https://github.com/${repo}`,
+      productUrl,
+      durationCapSeconds: 45,
+      aspectRatio: "16:9",
+      ...(promptDraft.trim() === "" ? {} : { prompt: promptDraft.trim() }),
+      renderer: "playwright",
+    } as const;
+    void job.start(request);
+  }, [job, productDraft, promptDraft, repoDraft, requireRepo]);
 
   const startImport = useCallback(
     (collected: Array<{ relativePath: string; file: File }>) => {
@@ -792,7 +822,7 @@ export function CompositionDemoScreen({
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
-                        startPlanning();
+                        startDirectGeneration();
                       }
                     }}
                   />
@@ -819,9 +849,27 @@ export function CompositionDemoScreen({
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
-                        startPlanning();
+                        startDirectGeneration();
                       }
                     }}
+                  />
+                </div>
+              </div>
+
+              <div className="tk-cd-field" style={{ alignItems: "flex-start" }}>
+                <span className="tk-cd-field-icon" aria-hidden="true" style={{ marginTop: 8 }}>
+                  <LuSparkles size={16} style={{ color: "var(--tk-text-sec)" }} />
+                </span>
+                <div className="tk-cd-input-wrap">
+                  <textarea
+                    className="tk-cd-input"
+                    aria-label="Demo prompt"
+                    placeholder="What should the demo show? (optional)"
+                    rows={2}
+                    spellCheck={false}
+                    value={promptDraft}
+                    onChange={(event) => setPromptDraft(event.currentTarget.value)}
+                    style={{ resize: "vertical", minHeight: 40, fontFamily: "inherit" }}
                   />
                 </div>
               </div>
@@ -847,13 +895,43 @@ export function CompositionDemoScreen({
               </label>
 
               <div className="tk-cd-actions">
-                <span className="tk-cd-actions-hint">{planningBusy ? "Planning demo..." : "Press ⏎ to plan"}</span>
-                <button type="button" className="tk-btn tk-btn-accent" onClick={startPlanning} disabled={!canPlan}>
-                  <LuSparkles size={14} aria-hidden="true" />
-                  Plan
-                </button>
+                {jobRunning ? (
+                  <>
+                    <span className="tk-cd-actions-hint" data-testid="composition-generating-direct">
+                      Generating your demo video — this usually takes a few minutes…
+                    </span>
+                    <button type="button" className="tk-btn" aria-busy="true" disabled>
+                      Generating…
+                    </button>
+                    <button type="button" className="tk-btn" onClick={() => job.cancel()}>
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="tk-cd-actions-hint">Paste repo + product URL, then Generate.</span>
+                    <button type="button" className="tk-btn" onClick={startPlanning} disabled={!canPlan}>
+                      <LuSparkles size={14} aria-hidden="true" />
+                      Plan
+                    </button>
+                    <button type="button" className="tk-btn tk-btn-accent" onClick={startDirectGeneration} disabled={!canGenerateDirect}>
+                      Generate now
+                    </button>
+                  </>
+                )}
               </div>
 
+              {directError ? (
+                <div role="alert" className="tk-cd-alert" style={{ marginTop: 12 }}>
+                  {directError}
+                </div>
+              ) : null}
+              {job.phase === "failed" ? (
+                <div role="alert" className="tk-cd-alert" style={{ marginTop: 12 }}>
+                  <b>Something went wrong: </b>
+                  {job.error ?? "Generation failed."}
+                </div>
+              ) : null}
               {planning.error ? (
                 <div role="alert" className="tk-cd-alert" style={{ marginTop: 12 }}>
                   <b>Planning failed: </b>

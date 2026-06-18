@@ -88,6 +88,14 @@ const successfulAiUrlRunner: AiUrlDemoRunner = async (input) => {
       events: 0,
       checkpoints: 0,
     },
+    pipeline: {
+      runInputPath: `${input.outputRoot}/input.json`,
+      productUnderstandingPath: `${input.outputRoot}/product-understanding.json`,
+      demoStrategyPath: `${input.outputRoot}/demo-strategy.json`,
+      storyboardPath: `${input.outputRoot}/storyboard.json`,
+      runSummaryPath: `${input.outputRoot}/run-summary.json`,
+      warnings: [],
+    },
   };
 };
 
@@ -127,6 +135,15 @@ const successfulPlaywrightAiUrlRunner: AiUrlDemoRunner = async (input) => {
       screenshots: 1,
       events: 3,
       checkpoints: 2,
+    },
+    pipeline: {
+      runInputPath: `${input.outputRoot}/input.json`,
+      productUnderstandingPath: `${input.outputRoot}/product-understanding.json`,
+      demoStrategyPath: `${input.outputRoot}/demo-strategy.json`,
+      storyboardPath: `${input.outputRoot}/storyboard.json`,
+      runSummaryPath: `${input.outputRoot}/run-summary.json`,
+      finalVideoPath: `${input.outputRoot}/playwright/final.mp4`,
+      warnings: [],
     },
   };
 };
