@@ -63,3 +63,63 @@ export type AnalyzeRepoOptions = {
   fetchRepo?: AnalyzeRepoFetch;
   runOpencode?: AnalyzeRepoOpencodeRun;
 };
+
+export type NarrativeWorkflowCandidate = {
+  name: string;
+  whyItMatters: string;
+  routeHints: string[];
+  visibleEvidence: string[];
+  storyboardUse: "hook" | "main-demo" | "proof" | "cta";
+};
+
+export type NarrativeExploration = {
+  productSummary: string;
+  bestDemoAngle: string;
+  userProblem: string;
+  promisedOutcome: string;
+  workflowCandidates: NarrativeWorkflowCandidate[];
+  strongestCopy: string[];
+  avoidNarratives: string[];
+  explorationNotes: string[];
+};
+
+export type NarrativeStagehandObserveInput = {
+  instruction: string;
+  drawOverlay?: boolean;
+  iframes?: boolean;
+};
+
+export type NarrativeStagehandExtractInput<T> = {
+  instruction: string;
+  schema: unknown;
+  domSettleTimeoutMs?: number;
+  iframes?: boolean;
+};
+
+export type NarrativeStagehandPage = {
+  goto: (url: string, options?: { waitUntil?: "domcontentloaded" | "load" | "networkidle"; timeout?: number }) => Promise<unknown>;
+};
+
+export type NarrativeStagehandClient = {
+  init: () => Promise<void>;
+  close: () => Promise<void>;
+  page?: NarrativeStagehandPage;
+  context?: { pages: () => NarrativeStagehandPage[] };
+  observe: (instruction: string, options?: { page?: NarrativeStagehandPage; timeout?: number }) => Promise<unknown>;
+  extract: <T>(
+    instruction: string,
+    schema: unknown,
+    options?: { page?: NarrativeStagehandPage; timeout?: number },
+  ) => Promise<T>;
+};
+
+export type CreateNarrativeStagehand = () => NarrativeStagehandClient;
+
+export type ExploreNarrativeWebsiteOptions = {
+  enabled?: boolean;
+  prompt?: string;
+  productAnalysis?: ProductAnalysis;
+  repoAnalysis?: RepoAnalysis;
+  timeoutMs?: number;
+  createStagehand?: CreateNarrativeStagehand;
+};

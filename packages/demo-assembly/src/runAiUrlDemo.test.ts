@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { CapturePlan, CaptureResult } from "@tinker/browser-capture";
 import { DemoProjectSchema } from "@tinker/project-schema";
-import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
+import type { NarrativeExploration, ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { runAiUrlDemo, type AiUrlDemoPhase } from "./runAiUrlDemo.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
 
@@ -43,6 +43,25 @@ const repoAnalysis: RepoAnalysis = {
   importantTerms: ["storyboard"],
   setupNotes: ["Source-only repo analysis."],
   sourceHints: [{ path: "README.md", reason: "Product summary." }],
+};
+
+const narrativeExploration: NarrativeExploration = {
+  productSummary: "Fixture Product creates repo-aware product demos.",
+  bestDemoAngle: "Show a URL becoming an editable demo with deterministic capture.",
+  userProblem: "Teams need a demo narrative grounded in the real workflow.",
+  promisedOutcome: "The generated storyboard uses the strongest observed workflow.",
+  workflowCandidates: [
+    {
+      name: "URL to demo project",
+      whyItMatters: "It proves the core product promise.",
+      routeHints: ["/", "Demo builder"],
+      visibleEvidence: ["Start demo button"],
+      storyboardUse: "main-demo",
+    },
+  ],
+  strongestCopy: ["Build demos faster"],
+  avoidNarratives: ["Avoid generic homepage tour."],
+  explorationNotes: ["Only same-origin UI was observed."],
 };
 
 const capturePlan: CapturePlan = {
@@ -281,6 +300,91 @@ await assert.rejects(
     }),
   /Hyperframes render output path must match generated outputVideoPath/,
 );
+
+const narrativeSuccessOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-narrative-success-"));
+let narrativePlannerSawArtifact = false;
+const narrativeSuccessResult = await runAiUrlDemo({
+  outputRoot: narrativeSuccessOutputRoot,
+  projectId: "ai-url-demo-narrative-success-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "playwright",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  enableNarrativeExploration: true,
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  exploreNarrativeWebsite: async (url, options) => {
+    assert.equal(url, canonicalProductUrl);
+    assert.equal(options.enabled, true);
+    assert.equal(options.prompt, prompt);
+    assert.deepEqual(options.productAnalysis, { ...productAnalysis, screenshotPath: undefined });
+    assert.deepEqual(options.repoAnalysis, repoAnalysis);
+    return narrativeExploration;
+  },
+  planner: async (input) => {
+    narrativePlannerSawArtifact = true;
+    assert.deepEqual(input.narrativeExploration, narrativeExploration);
+    return {
+      storyboard: {
+        title: "Narrative Exploration Demo",
+        durationCapSeconds: 10,
+        aspectRatio: "16:9",
+        beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
+      },
+      capturePlan,
+    };
+  },
+  runCapture: async () => captureResult,
+});
+assert.equal(narrativePlannerSawArtifact, true);
+const narrativePath = join(narrativeSuccessOutputRoot, "narrative-exploration.json");
+assert.ok(narrativeSuccessResult.artifactPaths.includes(narrativePath));
+assert.deepEqual(JSON.parse(await readFile(narrativePath, "utf8")), narrativeExploration);
+
+const narrativeFailureOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-narrative-failure-"));
+const narrativeWarnings: string[] = [];
+await runAiUrlDemo({
+  outputRoot: narrativeFailureOutputRoot,
+  projectId: "ai-url-demo-narrative-failure-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "playwright",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  enableNarrativeExploration: true,
+  onWarning: (message) => narrativeWarnings.push(message),
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  exploreNarrativeWebsite: async () => {
+    throw new Error("Stagehand unavailable");
+  },
+  planner: async (input) => {
+    assert.equal(input.narrativeExploration, undefined);
+    return {
+      storyboard: {
+        title: "Narrative Fallback Demo",
+        durationCapSeconds: 10,
+        aspectRatio: "16:9",
+        beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
+      },
+      capturePlan,
+    };
+  },
+  runCapture: async () => captureResult,
+});
+assert.equal(existsSync(join(narrativeFailureOutputRoot, "narrative-exploration.json")), false);
+assert.ok(narrativeWarnings.some((message) => message.includes("Narrative exploration failed: Stagehand unavailable")));
 
 const bothOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-both-renderers-"));
 const bothCalls: string[] = [];

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { CreateDemoRequest } from "@tinker/generation-contract";
 import { isAiUrlRenderer } from "../src/aiUrlRenderer.js";
+import { loadLocalEnvFile, resolveWorkspaceEnvPath } from "../src/localEnv.js";
 
 type LocalGenerationJobModule = typeof import("../src/localGenerationJob.js");
 
@@ -15,6 +16,8 @@ const packagesToBuild = [
   "@tinker/product-analysis",
   "@tinker/motion",
 ] as const;
+
+loadLocalEnvFile(resolveWorkspaceEnvPath(import.meta.url));
 
 function readArg(name: string) {
   const index = process.argv.indexOf(name);
