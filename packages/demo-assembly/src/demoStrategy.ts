@@ -78,6 +78,8 @@ export type Storyboard = z.infer<typeof StoryboardSchema>;
 export type DeriveDemoStrategyInput = {
   understanding: ProductUnderstanding;
   prompt?: string;
+  /** Optional user-edited directive for the LLM strategy agent (ignored by the deterministic path). */
+  systemPrompt?: string;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
 };

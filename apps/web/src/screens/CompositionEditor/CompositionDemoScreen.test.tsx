@@ -482,6 +482,55 @@ describe("CompositionDemoScreen", () => {
     expect("prompt" in (capturedRequest as CreateCompositionJobRequest)).toBe(false);
   });
 
+  it("system prompt is hidden by default; when edited it is sent with Generate now", async () => {
+    let capturedRequest: CreateCompositionJobRequest | undefined;
+    const client: CompositionGenerationClient = {
+      createJob: vi.fn(async (request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => {
+        capturedRequest = request;
+        return {
+          id: "direct-job-2",
+          status: "queued",
+          request: {
+            id: "direct-job-2",
+            mode: "ai-url-planning",
+            repoUrl: "https://github.com/acme/driftboard",
+            productUrl: "https://driftboard.example.com",
+            durationCapSeconds: 45,
+            aspectRatio: "16:9",
+            renderer: "playwright",
+            hyperframesAgent: "opencode",
+          },
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          progressEvents: [],
+        };
+      }),
+      getJob: async () => { throw new Error("not used"); },
+      waitForJob: (_id: string, opts?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          opts?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    };
+    render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
+
+    // Hidden by default — no system-prompt textarea until revealed.
+    expect(screen.queryByLabelText("System prompt")).not.toBeInTheDocument();
+
+    // Click reveals it, prefilled with the default directive.
+    fireEvent.click(screen.getByRole("button", { name: "Edit system prompt" }));
+    const textarea = screen.getByLabelText("System prompt") as HTMLTextAreaElement;
+    expect(textarea.value).toContain("evidence-grounded product demo");
+
+    // Edit it, then generate → the request carries the edited systemPrompt.
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    fireEvent.change(textarea, { target: { value: "Focus on the onboarding flow only." } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate now" }));
+
+    await waitFor(() => expect(client.createJob).toHaveBeenCalled());
+    expect((capturedRequest as CreateCompositionJobRequest).systemPrompt).toBe("Focus on the onboarding flow only.");
+  });
+
   it("can start planning with Claude Code when selected", async () => {
     const client = createLocalCompositionGenerationClient();
     const planningClient = createPlanningClient();

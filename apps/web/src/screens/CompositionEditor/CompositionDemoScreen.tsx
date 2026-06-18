@@ -20,9 +20,10 @@ import type {
   PlanningProgressStatus,
   PlanningStage,
 } from "@tinker/generation-contract";
+import { DEFAULT_SYSTEM_PROMPT } from "@tinker/generation-contract";
 import type { TimelineRegistryWindow } from "@tinker/editor";
 import type { CompositionEditClient } from "../../lib/compositionEditClient.js";
-import type { CompositionGenerationClient } from "../../lib/compositionGenerationClient.js";
+import type { CompositionGenerationClient, CreateCompositionJobRequest } from "../../lib/compositionGenerationClient.js";
 import type { CompositionImportClient } from "../../lib/compositionImportClient.js";
 import type { CompositionPlanningClient } from "../../lib/compositionPlanningClient.js";
 import { selectCanonicalBundleFiles } from "../../lib/bundleFiles.js";
@@ -277,6 +278,8 @@ export function CompositionDemoScreen({
   const [repoDraft, setRepoDraft] = useState("");
   const [productDraft, setProductDraft] = useState("");
   const [directError, setDirectError] = useState<string | undefined>(undefined);
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+  const [systemPromptDraft, setSystemPromptDraft] = useState(DEFAULT_SYSTEM_PROMPT);
   const [planningMessage, setPlanningMessage] = useState("");
   const [repoShake, setRepoShake] = useState(false);
   const [renderer, setRenderer] = useState<GenerationRenderer>("hyperframes");
@@ -386,16 +389,18 @@ export function CompositionDemoScreen({
       return;
     }
     setDirectError(undefined);
-    const request = {
+    const trimmedSystemPrompt = systemPromptDraft.trim();
+    const request: CreateCompositionJobRequest = {
       mode: "ai-url-planning",
       repoUrl: `https://github.com/${repo}`,
       productUrl,
       durationCapSeconds: 45,
       aspectRatio: "16:9",
       renderer: "playwright",
-    } as const;
+      ...(trimmedSystemPrompt === "" ? {} : { systemPrompt: trimmedSystemPrompt }),
+    };
     void job.start(request);
-  }, [job, productDraft, repoDraft, requireRepo]);
+  }, [job, productDraft, repoDraft, requireRepo, systemPromptDraft]);
 
   const startImport = useCallback(
     (collected: Array<{ relativePath: string; file: File }>) => {
@@ -899,6 +904,28 @@ export function CompositionDemoScreen({
                     </button>
                   </>
                 )}
+              </div>
+
+              <div className="tk-cd-sysprompt" style={{ marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="tk-cd-shell-link"
+                  aria-expanded={showSystemPrompt}
+                  onClick={() => setShowSystemPrompt((value) => !value)}
+                >
+                  {showSystemPrompt ? "Hide system prompt" : "Edit system prompt"}
+                </button>
+                {showSystemPrompt ? (
+                  <textarea
+                    className="tk-cd-input"
+                    aria-label="System prompt"
+                    rows={4}
+                    spellCheck={false}
+                    value={systemPromptDraft}
+                    onChange={(event) => setSystemPromptDraft(event.currentTarget.value)}
+                    style={{ resize: "vertical", minHeight: 84, fontFamily: "inherit", marginTop: 8, width: "100%" }}
+                  />
+                ) : null}
               </div>
 
               {directError ? (

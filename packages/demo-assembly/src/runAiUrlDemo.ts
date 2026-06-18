@@ -38,6 +38,7 @@ import { buildDirectorPlan } from "./directorPlan.js";
 import { applyEditDecisionList } from "./applyEditDecisionList.js";
 import { buildRunInput, buildRunSummary } from "./runSummary.js";
 import { renderFinalToMp4 } from "@tinker/rendering/node";
+import { DEFAULT_SYSTEM_PROMPT } from "@tinker/generation-contract";
 import type { DemoProject } from "@tinker/project-schema";
 import { validateHyperframesArtifacts } from "./hyperframesArtifacts.js";
 import {
@@ -95,6 +96,8 @@ export type RunAiUrlDemoInput = {
   createdAt: string;
   productUrl: string;
   prompt?: string;
+  /** Optional user-edited directive for the LLM Understanding + Strategy agents. */
+  systemPrompt?: string;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
   repoUrl?: string;
@@ -380,6 +383,8 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const analyzeWebsite = input.analyzeWebsite ?? defaultAnalyzeWebsite;
   const analyzeRepo = input.analyzeRepo ?? defaultAnalyzeRepo;
   const prompt = input.prompt ?? "";
+  // User-editable directive for the LLM agents; falls back to the shared default.
+  const systemPrompt = input.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT;
   const planner = input.planner ?? selectDefaultAiUrlPlanner();
   const runCapture = input.runCapture ?? runPlaywrightCapture;
   const generateHyperframes = input.generateHyperframes ?? createOpencodeHyperframesGenerator();
@@ -440,6 +445,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     productUrl: input.productUrl,
     ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
     prompt,
+    systemPrompt,
     websiteAnalysis: analysis,
     ...(repoAnalysis === undefined ? {} : { repoAnalysis }),
     ...(repoCheckoutDirectory === undefined ? {} : { repoCheckoutDirectory }),
@@ -452,6 +458,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const { strategy, storyboard: strategyStoryboard } = await strategize({
     understanding,
     prompt: prompt,
+    systemPrompt,
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,
   });

@@ -46,6 +46,15 @@ export const PublicGithubRepoUrlSchema = z.string().url().refine((value) => {
 
 export const AiUrlRendererSchema = z.enum(["hyperframes", "playwright", "both"]);
 export type AiUrlRenderer = z.infer<typeof AiUrlRendererSchema>;
+
+/**
+ * Default high-level directive for the demo-generation agents (Understanding + Strategy).
+ * Editable by the user via a hidden "Edit system prompt" affordance; when they don't touch
+ * it, this is what drives the agents. Single source of truth shared by the web UI (prefill)
+ * and the pipeline (default when the request omits a systemPrompt).
+ */
+export const DEFAULT_SYSTEM_PROMPT =
+  "Create a clear, evidence-grounded product demo from the website and repo. Show the problem, audience, solution, strongest use case, end result, and next step. Prioritize core concepts and minimal dead time; do not invent unsupported claims.";
 export const HyperframesAgentSchema = z.enum(["opencode", "claude"]);
 export type HyperframesAgent = z.infer<typeof HyperframesAgentSchema>;
 
@@ -67,6 +76,8 @@ export const AiUrlPlanningCreateDemoRequestSchema = BaseCreateDemoRequestSchema.
   productUrl: PublicUrlSchema,
   renderer: AiUrlRendererSchema.default("hyperframes"),
   hyperframesAgent: HyperframesAgentSchema.default("opencode"),
+  /** Optional user-edited directive for the Understanding + Strategy agents. */
+  systemPrompt: z.string().trim().min(1).optional(),
 });
 
 export const AssistedCreateDemoRequestSchema = z.object({

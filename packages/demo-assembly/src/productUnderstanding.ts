@@ -90,6 +90,8 @@ export type DeriveProductUnderstandingInput = {
   productUrl: string;
   repoUrl?: string;
   prompt?: string;
+  /** Optional user-edited directive for the LLM understanding agent (ignored by the deterministic path). */
+  systemPrompt?: string;
   websiteAnalysis: ProductAnalysis;
   repoAnalysis?: RepoAnalysis;
   repoCheckoutDirectory?: string;

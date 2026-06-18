@@ -15,7 +15,9 @@ function ownerRepo(repoUrl: string): string | undefined {
 export function buildUnderstandingPrompt(input: DeriveProductUnderstandingInput, repo: string): string {
   return JSON.stringify({
     task: "Investigate this product and output ONE JSON object matching the schema. Be a real product analyst, not a feature lister.",
+    systemDirective: input.systemPrompt ?? "",
     instructions: [
+      ...(input.systemPrompt ? [`Above all, follow this directive: ${input.systemPrompt}`] : []),
       "The repository is cloned in your working directory — read its README, package.json, and key source with your file tools.",
       `Use the DeepWiki tools on \"${repo}\" (read_wiki_contents, ask_question) for grounded architecture/capability answers.`,
       "Answer the viewer-level story: what PROBLEM it solves, WHO feels it, the concrete SOLUTION MECHANISM, WHY it matters, and the single viewerTakeaway.",

@@ -5,7 +5,9 @@ import { DemoStrategySchema, StoryboardSchema, deriveDemoStrategy,
 export function buildStrategyPrompt(input: DeriveDemoStrategyInput): string {
   return JSON.stringify({
     task: "Design the demo story. Output ONE JSON object with keys strategy and storyboard.",
+    systemDirective: input.systemPrompt ?? "",
     instructions: [
+      ...(input.systemPrompt ? [`Above all, follow this directive: ${input.systemPrompt}`] : []),
       "Open on the PROBLEM and audience from valueNarrative; demo the rank-1 flow; prove it with the flow's expectedOutcome; close on whyItMatters.",
       "Every storyboard beat: set narrative to the viewer-level point (use flow.viewerTakeaway for the proof beat). strategyMessageId references messageHierarchy by 1-based id message-N. proofPointId references a real capability id.",
       "Do not invent product facts beyond the provided understanding.",
