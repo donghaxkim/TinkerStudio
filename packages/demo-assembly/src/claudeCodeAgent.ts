@@ -1,7 +1,7 @@
 // Claude Code agent backend (local LLM, alternative to opencode)
 //
-// The planner / repo-analysis / hyperframes seams in this codebase are all the same
-// generic shape: `(prompt, { cwd }) => Promise<string>` — "run an agent CLI in this
+// The planner / repo-analysis seams in this codebase use the same generic shape:
+// `(prompt, { cwd }) => Promise<string>` — "run an agent CLI in this
 // directory with this prompt and give me back its text". opencode is one implementation;
 // this is another, backed by the locally-installed Claude Code CLI (`claude`).
 //

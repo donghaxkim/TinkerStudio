@@ -41,7 +41,7 @@ const repoAnalysis: RepoAnalysis = {
   features: ["Planning", "Rendering"],
   likelyRoutes: ["/", "/dashboard"],
   demoIdeas: ["Show planning to render flow."],
-  importantTerms: ["outline", "hyperframes"],
+  importantTerms: ["outline", "playwright"],
   setupNotes: ["Run pnpm install."],
   sourceHints: [{ path: "README.md", reason: "Product overview." }],
 };
@@ -405,7 +405,7 @@ describe("createClaudePlanningAgentRunner", () => {
     expect(promptJson).toContain("Hook -> Demo: Use Case -> End Result -> CTA");
     expect(promptJson).toContain("Use this as the starting recommendation, not a hard constraint.");
     expect(promptJson).toContain("Do not require exactly four scenes");
-    expect(promptJson).not.toContain("Hyperframes product demo");
+    expect(promptJson).not.toContain("legacy composition product demo");
   });
 
   it("rejects initial planning without a product URL before analysis or agent execution", async () => {
@@ -801,6 +801,6 @@ describe("createClaudePlanningAgentRunner", () => {
     const followupPromptJson = JSON.stringify(prompt);
     expect(followupPromptJson).toContain("preserve Hook -> Demo: Use Case -> End Result -> CTA unless the user asks for a different narrative structure");
     expect(followupPromptJson).toContain("If the user asks to change the structure, update outline.json to match the user's requested structure.");
-    expect(followupPromptJson).not.toContain("Continue planning the Hyperframes product demo");
+    expect(followupPromptJson).not.toContain("Continue planning the legacy composition product demo");
   });
 });

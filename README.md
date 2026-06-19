@@ -20,10 +20,9 @@ Preview/play, select clips/zooms on the timeline, edit them (item-aware, undoabl
 tab for AI edit proposals (preview/accept/reject), and open **Export** to validate the plan + see the
 local render command. **Settings** (gear) has diagnostics, the export directory, and a storage reset.
 
-Create Demo offers two generation methods. Use Playwright recording for real browser capture that opens
-as an editable `DemoProject`. Use HyperFrames composition for generated motion composition output that
-opens in the composition editor. Both methods share the same job/progress/artifact API, but each keeps
-its native editable output.
+Tinker generates repo-grounded product demos through one pipeline: analysis, understanding,
+strategy, Playwright capture planning, smooth Playwright capture, `DemoProject`, and
+`playwright/final.mp4`.
 
 ## Render a real MP4
 

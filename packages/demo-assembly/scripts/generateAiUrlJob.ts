@@ -3,7 +3,6 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { CreateDemoRequest } from "@tinker/generation-contract";
-import { isAiUrlRenderer } from "../src/aiUrlRenderer.js";
 import { loadLocalEnvFile, resolveWorkspaceEnvPath } from "../src/localEnv.js";
 
 type LocalGenerationJobModule = typeof import("../src/localGenerationJob.js");
@@ -47,7 +46,7 @@ function buildRequiredPackages() {
   }
 }
 
-async function printPipelineSummary(outputDirectory: string, renderer: string) {
+async function printPipelineSummary(outputDirectory: string) {
   const at = (...parts: string[]) => join(outputDirectory, ...parts);
   let warnings: string[] = [];
   try {
@@ -57,7 +56,6 @@ async function printPipelineSummary(outputDirectory: string, renderer: string) {
     // run-summary is best-effort for the printout.
   }
 
-  const usesPlaywright = renderer === "playwright" || renderer === "both";
   const finalMp4 = at("playwright", "final.mp4");
   const backend = (process.env.TINKER_AGENT_BACKEND ?? "").trim().toLowerCase() || "opencode";
 
@@ -68,33 +66,25 @@ async function printPipelineSummary(outputDirectory: string, renderer: string) {
   console.log(`product-understanding : ${at("product-understanding.json")}`);
   console.log(`demo-strategy         : ${at("demo-strategy.json")}`);
   console.log(`storyboard            : ${at("storyboard.json")}`);
-  if (usesPlaywright) {
-    console.log(`capture-plan          : ${at("playwright", "capture-plan.json")}`);
-    console.log(`action-trace          : ${at("playwright", "action-trace.json")}`);
-    console.log(`capture-lineage       : ${at("playwright", "capture-lineage.json")}`);
-    console.log(`render-plan           : ${at("playwright", "render-plan.json")}`);
-    console.log(`director-plan         : ${at("playwright", "director-plan.json")}`);
-    console.log(`edit-decision-list    : ${at("playwright", "edit-decision-list.json")}`);
-    console.log(`final.mp4             : ${existsSync(finalMp4) ? finalMp4 : "(not produced — ffmpeg unavailable)"}`);
-  }
+  console.log(`capture-plan          : ${at("playwright", "capture-plan.json")}`);
+  console.log(`action-trace          : ${at("playwright", "action-trace.json")}`);
+  console.log(`capture-lineage       : ${at("playwright", "capture-lineage.json")}`);
+  console.log(`render-plan           : ${at("playwright", "render-plan.json")}`);
+  console.log(`director-plan         : ${at("playwright", "director-plan.json")}`);
+  console.log(`edit-decision-list    : ${at("playwright", "edit-decision-list.json")}`);
+  console.log(`final.mp4             : ${existsSync(finalMp4) ? finalMp4 : "(not produced - ffmpeg unavailable)"}`);
   console.log(`run-summary           : ${at("run-summary.json")}`);
   console.log(`warnings              : ${warnings.length ? warnings.join(" | ") : "(none)"}`);
 }
 
 const productUrl = readArg("--url");
 const repoUrl = readArg("--repo");
-// Default to the smooth Playwright video path: it produces final.mp4 + action-trace +
-// render-plan, which is the demo this command is meant to deliver.
-const rendererValue = readArg("--renderer") ?? "playwright";
 
 if (!productUrl) {
   console.error("--url is required");
   process.exitCode = 1;
 } else if (!repoUrl) {
   console.error("--repo is required for AI URL demo generation");
-  process.exitCode = 1;
-} else if (!isAiUrlRenderer(rendererValue)) {
-  console.error("--renderer must be one of hyperframes, playwright, both");
   process.exitCode = 1;
 } else {
   const id = readArg("--id") ?? "ai-url-local-job";
@@ -122,7 +112,6 @@ if (!productUrl) {
       mode: "ai-url-planning",
       productUrl,
       repoUrl,
-      renderer: rendererValue,
       outputDirectory: `generated/local-job/${id}`,
       prompt,
     };
@@ -134,7 +123,7 @@ if (!productUrl) {
         },
       });
 
-      await printPipelineSummary(result.outputDirectory, rendererValue);
+      await printPipelineSummary(result.outputDirectory);
     } catch (error) {
       if (error instanceof LocalGenerationJobError) {
         console.error(JSON.stringify(error.generationError, null, 2));

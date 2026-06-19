@@ -240,14 +240,15 @@ type Asset = {
 
 The editor, renderer, and capture pipeline should reference assets by `id`, not by duplicating paths throughout the project.
 
-## Dual Generation Methods
+## Generation Method
 
-Tinker supports two equal first-class Create Demo methods:
+Tinker generates repo-grounded product demos through one pipeline: analysis, understanding,
+strategy, Playwright capture planning, smooth Playwright capture, `DemoProject`, and
+`playwright/final.mp4`.
 
-- Playwright recording produces a validated `DemoProject` and opens the existing project editor/export loop.
-- HyperFrames composition produces composition source, output video, manifests, and logs, then opens the composition editor/revision loop.
-
-The API returns completed jobs as a method-discriminated result. Clients branch on `result.method`, not on artifact paths. Playwright jobs require `result.project`; HyperFrames jobs require `result.composition.indexArtifact` and `result.composition.outputVideoArtifact`.
+Playwright recording produces a validated `DemoProject` and opens the existing project
+editor/export loop. Completed jobs include the project and Playwright artifacts; clients open
+the `playwright-video` artifact for the generated video.
 
 ## AI Editing Contract
 
@@ -288,10 +289,6 @@ Example:
 
 All Playwright `DemoProject` AI edit operations should be validated before
 application and should be undoable.
-
-For HyperFrames jobs, AI editing follows the composition-source revision contract:
-the assistant rewrites the current composition source, re-renders it, and the user
-accepts, rejects, or undoes whole-composition revisions.
 
 ## Two-Person Ownership Split
 
@@ -514,7 +511,7 @@ tinker/
 - **Automation:** Playwright
 - **Agent/browser planning:** Stagehand or direct LLM + Playwright snapshots
 - **Capture:** Webreel-inspired capture layer or Playwright video first
-- **Video composition:** HyperFrames and/or ffmpeg for early output
+- **Video export/transcode:** ffmpeg for captured Playwright output
 - **Editor:** custom demo-specific React editor
 - **First app shell:** local web app plus API/CLI worker
 - **Desktop shell:** Electron eventually, after the core loop works
@@ -529,7 +526,6 @@ Safe foundations/references verified so far:
 - `microsoft/playwright` — Apache-2.0
 - `browserbase/stagehand` — MIT
 - `vercel-labs/webreel` — Apache-2.0
-- `heygen-com/hyperframes` — Apache-2.0
 - `walterlow/freecut` — MIT, useful editor reference
 - `farzaa/clicky` / `jasonkneen/openclicky` — MIT, useful screen-aware assistant reference
 
@@ -537,7 +533,6 @@ Use as inspiration only unless license is clarified:
 
 - `CristianOlivera1/openvid` — relevant UX, but PolyForm Noncommercial; do not fork or copy code for commercial product
 - `designcombo/react-video-editor` — useful reference, but GitHub reports no detected license
-- `heygen-com/website-to-hyperframes-demo` — useful reference, but GitHub reports no detected license
 - `remotion-dev/remotion` — powerful renderer, but has commercial-license considerations depending on use/company size
 
 ## MVP Milestones

@@ -60,7 +60,7 @@ const inputNoRepo = buildRunInput({
   prompt: "",
   durationCapSeconds: 30,
   aspectRatio: "9:16",
-  renderer: "hyperframes",
+  renderer: "playwright",
 });
 RunInputSchema.parse(inputNoRepo);
 assert.equal("repoUrl" in inputNoRepo, false);

@@ -98,7 +98,6 @@ try {
     createdAt: "2026-06-17T00:00:00.000Z",
     productUrl: server.url,
     repoUrl,
-    renderer: "playwright",
     prompt: "Show a viewer clicking Get started on the page. Use only the visible button and input.",
     durationCapSeconds: 12,
     aspectRatio: "16:9",
@@ -125,6 +124,7 @@ try {
   }
 
   assert.equal(result.renderer, "playwright");
+  assert.ok(result.rendererResults.playwright);
 
   const finalPath = join(outputRoot, "playwright", "final.mp4");
   let finalLine = "final.mp4         (skipped — ffmpeg unavailable)";

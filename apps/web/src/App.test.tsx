@@ -15,28 +15,19 @@ vi.mock("./lib/httpCompositionGenerationClient.js", () => ({
   createHttpCompositionGenerationClient: () => generationClient,
 }));
 
-vi.mock("./lib/httpCompositionEditClient.js", () => ({
-  createHttpCompositionEditClient: () => ({}),
-}));
-
 vi.mock("./lib/httpCompositionPlanningClient.js", () => ({
   createHttpCompositionPlanningClient: () => ({
     createSession: vi.fn(),
     sendMessage: vi.fn(),
+    getSession: vi.fn(),
   }),
 }));
 
-function completedHyperframesJob(): ApiGenerationJob {
-  const indexArtifact = {
-    kind: "composition-index" as const,
-    relativePath: "hyperframes/index.html",
-    url: "/api/jobs/job-mqhatqcm-352035ac/artifacts/hyperframes/index.html",
-    mediaType: "text/html",
-  };
-  const outputVideoArtifact = {
-    kind: "output-video" as const,
-    relativePath: "hyperframes/output.mp4",
-    url: "/api/jobs/job-mqhatqcm-352035ac/artifacts/hyperframes/output.mp4",
+function completedPlaywrightJob(): ApiGenerationJob {
+  const videoArtifact = {
+    kind: "playwright-video" as const,
+    relativePath: "playwright/final.mp4",
+    url: "/api/jobs/job-mqhatqcm-352035ac/artifacts/playwright/final.mp4",
     mediaType: "video/mp4",
   };
 
@@ -50,23 +41,36 @@ function completedHyperframesJob(): ApiGenerationJob {
       productUrl: "https://paykit.sh/",
       durationCapSeconds: 60,
       aspectRatio: "16:9",
-      renderer: "hyperframes",
-      hyperframesAgent: "opencode",
     },
     createdAt: "2026-06-17T00:00:00.000Z",
     updatedAt: "2026-06-17T00:00:00.000Z",
     progressEvents: [],
     result: {
-      method: "hyperframes",
-      composition: { indexArtifact, outputVideoArtifact },
-      artifacts: [indexArtifact, outputVideoArtifact],
+      method: "playwright",
+      project: {
+        schemaVersion: "0.1.0",
+        id: "job-mqhatqcm-352035ac",
+        title: "PayKit demo",
+        duration: 10,
+        fps: 60,
+        aspectRatio: "16:9",
+        createdAt: "2026-06-17T00:00:00.000Z",
+        updatedAt: "2026-06-17T00:00:00.000Z",
+        assets: [],
+        tracks: [],
+        zooms: [],
+        cursorEvents: [],
+        aiEditHistory: [],
+        metadata: { notes: [] },
+      },
+      artifacts: [videoArtifact],
       warnings: [],
     },
   };
 }
 
 function queuedJob(): ApiGenerationJob {
-  const job = completedHyperframesJob();
+  const job = completedPlaywrightJob();
   return {
     ...job,
     status: "queued",
@@ -75,7 +79,7 @@ function queuedJob(): ApiGenerationJob {
 }
 
 function failedJob(message = "Renderer crashed"): ApiGenerationJob {
-  const job = completedHyperframesJob();
+  const job = completedPlaywrightJob();
   return {
     ...job,
     status: "failed",
@@ -106,7 +110,8 @@ describe("App composition product flow", () => {
     expect(screen.getByLabelText("GitHub repo URL")).toBeInTheDocument();
     expect(screen.queryByLabelText("Demo description")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Plan" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open empty editor shell" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open empty editor shell" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit an existing demo" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Composition demo (beta)" })).not.toBeInTheDocument();
   });
 
@@ -117,19 +122,19 @@ describe("App composition product flow", () => {
   });
 
   it("opens a completed job from the jobId query parameter", async () => {
-    const job = completedHyperframesJob();
+    const job = completedPlaywrightJob();
     generationClient.getJob.mockResolvedValue(job);
     window.history.replaceState(null, "", "/?jobId=job-mqhatqcm-352035ac");
 
     render(<App />);
 
     await waitFor(() => expect(generationClient.getJob).toHaveBeenCalledWith("job-mqhatqcm-352035ac"));
-    await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
-    expect(screen.getByTestId("composition-frame")).toHaveAttribute("src", "/api/jobs/job-mqhatqcm-352035ac/artifacts/hyperframes/index.html");
+    await waitFor(() => expect(screen.getByTestId("composition-standalone-video")).toBeInTheDocument());
+    expect(screen.getByTestId("composition-standalone-video")).toHaveAttribute("src", "/api/jobs/job-mqhatqcm-352035ac/artifacts/playwright/final.mp4");
   });
 
   it("waits for a non-terminal jobId query parameter before opening it", async () => {
-    const completed = completedHyperframesJob();
+    const completed = completedPlaywrightJob();
     generationClient.getJob.mockResolvedValue(queuedJob());
     generationClient.waitForJob.mockResolvedValue(completed);
     window.history.replaceState(null, "", "/?jobId=job-mqhatqcm-352035ac");
@@ -143,8 +148,8 @@ describe("App composition product flow", () => {
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
-    await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
-    expect(screen.queryByText("Generation completed but produced no supported result to open.")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("composition-standalone-video")).toBeInTheDocument());
+    expect(screen.queryByText("Playwright generation completed but returned no preview video artifact.")).not.toBeInTheDocument();
   });
 
   it("shows a direct error for a failed jobId query parameter", async () => {

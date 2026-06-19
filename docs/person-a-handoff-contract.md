@@ -19,7 +19,7 @@ Contract source: `packages/generation-contract/src/createDemoRequest.ts`
 
 | Mode | Schema | Required fields | Notes |
 | --- | --- | --- | --- |
-| `ai-url-planning` | `AiUrlPlanningCreateDemoRequestSchema` | `mode`, `durationCapSeconds`, `aspectRatio`, `repoUrl`, `productUrl` | `repoUrl` must be a public **GitHub repo root** URL; `productUrl` any http/https; `renderer` defaults to `hyperframes` (`hyperframes` \| `playwright` \| `both`). |
+| `ai-url-planning` | `AiUrlPlanningCreateDemoRequestSchema` | `mode`, `durationCapSeconds`, `aspectRatio`, `repoUrl`, `productUrl` | `repoUrl` must be a public **GitHub repo root** URL; `productUrl` any http/https. |
 | assisted | `AssistedCreateDemoRequestSchema` | `repoUrl`, `productUrl`, `prompt`, `durationCapSeconds`, `aspectRatio` | `.strict()`; `prompt` trimmed non-empty; `durationCapSeconds` integer ≤ 600. |
 
 `aspectRatio` ∈ `{"16:9", "9:16", "1:1"}` (shared with the project schema).

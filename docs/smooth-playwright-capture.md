@@ -1,9 +1,7 @@
 # Smooth Playwright capture (first pass)
 
-Makes the Playwright (`renderer: "playwright"`) demo path feel more Screen
-Studio-like by baking cinematic motion into the capture and emitting a metadata
-layer for a future post-render camera pass. The **hyperframes** renderer is
-untouched.
+Makes Tinker's Playwright demo path feel more Screen Studio-like by baking cinematic
+motion into the capture and emitting a metadata layer for a future post-render camera pass.
 
 > This document covers the **capture layer**. For the end-to-end multi-phase pipeline
 > (Product Understanding → Demo Strategy → Browser Capture) and the full generated

@@ -44,9 +44,6 @@ export const PublicGithubRepoUrlSchema = z.string().url().refine((value) => {
   }
 }, "repoUrl must be a public GitHub repository root URL");
 
-export const AiUrlRendererSchema = z.enum(["hyperframes", "playwright", "both"]);
-export type AiUrlRenderer = z.infer<typeof AiUrlRendererSchema>;
-
 /**
  * Default high-level directive for the demo-generation agents (Understanding + Strategy).
  * Editable by the user via a hidden "Edit system prompt" affordance; when they don't touch
@@ -55,8 +52,6 @@ export type AiUrlRenderer = z.infer<typeof AiUrlRendererSchema>;
  */
 export const DEFAULT_SYSTEM_PROMPT =
   "Create a clear, evidence-grounded product demo from the website and repo. Show the problem, audience, solution, strongest use case, end result, and next step. Prioritize core concepts and minimal dead time; do not invent unsupported claims.";
-export const HyperframesAgentSchema = z.enum(["opencode", "claude"]);
-export type HyperframesAgent = z.infer<typeof HyperframesAgentSchema>;
 
 const BaseCreateDemoRequestSchema = z.object({
   id: z.string().min(1).optional(),
@@ -74,11 +69,9 @@ export const AiUrlPlanningCreateDemoRequestSchema = BaseCreateDemoRequestSchema.
   mode: z.literal("ai-url-planning"),
   repoUrl: PublicGithubRepoUrlSchema,
   productUrl: PublicUrlSchema,
-  renderer: AiUrlRendererSchema.default("hyperframes"),
-  hyperframesAgent: HyperframesAgentSchema.default("opencode"),
   /** Optional user-edited directive for the Understanding + Strategy agents. */
   systemPrompt: z.string().trim().min(1).optional(),
-});
+}).strict();
 
 export const AssistedCreateDemoRequestSchema = z.object({
   repoUrl: PublicUrlSchema,

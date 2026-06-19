@@ -15,7 +15,7 @@ function fakeHandle(overrides: Partial<CompositionTimelineHandle> = {}): Composi
   } as CompositionTimelineHandle;
 }
 
-const SRC = "/api/jobs/j/artifacts/hyperframes/index.html";
+const SRC = "/composition-preview-fixture/index.html";
 
 describe("CompositionPreview", () => {
   it("announces loading and calls onLoading for a new composition", () => {
@@ -80,7 +80,7 @@ describe("CompositionPreview", () => {
       <CompositionPreview
         src={SRC}
         compositionId="sample"
-        fallbackVideoSrc="/api/jobs/j/artifacts/hyperframes/output.mp4"
+        fallbackVideoSrc="/api/jobs/j/artifacts/playwright/final.mp4"
         timeoutMs={0}
         resolveWindow={(): TimelineRegistryWindow => ({ __timelines: {} })}
       />,
@@ -89,7 +89,7 @@ describe("CompositionPreview", () => {
     await waitFor(() =>
       expect(screen.getByTestId("composition-fallback-video")).toHaveAttribute(
         "src",
-        "/api/jobs/j/artifacts/hyperframes/output.mp4",
+        "/api/jobs/j/artifacts/playwright/final.mp4",
       ),
     );
   });
@@ -131,9 +131,8 @@ describe("CompositionPreview", () => {
   });
 
   it("falls back to DOM scene sections for a flat timeline with no nested clips", async () => {
-    // The real pipeline emits a flat GSAP timeline (every scene is a tween, so getChildren
-    // yields no nested timelines) plus <section class="scene"> markers. The preview should
-    // surface those scenes as clips so a generated demo shows its segmentation.
+    // Some composition fixtures expose scenes as DOM markers instead of nested timelines. The
+    // preview should surface those scenes as clips so the preview still shows segmentation.
     const handle = fakeHandle({ getChildren: () => [], totalDuration: () => 20 });
     const doc = new DOMParser().parseFromString(
       `<main data-composition-id="sample">

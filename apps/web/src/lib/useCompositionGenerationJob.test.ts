@@ -37,20 +37,37 @@ describe("useCompositionGenerationJob", () => {
           productUrl: "https://driftboard.example.com",
           durationCapSeconds: REQUEST.durationCapSeconds,
           aspectRatio: REQUEST.aspectRatio,
-          renderer: "hyperframes",
         },
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
         progressEvents: [],
         result: {
+          method: "playwright",
+          project: {
+            schemaVersion: "0.1.0",
+            id: "j",
+            title: "Driftboard demo",
+            duration: 10,
+            fps: 60,
+            aspectRatio: "16:9",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            assets: [],
+            tracks: [],
+            zooms: [],
+            cursorEvents: [],
+            aiEditHistory: [],
+            metadata: { notes: [] },
+          },
           artifacts: [
             {
-              kind: "composition-index",
-              relativePath: "hyperframes/index.html",
-              url: "/api/jobs/j/artifacts/hyperframes/index.html",
-              mediaType: "text/html",
+              kind: "playwright-video",
+              relativePath: "playwright/final.mp4",
+              url: "/api/jobs/j/artifacts/playwright/final.mp4",
+              mediaType: "video/mp4",
             },
           ],
+          warnings: [],
         },
       }),
     } as unknown as CompositionGenerationClient;
@@ -62,7 +79,7 @@ describe("useCompositionGenerationJob", () => {
     });
 
     expect(result.current.phase).toBe("completed");
-    expect(selectArtifactUrl(result.current.job!, "composition-index")).toContain("index.html");
+    expect(selectArtifactUrl(result.current.job!, "playwright-video")).toContain("final.mp4");
   });
 
   it("reports a failure phase + message when the client rejects", async () => {

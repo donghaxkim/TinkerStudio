@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
-    "@fastify/multipart": "^10.0.0",
     "@tinker/demo-assembly": "workspace:*",
     "@tinker/generation-contract": "workspace:*",
     "@tinker/product-analysis": "workspace:*",

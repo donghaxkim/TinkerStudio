@@ -1,6 +1,5 @@
 import { randomBytes } from "node:crypto";
 import cors from "@fastify/cors";
-import multipart from "@fastify/multipart";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { ApiConfig } from "./config.js";
 import { createJobQueue } from "./jobs/jobQueue.js";
@@ -9,20 +8,15 @@ import { createClaudePlanningAgentRunner } from "./planning/claudePlanningAgent.
 import { createPlanningSessionStore } from "./planning/planningSessionStore.js";
 import type { PlanningAgentRunner } from "./planning/planningRunner.js";
 import { registerArtifactsRoutes } from "./routes/artifacts.js";
-import { registerImportRoutes } from "./routes/importComposition.js";
 import { registerJobsRoutes, type ProductUrlResolver } from "./routes/jobs.js";
 import { registerPlanningSessionsRoutes } from "./routes/planningSessions.js";
-import { createEditWorker, type RunEdit } from "./workers/editWorker.js";
 import { createGenerationWorker, type GenerationRunner } from "./workers/generationWorker.js";
-import { createRenderWorker, type RunRender } from "./workers/renderWorker.js";
 
 export type JobQueue = ReturnType<typeof createJobQueue>;
 
 export type BuildServerOptions = {
   config: ApiConfig;
   runner?: GenerationRunner;
-  runEdit?: RunEdit;
-  runRender?: RunRender;
   now?: () => string;
   idGenerator?: () => string;
   maxPendingJobs?: number;
@@ -41,22 +35,10 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   const store = createJobStore();
   const planningStore = createPlanningSessionStore();
   const generationWorker = createGenerationWorker({ store, runner: options.runner, now });
-  const editWorker = options.runEdit ? createEditWorker({ store, runEdit: options.runEdit, now }) : undefined;
-  const renderWorker = options.runRender ? createRenderWorker({ store, runRender: options.runRender, now }) : undefined;
-  const runJob = async (id: string) => {
-    const record = store.getRecord(id);
-    if (record?.pendingEdit && editWorker) return editWorker(id);
-    if (record?.pendingRender && renderWorker) return renderWorker(id);
-    return generationWorker(id);
-  };
-  const queue = createJobQueue({ maxPendingJobs: options.maxPendingJobs ?? 10, runJob });
+  const queue = createJobQueue({ maxPendingJobs: options.maxPendingJobs ?? 10, runJob: generationWorker });
 
   await server.register(cors, {
     origin: options.config.corsOrigins,
-  });
-
-  await server.register(multipart, {
-    limits: { fileSize: 200 * 1024 * 1024, files: 200, parts: 250 },
   });
 
   server.get("/health", async () => ({ ok: true }));
@@ -87,12 +69,6 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     runner: options.planningRunner ?? createClaudePlanningAgentRunner(),
   });
   registerArtifactsRoutes(server, { store });
-  registerImportRoutes(server, {
-    store,
-    repoRoot: options.config.repoRoot,
-    now,
-    idGenerator,
-  });
 
   return server;
 }

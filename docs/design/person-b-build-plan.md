@@ -408,7 +408,7 @@ Candidate approaches:
 
 - `ffmpeg` for composition if assets are real and overlays can be rendered as inputs.
 - canvas capture for browser-side preview/export prototype.
-- HyperFrames later if it stays license-safe and fits the project model.
+- Additional export engines later only if they stay license-safe and fit the project model.
 
 ### Main files
 

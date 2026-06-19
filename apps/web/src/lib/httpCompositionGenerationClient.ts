@@ -44,12 +44,11 @@ export function createHttpCompositionGenerationClient(
 
   return {
     async createJob(request: CreateCompositionJobRequest): Promise<ApiGenerationJob> {
-      const body = { renderer: "hyperframes" as const, ...request };
       return readJob(
         await fetchFn(`${baseUrl}/api/jobs`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
+          body: JSON.stringify(request),
         }),
       );
     },
