@@ -48,21 +48,9 @@ importers:
 
   apps/web:
     dependencies:
-      '@tinker/ai-edit-ui':
-        specifier: workspace:*
-        version: link:../../packages/ai-edit-ui
-      '@tinker/editor':
-        specifier: workspace:*
-        version: link:../../packages/editor
       '@tinker/generation-contract':
         specifier: workspace:*
         version: link:../../packages/generation-contract
-      '@tinker/project-schema':
-        specifier: workspace:*
-        version: link:../../packages/project-schema
-      '@tinker/rendering':
-        specifier: workspace:*
-        version: link:../../packages/rendering
       '@vitejs/plugin-react':
         specifier: ^4.7.0
         version: 4.7.0(vite@6.4.3(@types/node@22.19.20)(tsx@4.22.4))

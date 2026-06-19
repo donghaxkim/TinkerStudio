@@ -5,16 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/rendering build && pnpm --filter @tinker/editor build && pnpm --filter @tinker/ai-edit-ui build && tsc -p tsconfig.json --noEmit && vite build",
-    "typecheck": "pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/rendering build && pnpm --filter @tinker/editor build && pnpm --filter @tinker/ai-edit-ui build && tsc -p tsconfig.json --noEmit",
+    "build": "pnpm --filter @tinker/generation-contract build && tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "pnpm --filter @tinker/generation-contract build && tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@tinker/ai-edit-ui": "workspace:*",
-    "@tinker/editor": "workspace:*",
     "@tinker/generation-contract": "workspace:*",
-    "@tinker/project-schema": "workspace:*",
-    "@tinker/rendering": "workspace:*",
     "@vitejs/plugin-react": "^4.7.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",

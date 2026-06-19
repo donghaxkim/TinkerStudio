@@ -17,7 +17,6 @@ function job(overrides: Partial<ApiGenerationJob> = {}): ApiGenerationJob {
       productUrl: "https://driftboard.example.com",
       durationCapSeconds: 60,
       aspectRatio: "16:9",
-      renderer: "hyperframes",
     },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -34,7 +33,7 @@ const validRequest = {
 } as const;
 
 describe("HttpCompositionGenerationClient", () => {
-  it("POSTs repo-only ai-url-planning to /api/jobs and forces renderer=hyperframes", async () => {
+  it("POSTs ai-url-planning to /api/jobs without renderer fields", async () => {
     const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(202, job()));
     const client = createHttpCompositionGenerationClient({ fetchFn });
     const created = await client.createJob(validRequest);
@@ -43,9 +42,9 @@ describe("HttpCompositionGenerationClient", () => {
     expect(url).toBe("/api/jobs");
     expect(init?.method).toBe("POST");
     const sent = JSON.parse((init?.body as string) ?? "{}");
-    expect(sent.renderer).toBe("hyperframes");
-    expect(sent.mode).toBe("ai-url-planning");
-    expect(sent.productUrl).toBeUndefined();
+    expect(sent).toEqual(validRequest);
+    expect("renderer" in sent).toBe(false);
+    expect("hyperframesAgent" in sent).toBe(false);
   });
 
   it("throws the server message on a 422 validation error", async () => {
@@ -71,27 +70,33 @@ describe("HttpCompositionGenerationClient", () => {
   });
 
   it("waitForJob polls until terminal and reports each update", async () => {
-    const outputVideoArtifact = {
-      kind: "output-video",
-      relativePath: "hyperframes/output.mp4",
-      url: "/api/jobs/job-1/artifacts/hyperframes/output.mp4",
+    const playwrightVideoArtifact = {
+      kind: "playwright-video",
+      relativePath: "playwright/final.mp4",
+      url: "/api/jobs/job-1/artifacts/playwright/final.mp4",
       mediaType: "video/mp4",
-    } as const;
-    const compositionIndexArtifact = {
-      kind: "composition-index",
-      relativePath: "hyperframes/index.html",
-      url: "/api/jobs/job-1/artifacts/hyperframes/index.html",
-      mediaType: "text/html",
     } as const;
     const completed = job({
       status: "completed",
       result: {
-        method: "hyperframes",
-        composition: {
-          indexArtifact: compositionIndexArtifact,
-          outputVideoArtifact,
+        method: "playwright",
+        project: {
+          schemaVersion: "0.1.0",
+          id: "job-1",
+          title: "Driftboard demo",
+          duration: 10,
+          fps: 60,
+          aspectRatio: "16:9",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          assets: [],
+          tracks: [],
+          zooms: [],
+          cursorEvents: [],
+          aiEditHistory: [],
+          metadata: { notes: [] },
         },
-        artifacts: [outputVideoArtifact, compositionIndexArtifact],
+        artifacts: [playwrightVideoArtifact],
         warnings: [],
       },
     });
@@ -103,15 +108,6 @@ describe("HttpCompositionGenerationClient", () => {
     expect(result.status).toBe("completed");
     expect(seen).toEqual(["running", "completed"]);
     expect(fetchFn).toHaveBeenCalledTimes(2);
-  });
-
-  it("lets the caller override the renderer to Playwright", async () => {
-    const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(202, job()));
-    const client = createHttpCompositionGenerationClient({ fetchFn });
-    await client.createJob({ ...validRequest, renderer: "playwright" });
-    const [, init] = fetchFn.mock.calls[0]!;
-    const sent = JSON.parse((init?.body as string) ?? "{}");
-    expect(sent.renderer).toBe("playwright");
   });
 
   it("waitForJob rejects once the signal is aborted", async () => {
