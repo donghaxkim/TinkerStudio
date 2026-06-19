@@ -283,8 +283,8 @@ export function CompositionDemoScreen({
   const [planningMessage, setPlanningMessage] = useState("");
   const [repoShake, setRepoShake] = useState(false);
   const [renderer, setRenderer] = useState<GenerationRenderer>("hyperframes");
-  const [hyperframesAgent, setHyperframesAgent] = useState<HyperframesAgent>("opencode");
-  const [planningAgent, setPlanningAgent] = useState<PlanningAgent>("opencode");
+  const [hyperframesAgent, setHyperframesAgent] = useState<HyperframesAgent>("claude");
+  const [planningAgent, setPlanningAgent] = useState<PlanningAgent>("claude");
 
   const repoInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);

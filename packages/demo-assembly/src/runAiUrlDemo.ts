@@ -1,4 +1,5 @@
 import { access, cp, mkdir, open, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
   buildRenderPlan,
@@ -303,16 +304,40 @@ function agentBackendEnabled(): boolean {
 }
 
 /**
- * Choose the agent backend for the Playwright planner. opencode by default; the local
- * Claude Code CLI when TINKER_AGENT_BACKEND=claude-code (so the full pipeline can run
- * without opencode installed). The planner contract is identical for both backends.
+ * True when an `opencode` executable is resolvable on PATH. Used so the planner can fall
+ * back to the local Claude Code CLI on machines where opencode is not installed, instead
+ * of spawning it and failing with ENOENT.
+ */
+function isOpencodeOnPath(): boolean {
+  const pathVar = process.env.PATH ?? "";
+  const isWindows = process.platform === "win32";
+  const separator = isWindows ? ";" : ":";
+  const candidates = isWindows ? ["opencode.exe", "opencode.cmd", "opencode.bat", "opencode"] : ["opencode"];
+  for (const dir of pathVar.split(separator)) {
+    if (dir === "") continue;
+    for (const name of candidates) {
+      if (existsSync(join(dir, name))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Choose the agent backend for the Playwright planner. An explicit TINKER_AGENT_BACKEND
+ * wins (claude-code/claude → Claude Code CLI; opencode → opencode). When unset, prefer
+ * opencode if it is actually installed, otherwise fall back to the local Claude Code CLI
+ * so the full pipeline can run on machines without opencode. The planner contract is
+ * identical for both backends.
  */
 function selectDefaultAiUrlPlanner(): AiUrlPlanner {
   const backend = (process.env.TINKER_AGENT_BACKEND ?? "").trim().toLowerCase();
   if (backend === "claude-code" || backend === "claude") {
     return createClaudeCodeAiUrlPlanner();
   }
-  return createOpencodeAiUrlPlanner();
+  if (backend === "opencode") {
+    return createOpencodeAiUrlPlanner();
+  }
+  return isOpencodeOnPath() ? createOpencodeAiUrlPlanner() : createClaudeCodeAiUrlPlanner();
 }
 
 function selectDefaultUnderstandProduct(): UnderstandProduct {
