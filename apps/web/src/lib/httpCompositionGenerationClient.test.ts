@@ -33,6 +33,18 @@ const validRequest = {
   aspectRatio: "16:9",
 } as const;
 
+const approvedOutline = {
+  title: "Driftboard launch demo",
+  durationCapSeconds: 60,
+  aspectRatio: "16:9",
+  summary: "Show the launch workflow from product evidence.",
+  scenes: [
+    { id: "scene-1", goal: "Open on the launch problem", visual: "Show the homepage hero.", evidence: ["website"] },
+    { id: "scene-2", goal: "Show repo-backed details", visual: "Use real component names from the repo.", evidence: ["repo", "website"] },
+  ],
+  generationNotes: ["Keep pacing concise."],
+} as const;
+
 describe("HttpCompositionGenerationClient", () => {
   it("POSTs repo-only ai-url-planning to /api/jobs and forces renderer=hyperframes", async () => {
     const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(202, job()));
@@ -112,6 +124,15 @@ describe("HttpCompositionGenerationClient", () => {
     const [, init] = fetchFn.mock.calls[0]!;
     const sent = JSON.parse((init?.body as string) ?? "{}");
     expect(sent.renderer).toBe("playwright");
+  });
+
+  it("serializes approvedOutline when the caller provides one", async () => {
+    const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(202, job()));
+    const client = createHttpCompositionGenerationClient({ fetchFn });
+    await client.createJob({ ...validRequest, approvedOutline });
+    const [, init] = fetchFn.mock.calls[0]!;
+    const sent = JSON.parse((init?.body as string) ?? "{}");
+    expect(sent.approvedOutline).toEqual(approvedOutline);
   });
 
   it("waitForJob rejects once the signal is aborted", async () => {
