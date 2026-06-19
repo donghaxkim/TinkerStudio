@@ -11,6 +11,7 @@ import {
 import type { CoreCoverageItem } from "./coreCoverage.js";
 import { deriveDemoStrategy } from "./demoStrategy.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
+import type { DemoOutline } from "@tinker/generation-contract";
 import type { ProductAnalysis } from "@tinker/product-analysis";
 
 const websiteAnalysis: ProductAnalysis = {
@@ -36,6 +37,15 @@ const { storyboard } = deriveDemoStrategy({
   aspectRatio: "16:9",
 });
 
+const approvedOutline: DemoOutline = {
+  title: "Approved demo",
+  durationCapSeconds: 30,
+  aspectRatio: "16:9",
+  summary: "Follow the reviewed outline.",
+  scenes: [{ id: "scene-1", goal: "Open with the problem", visual: "Hero state", evidence: ["website"] }],
+  generationNotes: ["Keep scene IDs stable."],
+};
+
 // ---- input.json shape ----
 const input = buildRunInput({
   projectId: "run-123",
@@ -43,6 +53,7 @@ const input = buildRunInput({
   productUrl: "https://example.com/",
   repoUrl: "https://github.com/example/product",
   prompt: "Show the main flow.",
+  approvedOutline,
   durationCapSeconds: 30,
   aspectRatio: "16:9",
   renderer: "playwright",
@@ -51,6 +62,7 @@ RunInputSchema.parse(input);
 assert.equal(input.version, 1);
 assert.equal(input.renderer, "playwright");
 assert.equal(input.repoUrl, "https://github.com/example/product");
+assert.deepEqual(input.approvedOutline, approvedOutline);
 
 // repoUrl is omitted when absent (not stored as undefined string).
 const inputNoRepo = buildRunInput({

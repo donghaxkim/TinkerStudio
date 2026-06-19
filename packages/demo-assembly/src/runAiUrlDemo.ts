@@ -45,7 +45,7 @@ import { buildDirectorPlan } from "./directorPlan.js";
 import { applyEditDecisionList } from "./applyEditDecisionList.js";
 import { buildRunInput, buildRunSummary } from "./runSummary.js";
 import { renderFinalToMp4 } from "@tinker/rendering/node";
-import { DEFAULT_SYSTEM_PROMPT } from "@tinker/generation-contract";
+import { DEFAULT_SYSTEM_PROMPT, type DemoOutline } from "@tinker/generation-contract";
 import type { DemoProject, ZoomKeyframe } from "@tinker/project-schema";
 import { validateHyperframesArtifacts } from "./hyperframesArtifacts.js";
 import {
@@ -107,6 +107,8 @@ export type RunAiUrlDemoInput = {
   createdAt: string;
   productUrl: string;
   prompt?: string;
+  /** Optional approved planning outline used as strong structured guidance. */
+  approvedOutline?: DemoOutline;
   /** Optional user-edited directive for the LLM Understanding + Strategy agents. */
   systemPrompt?: string;
   durationCapSeconds: number;
@@ -521,6 +523,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     productUrl: input.productUrl,
     ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
     prompt: prompt,
+    ...(input.approvedOutline === undefined ? {} : { approvedOutline: input.approvedOutline }),
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,
     renderer,
