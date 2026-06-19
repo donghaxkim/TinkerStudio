@@ -220,45 +220,6 @@ function OutlineStoryboard({ outline }: { outline: DemoOutline }) {
   );
 }
 
-function PlaywrightResultView({ job }: { job: ApiGenerationJob }) {
-  const artifacts = job.result?.artifacts ?? [];
-  const projectArtifact = artifacts.find((artifact) => artifact.kind === "playwright-demo-project");
-  const videoArtifact = artifacts.find((artifact) => artifact.kind === "playwright-video");
-
-  return (
-    <section className="tk-porcelain" aria-label="Playwright result" style={{ minHeight: "100vh", padding: 24 }}>
-      <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-        <h1 style={{ margin: 0, fontSize: 26, letterSpacing: "-0.02em" }}>Playwright demo ready</h1>
-        <p style={{ margin: 0, color: "var(--tk-text-sec)", lineHeight: 1.5 }}>
-          Generated DemoProject and capture artifacts from the Playwright pipeline.
-        </p>
-        {videoArtifact ? (
-          <video
-            data-testid="playwright-result-video"
-            aria-label="Playwright capture preview"
-            src={videoArtifact.url}
-            controls
-            style={{ width: "100%", borderRadius: "var(--tk-radius-lg)", border: "1px solid var(--tk-border)" }}
-          >
-            <track kind="captions" label="No captions available" src="data:text/vtt,WEBVTT%0A" default />
-          </video>
-        ) : (
-          <output
-            style={{ padding: 12, border: "1px solid var(--tk-border)", borderRadius: "var(--tk-radius-md)", color: "var(--tk-text-sec)" }}
-          >
-            No Playwright preview video artifact was returned.
-          </output>
-        )}
-        {projectArtifact ? (
-          <a className="tk-btn" href={projectArtifact.url} target="_blank" rel="noreferrer" style={{ alignSelf: "flex-start" }}>
-            Open DemoProject JSON
-          </a>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
 export function CompositionDemoScreen({
   client,
   planningClient,
@@ -604,7 +565,24 @@ export function CompositionDemoScreen({
       );
     }
     if (completedJob.result?.method === "playwright") {
-      return <PlaywrightResultView job={completedJob} />;
+      const videoArtifact = completedJob.result.artifacts.find((artifact) => artifact.kind === "playwright-video");
+      const repoUrl = "repoUrl" in completedJob.request ? completedJob.request.repoUrl : undefined;
+      const repo = typeof repoUrl === "string" ? parseGithubRepo(repoUrl) : undefined;
+      if (videoArtifact) {
+        return (
+          <CompositionEditorScreen
+            standaloneVideoUrl={videoArtifact.url}
+            {...(repo === undefined ? {} : { repo })}
+            onBack={onBack}
+            resolveWindow={resolveWindow}
+          />
+        );
+      }
+      return (
+        <div className="tk-porcelain" role="alert" style={{ padding: 24 }}>
+          Playwright generation completed but returned no preview video artifact.
+        </div>
+      );
     }
     return (
       <div className="tk-porcelain" role="alert" style={{ padding: 24 }}>

@@ -270,7 +270,7 @@ describe("CompositionDemoScreen", () => {
     );
   });
 
-  it("renders completed Playwright jobs as an artifact result view", () => {
+  it("opens completed Playwright jobs in the editor shell as a video-only preview", () => {
     render(
       <CompositionDemoScreen
         client={createLocalCompositionGenerationClient()}
@@ -279,16 +279,14 @@ describe("CompositionDemoScreen", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Playwright demo ready" })).toBeInTheDocument();
-    expect(screen.getByText("Generated DemoProject and capture artifacts from the Playwright pipeline.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open DemoProject JSON" })).toHaveAttribute(
-      "href",
-      "/api/jobs/playwright-job-1/artifacts/playwright/demo-project.json",
-    );
-    expect(screen.getByTestId("playwright-result-video")).toHaveAttribute(
+    expect(screen.getByLabelText("Editor status")).toHaveTextContent("Saved");
+    expect(screen.getByRole("button", { name: "Export" })).not.toBeDisabled();
+    expect(screen.getByTestId("composition-standalone-video")).toHaveAttribute(
       "src",
       "/api/jobs/playwright-job-1/artifacts/playwright/capture/videos/capture-001.mp4",
     );
+    expect(screen.queryByRole("heading", { name: "Playwright demo ready" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open DemoProject JSON" })).not.toBeInTheDocument();
   });
 
   it("opens the empty editor shell shortcut without starting generation, then returns to the form", async () => {
@@ -775,7 +773,11 @@ describe("CompositionDemoScreen", () => {
       })),
     );
     expect(client.createJob).toHaveBeenCalledWith(expect.not.objectContaining({ hyperframesAgent: expect.any(String) }));
-    expect(await screen.findByRole("heading", { name: "Playwright demo ready" })).toBeInTheDocument();
+    expect(await screen.findByTestId("composition-standalone-video")).toHaveAttribute(
+      "src",
+      "/api/jobs/playwright-job-1/artifacts/playwright/capture/videos/capture-001.mp4",
+    );
+    expect(screen.getByLabelText("Editor status")).toHaveTextContent("Saved");
   });
 
   it("disables generation until the planning agent produces a valid outline", async () => {

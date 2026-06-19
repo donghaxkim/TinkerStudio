@@ -29,8 +29,10 @@ import { CompositionPlaybackBar } from "./CompositionPlaybackBar.js";
 import { CompositionChatPanel } from "./CompositionChatPanel.js";
 
 export type CompositionEditorScreenProps = {
-  compositionIndexUrl: string;
+  compositionIndexUrl?: string;
   outputVideoUrl?: string;
+  /** Render a raw video in the editor shell when no editable composition iframe exists yet. */
+  standaloneVideoUrl?: string;
   /** GitHub repo this demo was generated from, as `owner/repo`. Shown in the app bar. */
   repo?: string;
   /** Render a back affordance in the app bar (returns to the create/request screen). */
@@ -48,7 +50,17 @@ const wordmarkButtonStyle: CSSProperties = {
 
 const EDIT_SUGGESTIONS = ["Tighten the pacing", "Zoom in on every click", "Smooth the cursor"];
 
-export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, repo, onBack, jobId, editClient, resolveWindow }: CompositionEditorScreenProps) {
+const standaloneVideoStyle: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "contain",
+  border: "none",
+  borderRadius: "var(--tk-radius-lg, 11px)",
+  background: "#050609",
+  boxShadow: "0 18px 54px rgba(0,0,0,0.22)",
+};
+
+export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, standaloneVideoUrl, repo, onBack, jobId, editClient, resolveWindow }: CompositionEditorScreenProps) {
   // Local timeline-edit history (split / delete / marker, with undo/redo). Self-contained so
   // the toolbar behaves identically in the empty shell and the real generated editor.
   const { model, reset: resetEdits, split, remove: removeClipEdit, trim, setClipSpeed, addZoom, moveZoom, resizeZoom, updateZoom, removeZoom, undo, redo, canUndo, canRedo } = useTimelineEdits();
@@ -237,9 +249,10 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   }
   function handleRemoveRef(id: string) { setContextRefs((refs) => refs.filter((r) => r.id !== id)); }
 
+  const baseVideoUrl = standaloneVideoUrl ?? outputVideoUrl;
   const baseRevision: CompositionRevision = useMemo(
-    () => ({ id: "rev-0", compositionIndexUrl, ...(outputVideoUrl === undefined ? {} : { outputVideoUrl }) }),
-    [compositionIndexUrl, outputVideoUrl],
+    () => ({ id: "rev-0", compositionIndexUrl: compositionIndexUrl ?? "", ...(baseVideoUrl === undefined ? {} : { outputVideoUrl: baseVideoUrl }) }),
+    [baseVideoUrl, compositionIndexUrl],
   );
   const noopClient = useMemo<CompositionEditClient>(
     () => ({ editComposition: async () => baseRevision, renderRevision: async () => baseRevision.outputVideoUrl ?? "" }),
@@ -247,7 +260,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
   );
   const edit = useCompositionEditFlow({ jobId: jobId ?? "", client: editClient ?? noopClient, baseRevision });
   const editEnabled = jobId !== undefined && editClient !== undefined;
-  const hasGeneratedPreview = outputVideoUrl !== undefined || editEnabled;
+  const hasGeneratedPreview = baseVideoUrl !== undefined || editEnabled;
   // The video for the CURRENT revision only — no fallback to the base video. An edited revision
   // that has not been rendered yet has none, so Export renders it on demand (below) instead of
   // silently downloading the un-edited base.
@@ -367,25 +380,31 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
       <div className="tk-composition-body">
         <div className="tk-composition-main">
           <section aria-label="Preview stage" className="tk-composition-stage">
-            <CompositionPreview
-              src={edit.currentCompositionUrl}
-              currentTime={playback.currentTime}
-              fallbackVideoSrc={edit.currentVideoUrl}
-              aspectRatio="16 / 9"
-              onLoading={handlePreviewLoading}
-              onReady={(readyModel) => resetEdits(readyModel)}
-              resolveWindow={resolveWindow}
-              {...(selectedZoom
-                ? {
-                    zoomOverlay: {
-                      scale: zoomScale(selectedZoom),
-                      target: zoomTarget(selectedZoom),
-                      onMoveTarget: handleZoomTarget,
-                      onScale: handleZoomScale,
-                    },
-                  }
-                : {})}
-            />
+            {standaloneVideoUrl ? (
+              <video data-testid="composition-standalone-video" aria-label="Generated video preview" src={standaloneVideoUrl} controls style={standaloneVideoStyle}>
+                <track kind="captions" label="No captions available" src="data:text/vtt,WEBVTT%0A" default />
+              </video>
+            ) : (
+              <CompositionPreview
+                src={edit.currentCompositionUrl}
+                currentTime={playback.currentTime}
+                fallbackVideoSrc={edit.currentVideoUrl}
+                aspectRatio="16 / 9"
+                onLoading={handlePreviewLoading}
+                onReady={(readyModel) => resetEdits(readyModel)}
+                resolveWindow={resolveWindow}
+                {...(selectedZoom
+                  ? {
+                      zoomOverlay: {
+                        scale: zoomScale(selectedZoom),
+                        target: zoomTarget(selectedZoom),
+                        onMoveTarget: handleZoomTarget,
+                        onScale: handleZoomScale,
+                      },
+                    }
+                  : {})}
+              />
+            )}
           </section>
 
           {model ? (
@@ -491,7 +510,7 @@ export function CompositionEditorScreen({ compositionIndexUrl, outputVideoUrl, r
                 onReject: () => { edit.reject(); setContextRefs([]); setSelection(undefined); },
                 ...(edit.error === undefined ? {} : { error: edit.error }),
               }
-            : { unavailableReason: "Generate a demo to enable AI edits." })}
+            : { unavailableReason: standaloneVideoUrl ? "Playwright videos can be previewed and exported here. Timeline editing is not available yet." : "Generate a demo to enable AI edits." })}
         />
       </div>
     </div>
