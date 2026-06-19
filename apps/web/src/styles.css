@@ -1159,8 +1159,8 @@ input::placeholder {
 }
 .tk-cd-box.is-open {
   max-width: 680px;
-  /* Size to content so a short conversation stays compact; scroll within once it caps. */
-  max-height: min(72vh, 560px);
+  /* Give the transcript a definite flex height so long outlines scroll instead of clipping. */
+  height: min(72vh, 560px);
   box-shadow: var(--tk-shadow-md);
 }
 
@@ -1205,7 +1205,7 @@ input::placeholder {
   gap: 13px;
 }
 
-.tk-cd-msg { animation: tkRise 0.32s cubic-bezier(.22, 1, .36, 1); }
+.tk-cd-msg { animation: tkRise 0.32s cubic-bezier(.22, 1, .36, 1); flex-shrink: 0; }
 @keyframes tkRise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
 
 .tk-cd-assistant { display: flex; gap: 9px; }
