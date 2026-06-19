@@ -7,7 +7,7 @@ export interface CompositionTimelineHandle extends GsapTimelineLike {
   pause(atTime?: number, suppressEvents?: boolean): unknown;
 }
 
-/** A Window-like object that may carry the Hyperframes timeline registry. */
+/** A Window-like object that may carry the generated composition timeline registry. */
 export interface TimelineRegistryWindow {
   __timelines?: Record<string, unknown>;
 }

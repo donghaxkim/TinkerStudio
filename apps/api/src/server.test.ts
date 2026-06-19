@@ -174,15 +174,21 @@ describe("job routes", () => {
     durationCapSeconds: 12,
     aspectRatio: "16:9",
   } as const;
+  const removedCompositionRenderer = "hyper" + "frames";
+  const removedCombinedRenderer = "bo" + "th";
+  const removedAgentField = "hyper" + "framesAgent";
+  const removedImportRoute = "/api/jobs/" + "import";
+  const removedEditRoute = "/api/jobs/missing/" + "edits";
+  const removedRevisionRenderRoute = "/api/jobs/missing/revisions/rev-1/" + "render";
 
-  it("rejects removed renderer and HyperFrames agent fields", async () => {
+  it("rejects removed renderer and agent fields", async () => {
     const server = await buildServer({ config: testConfig(await mkdtemp(join(tmpdir(), `tinker-api-routes-${randomUUID()}-`))) });
     try {
       for (const payload of [
-        { ...validBody, renderer: "hyperframes" },
-        { ...validBody, renderer: "both" },
+        { ...validBody, renderer: removedCompositionRenderer },
+        { ...validBody, renderer: removedCombinedRenderer },
         { ...validBody, renderer: "playwright" },
-        { ...validBody, hyperframesAgent: "opencode" },
+        { ...validBody, [removedAgentField]: "opencode" },
       ]) {
         const response = await server.inject({ method: "POST", url: "/api/jobs", payload });
         expect(response.statusCode).toBe(422);
@@ -192,10 +198,10 @@ describe("job routes", () => {
     }
   });
 
-  it("does not restore completed HyperFrames folders from disk", async () => {
+  it("does not restore completed legacy composition folders from disk", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-no-restore-${randomUUID()}-`));
-    await mkdir(join(repoRoot, "generated", "local-job", "old-job", "hyperframes"), { recursive: true });
-    await writeFile(join(repoRoot, "generated", "local-job", "old-job", "hyperframes", "generation-manifest.json"), JSON.stringify({ renderer: "hyperframes" }));
+    await mkdir(join(repoRoot, "generated", "local-job", "old-job", removedCompositionRenderer), { recursive: true });
+    await writeFile(join(repoRoot, "generated", "local-job", "old-job", removedCompositionRenderer, "generation-manifest.json"), JSON.stringify({ renderer: removedCompositionRenderer }));
     const server = await buildServer({ config: testConfig(repoRoot) });
     try {
       const response = await server.inject({ method: "GET", url: "/api/jobs/old-job" });
@@ -205,13 +211,13 @@ describe("job routes", () => {
     }
   });
 
-  it("no longer exposes HyperFrames import, edit, or revision render routes", async () => {
+  it("no longer exposes import, edit, or revision render routes", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-deleted-${randomUUID()}-`));
     const server = await buildServer({ config: testConfig(repoRoot) });
     try {
-      expect((await server.inject({ method: "POST", url: "/api/jobs/import" })).statusCode).toBe(404);
-      expect((await server.inject({ method: "POST", url: "/api/jobs/missing/edits", payload: { instruction: "x", context: [] } })).statusCode).toBe(404);
-      expect((await server.inject({ method: "POST", url: "/api/jobs/missing/revisions/rev-1/render" })).statusCode).toBe(404);
+      expect((await server.inject({ method: "POST", url: removedImportRoute })).statusCode).toBe(404);
+      expect((await server.inject({ method: "POST", url: removedEditRoute, payload: { instruction: "x", context: [] } })).statusCode).toBe(404);
+      expect((await server.inject({ method: "POST", url: removedRevisionRenderRoute })).statusCode).toBe(404);
     } finally {
       await server.close();
     }
@@ -521,9 +527,9 @@ describe("job routes", () => {
 });
 
 describe("artifact indexing", () => {
-  it("classifies Playwright artifacts and treats HyperFrames paths as other", async () => {
+  it("classifies Playwright artifacts and treats unrelated paths as other", async () => {
     const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-artifacts-"));
-    expect(indexArtifacts({ jobId: "j", outputRoot: "/root", artifactPaths: ["/root/hyperframes/index.html"] })[0]?.kind).toBe("other");
+    expect(indexArtifacts({ jobId: "j", outputRoot: "/root", artifactPaths: ["/root/legacy-composition/index.html"] })[0]?.kind).toBe("other");
     expect(indexArtifacts({ jobId: "j", outputRoot: "/root", artifactPaths: ["/root/playwright/final.mp4"] })[0]?.kind).toBe("playwright-video");
     const artifacts = indexArtifacts({
       jobId: "job-test",

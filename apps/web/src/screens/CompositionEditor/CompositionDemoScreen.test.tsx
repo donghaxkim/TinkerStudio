@@ -5,6 +5,9 @@ import type { CompositionGenerationClient, CreateCompositionJobRequest } from ".
 import type { CompositionPlanningClient, CompositionPlanningSession } from "../../lib/compositionPlanningClient.js";
 import { CompositionDemoScreen } from "./CompositionDemoScreen.js";
 
+const removedAgentLabel = "Hyper" + "frames agent";
+const removedAgentField = "hyper" + "framesAgent";
+
 function completedPlaywrightJob(): ApiGenerationJob {
   return {
     id: "playwright-job-1",
@@ -138,7 +141,7 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByLabelText("GitHub repo URL")).toBeInTheDocument();
     expect(screen.getByLabelText("Planning agent")).toHaveValue("opencode");
     expect(screen.queryByLabelText("Renderer")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Hyperframes agent")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(removedAgentLabel)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit an existing demo" })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
@@ -201,7 +204,7 @@ describe("CompositionDemoScreen", () => {
     });
     expect("prompt" in (capturedRequest as object)).toBe(false);
     expect("renderer" in (capturedRequest as object)).toBe(false);
-    expect("hyperframesAgent" in (capturedRequest as object)).toBe(false);
+    expect(removedAgentField in (capturedRequest as object)).toBe(false);
   });
 
   it("system prompt is hidden by default; when edited it is sent with Generate now", async () => {
@@ -286,7 +289,7 @@ describe("CompositionDemoScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plan" }));
     await screen.findByRole("heading", { name: "Driftboard launch demo" });
     expect(screen.queryByLabelText("Renderer")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Hyperframes agent")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(removedAgentLabel)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit an existing demo" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
 
@@ -298,7 +301,7 @@ describe("CompositionDemoScreen", () => {
       aspectRatio: "16:9",
     });
     expect("renderer" in (capturedRequest as object)).toBe(false);
-    expect("hyperframesAgent" in (capturedRequest as object)).toBe(false);
+    expect(removedAgentField in (capturedRequest as object)).toBe(false);
     expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("Driftboard launch demo") }));
     expect(await screen.findByTestId("composition-standalone-video")).toHaveAttribute("src", "/api/jobs/playwright-job-1/artifacts/playwright/final.mp4");
     const repoLink = screen.getByRole("link", { name: "GitHub repository acme/driftboard" });

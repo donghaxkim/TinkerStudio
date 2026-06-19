@@ -11,14 +11,19 @@ product URL + repo URL + prompt
   → Analysis            (analyze the live site + the repo)
   → Product Understanding   → product-understanding.json
   → Demo Strategy / Story   → demo-strategy.json + storyboard.json
-  → Browser Capture (smooth Playwright)  → capture + final.mp4
+  → Playwright Capture Planning
+  → Smooth Playwright Capture → playwright/demo-project.json + playwright/final.mp4
   → run-summary.json
 ```
 
-The pipeline lives in `packages/demo-assembly` (`runAiUrlDemo`). The Browser Capture phase
+Tinker generates repo-grounded product demos through one pipeline: analysis, understanding,
+strategy, Playwright capture planning, smooth Playwright capture, `DemoProject`, and
+`playwright/final.mp4`.
+
+The pipeline lives in `packages/demo-assembly` (`runAiUrlDemo`). The browser-capture phase
 reuses `@tinker/browser-capture` (smooth synthetic cursor / ripple / eased scroll — see
-[smooth-playwright-capture.md](./smooth-playwright-capture.md)). **HyperFrames is unchanged**;
-the two renderer-agnostic phases (Understanding, Strategy) run for every renderer.
+[smooth-playwright-capture.md](./smooth-playwright-capture.md)). The Understanding and
+Strategy phases feed the single Playwright capture path.
 
 ## Generated artifact layout
 
@@ -90,12 +95,7 @@ action trace is stamped with best-effort storyboard-beat lineage (`beatId` / `in
 ## Running it
 
 ```bash
-# Full pipeline (smooth Playwright video) for a real product + repo:
-pnpm --filter @tinker/demo-assembly generate:ai-url-job -- \
-  --url https://your-product.example.com \
-  --repo https://github.com/you/your-repo \
-  --prompt "Show the core flow in 30 seconds"
-# Renderer defaults to playwright (final.mp4). Use --renderer hyperframes|both to switch.
+pnpm --filter @tinker/demo-assembly generate:ai-url-job -- --repo https://github.com/owner/repo --url https://product.example.com --duration 45
 ```
 
 It prints the run folder and every artifact path (product-understanding, demo-strategy,
@@ -130,10 +130,8 @@ pnpm --filter @tinker/demo-assembly smoke:pipeline:claude   # real `claude -p` -
 
 **Running it from the web UI with Claude Code:** start the API with the env var
 (`TINKER_AGENT_BACKEND=claude-code pnpm --filter @tinker/api dev`) + the web dev server, then
-in the create-demo screen set the two dropdowns: **Planning agent → Claude** and
-**Renderer → Playwright**. (Those dropdowns still default to opencode/hyperframes so the
-existing web test suite's default-value assertions stay valid.) HyperFrames generation is
-*not* wired to Claude Code — use the Playwright renderer.
+in the create-demo screen set **Planning agent → Claude**. Generation always uses the
+Playwright pipeline.
 
 ## Known limitations (first pass)
 

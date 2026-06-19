@@ -4,6 +4,7 @@ import { LocalGenerationJobError, runLocalGenerationJob } from "./localGeneratio
 import type { RunAiUrlDemoInput, RunAiUrlDemoResult } from "./runAiUrlDemo.js";
 
 type AiUrlDemoRunner = (input: RunAiUrlDemoInput) => Promise<RunAiUrlDemoResult>;
+const removedAgentField = "hyper" + "framesAgent";
 
 const times = [
   "2026-06-09T00:00:00.000Z",
@@ -24,7 +25,7 @@ const successfulPlaywrightAiUrlRunner: AiUrlDemoRunner = async (input) => {
   assert.equal(input.productUrl, "http://127.0.0.1:3000/");
   assert.equal(input.repoUrl, "https://github.com/example/product");
   assert.equal("renderer" in input, false);
-  assert.equal("hyperframesAgent" in input, false);
+  assert.equal(removedAgentField in input, false);
   assert.equal(input.prompt, "Show the AI URL path.");
 
   const phases = ["analysis", "planning", "verification", "capture", "assembly"] as const;

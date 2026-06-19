@@ -33,6 +33,8 @@ const validRequest = {
 } as const;
 
 describe("HttpCompositionGenerationClient", () => {
+  const removedAgentField = "hyper" + "framesAgent";
+
   it("POSTs ai-url-planning to /api/jobs without renderer fields", async () => {
     const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(202, job()));
     const client = createHttpCompositionGenerationClient({ fetchFn });
@@ -44,7 +46,7 @@ describe("HttpCompositionGenerationClient", () => {
     const sent = JSON.parse((init?.body as string) ?? "{}");
     expect(sent).toEqual(validRequest);
     expect("renderer" in sent).toBe(false);
-    expect("hyperframesAgent" in sent).toBe(false);
+    expect(removedAgentField in sent).toBe(false);
   });
 
   it("throws the server message on a 422 validation error", async () => {

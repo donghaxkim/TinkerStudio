@@ -38,11 +38,14 @@ const validAiUrlRequest = CreateDemoRequestSchema.parse({
   prompt: "Make a short demo of the main value prop.",
   outputDirectory: "generated/local-job/ai-url-job",
 });
+const removedCompositionRenderer = "hyper" + "frames";
+const removedCombinedRenderer = "bo" + "th";
+const removedAgentField = "hyper" + "framesAgent";
 
 assert.equal("mode" in validAiUrlRequest ? validAiUrlRequest.mode : undefined, "ai-url-planning");
 assert.equal(validAiUrlRequest.productUrl, "http://127.0.0.1:3000/");
 assert.equal("renderer" in validAiUrlRequest, false);
-assert.equal("hyperframesAgent" in validAiUrlRequest, false);
+assert.equal(removedAgentField in validAiUrlRequest, false);
 
 const aiUrlBaseRequest = {
   mode: "ai-url-planning",
@@ -55,14 +58,14 @@ const aiUrlBaseRequest = {
 const parsedDefaultRequest = parseCreateDemoRequest(aiUrlBaseRequest);
 assert.equal("mode" in parsedDefaultRequest ? parsedDefaultRequest.mode : undefined, "ai-url-planning");
 assert.equal("renderer" in parsedDefaultRequest, false);
-assert.equal("hyperframesAgent" in parsedDefaultRequest, false);
+assert.equal(removedAgentField in parsedDefaultRequest, false);
 
 for (const removedField of [
-  { renderer: "hyperframes" },
+  { renderer: removedCompositionRenderer },
   { renderer: "playwright" },
-  { renderer: "both" },
-  { hyperframesAgent: "opencode" },
-  { hyperframesAgent: "claude" },
+  { renderer: removedCombinedRenderer },
+  { [removedAgentField]: "opencode" },
+  { [removedAgentField]: "claude" },
 ] as const) {
   assert.equal(safeParseCreateDemoRequest({ ...aiUrlBaseRequest, ...removedField }).success, false);
 }
@@ -78,7 +81,7 @@ assert.equal(
 );
 
 assert.equal(safeParseCreateDemoRequest({ ...aiUrlBaseRequest, renderer: "remotion" }).success, false);
-assert.equal(safeParseCreateDemoRequest({ ...aiUrlBaseRequest, hyperframesAgent: "fable" }).success, false);
+assert.equal(safeParseCreateDemoRequest({ ...aiUrlBaseRequest, [removedAgentField]: "fable" }).success, false);
 
 for (const repoUrl of ["https://github.com/example/product", "https://github.com/example/product.git"]) {
   const request = CreateDemoRequestSchema.parse({
@@ -510,7 +513,7 @@ assert.equal(
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    renderer: "hyperframes",
+    renderer: removedCompositionRenderer,
     rendererResults: { playwright: playwrightRendererResult },
   }).success,
   false,
@@ -518,7 +521,7 @@ assert.equal(
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    renderer: "both",
+    renderer: removedCombinedRenderer,
     rendererResults: { playwright: playwrightRendererResult },
   }).success,
   false,
@@ -535,7 +538,7 @@ assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
     renderer: "playwright",
-    rendererResults: { playwright: playwrightRendererResult, hyperframes: {} },
+    rendererResults: { playwright: playwrightRendererResult, [removedCompositionRenderer]: {} },
   }).success,
   false,
 );

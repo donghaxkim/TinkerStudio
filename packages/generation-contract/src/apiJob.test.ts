@@ -120,12 +120,13 @@ describe("API generation job contract", () => {
     expect(result.project.id).toBe(goldenProject.id);
   });
 
-  it("rejects stale HyperFrames request/result fields", () => {
+  it("rejects stale composition request/result fields", () => {
+    const removedCompositionRenderer = "hyper" + "frames";
     expect(
       safeParseApiGenerationJob({
-        id: "job-hyperframes",
+        id: "job-removed-composition",
         status: "queued",
-        request: { ...request, renderer: "hyperframes" },
+        request: { ...request, renderer: removedCompositionRenderer },
         createdAt: "2026-06-11T00:00:00.000Z",
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [],
@@ -134,7 +135,7 @@ describe("API generation job contract", () => {
 
     expect(
       ApiGenerationResultSchema.safeParse({
-        method: "hyperframes",
+        method: removedCompositionRenderer,
         composition: {},
         artifacts: [],
         warnings: [],

@@ -15,7 +15,7 @@ function fakeHandle(overrides: Partial<CompositionTimelineHandle> = {}): Composi
   } as CompositionTimelineHandle;
 }
 
-const SRC = "/api/jobs/j/artifacts/hyperframes/index.html";
+const SRC = "/api/jobs/j/artifacts/playwright/index.html";
 
 describe("CompositionPreview", () => {
   it("announces loading and calls onLoading for a new composition", () => {
@@ -80,7 +80,7 @@ describe("CompositionPreview", () => {
       <CompositionPreview
         src={SRC}
         compositionId="sample"
-        fallbackVideoSrc="/api/jobs/j/artifacts/hyperframes/output.mp4"
+        fallbackVideoSrc="/api/jobs/j/artifacts/playwright/output.mp4"
         timeoutMs={0}
         resolveWindow={(): TimelineRegistryWindow => ({ __timelines: {} })}
       />,
@@ -89,7 +89,7 @@ describe("CompositionPreview", () => {
     await waitFor(() =>
       expect(screen.getByTestId("composition-fallback-video")).toHaveAttribute(
         "src",
-        "/api/jobs/j/artifacts/hyperframes/output.mp4",
+        "/api/jobs/j/artifacts/playwright/output.mp4",
       ),
     );
   });

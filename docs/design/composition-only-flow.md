@@ -1,43 +1,50 @@
-# Composition-Only Product Flow
+# Playwright-Only Product Flow
 
 ## Context
 
-Dongha's locked product flow is now:
+This document replaces an older composition-only product-flow note. The current product flow
+is Playwright-only.
 
-1. Create Demo page accepts a GitHub repository URL and a demo description.
-2. The API generates a Hyperframes/HTML composition demo and opens it in the composition editor.
-3. The editor supports optional AI chat refinement and export.
-
-This supersedes older docs that still list `productUrl` as a user-facing Create Demo input. The underlying generation pipeline still needs a live product URL for browser analysis and recording; the product now derives that URL before queuing the job.
+Tinker generates repo-grounded product demos through one pipeline: analysis, understanding,
+strategy, Playwright capture planning, smooth Playwright capture, `DemoProject`, and
+`playwright/final.mp4`.
 
 ## Product URL Derivation
 
-When the web client omits `productUrl`, `POST /api/jobs` derives it from the public GitHub repository:
+When the web client omits `productUrl`, `POST /api/jobs` derives it from the public GitHub
+repository:
 
 - First use the GitHub repository `homepage` metadata field when it is an HTTP(S) URL.
 - Then fall back to `package.json.homepage` through the GitHub contents API when available.
-- If neither source yields an HTTP(S) URL, return a validation error that explains the repo needs a public homepage/deployment URL.
+- If neither source yields an HTTP(S) URL, return a validation error that explains the repo
+  needs a public homepage/deployment URL.
 
-The accepted job stored by the API always includes the derived `productUrl`, so `runLocalGenerationJob` and Samuel's Hyperframes pipeline continue to receive the explicit URL they already require.
+The accepted job stored by the API always includes the derived `productUrl`, so
+`runLocalGenerationJob` receives the explicit URL required for analysis and Playwright
+capture.
 
 ## App Shape
 
-`App.tsx` mounts `CompositionDemoScreen` as the whole product. The old DemoProject Create Demo page, legacy editor route, sample-project entry, and mock generation clients are retired from the web product path.
+`App.tsx` mounts `CompositionDemoScreen` as the product entry point, but generation now opens
+a Playwright video preview shell backed by the completed job's `playwright-video` artifact.
+The screen sends Playwright-compatible `ai-url-planning` requests only.
 
-The composition form contains only:
+The form contains:
 
+- Product URL
 - GitHub repo URL
-- Demo description
-- Generate button
+- Planning agent
+- Generate controls
 
-On successful generation, the screen opens `CompositionEditorScreen` with the generated composition index and output video artifact. The editor keeps using the existing AI chat edit API (`POST /api/jobs/:id/edits`) and render/export path.
+On successful generation, the screen opens `CompositionEditorScreen` with the generated
+Playwright video artifact and repo context.
 
 ## Testing
 
-Coverage focuses on the new workflow boundary:
+Coverage focuses on the Playwright workflow boundary:
 
-- API accepts repo+description without `productUrl`, resolves a URL, stores it on the job, and passes it to the runner.
+- API accepts repo+URL generation requests and stores the resolved product URL on the job.
 - API returns a validation error when no product URL can be derived.
-- Web HTTP client can submit a composition job without `productUrl`.
-- Create Demo UI no longer exposes a product URL field and submits only repo+description.
-- App initial render is the composition Create Demo workflow, not the legacy DemoProject shell.
+- Web HTTP client submits `ai-url-planning` requests without renderer fields.
+- Create Demo UI does not expose removed renderer/import controls.
+- Completed Playwright jobs open the standalone video preview shell.
