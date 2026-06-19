@@ -120,4 +120,48 @@ assert.equal(approved.storyboard.beats[0]?.startHint, 0);
 assert.equal(approved.storyboard.beats[0]?.endHint, 6);
 assert.ok(approved.strategy.warnings.every((warning) => warning.length > 0));
 
+const unsupportedApprovedOutline: DemoOutline = {
+  ...approvedOutline,
+  scenes: [
+    approvedOutline.scenes[0]!,
+    {
+      id: "scene-unsupported",
+      goal: "Approve invoices and collect payments",
+      visual: "Open the billing dashboard, send an invoice, and confirm payment.",
+      startHint: 6,
+      endHint: 30,
+      evidence: ["repo", "website"],
+    },
+    approvedOutline.scenes[2]!,
+  ],
+};
+const unsupportedApproved = deriveDemoStrategy({
+  understanding,
+  prompt: "Show how a user pastes a YouTube URL and generates highlights.",
+  approvedOutline: unsupportedApprovedOutline,
+  durationCapSeconds: 45,
+  aspectRatio: "16:9",
+});
+assert.deepEqual(unsupportedApproved.storyboard.beats.map((beat) => beat.id), ["scene-1", "scene-unsupported", "scene-3"]);
+assert.ok(
+  unsupportedApproved.strategy.warnings.some(
+    (warning) => warning.includes("scene-unsupported") && /unsupported|cannot match|no matching/i.test(warning),
+  ),
+  "approved scenes unsupported by product understanding should emit an adaptation warning",
+);
+
+const cappedApproved = deriveDemoStrategy({
+  understanding,
+  prompt: "Show how a user pastes a YouTube URL and generates highlights.",
+  approvedOutline,
+  durationCapSeconds: 30,
+  aspectRatio: "16:9",
+});
+assert.equal(cappedApproved.storyboard.durationTargetSeconds, 30);
+assert.deepEqual(cappedApproved.storyboard.beats.map((beat) => beat.id), ["scene-1", "scene-2", "scene-3"]);
+assert.equal(cappedApproved.storyboard.beats[0]?.endHint, 6, "valid in-range timing hints should be preserved");
+for (const beat of cappedApproved.storyboard.beats) {
+  assert.ok(beat.endHint !== undefined && beat.endHint <= 30, `beat ${beat.id} must end within the request duration cap`);
+}
+
 console.log("demoStrategy.test PASS");

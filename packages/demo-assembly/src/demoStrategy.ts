@@ -118,6 +118,35 @@ function overlapCount(a: Set<string>, b: Set<string>): number {
   return count;
 }
 
+const SCENE_SUPPORT_STOPWORDS = new Set([
+  "and",
+  "with",
+  "the",
+  "for",
+  "from",
+  "that",
+  "this",
+  "user",
+  "users",
+  "show",
+  "open",
+  "close",
+  "closing",
+  "cta",
+  "demo",
+  "workflow",
+  "screen",
+  "safe",
+  "confirm",
+  "visual",
+  "output",
+  "result",
+]);
+
+function contentTokens(text: string): Set<string> {
+  return new Set([...tokenize(text)].filter((token) => !SCENE_SUPPORT_STOPWORDS.has(token)));
+}
+
 /**
  * Pick the single strongest flow to build the demo around.
  *
@@ -194,13 +223,17 @@ function outlineSceneType(scene: DemoOutlineScene, index: number, total: number)
   return "feature";
 }
 
-function approvedTiming(scene: DemoOutlineScene, fallback: StoryboardBeat): Pick<StoryboardBeat, "startHint" | "endHint"> {
+function approvedTiming(scene: DemoOutlineScene, fallback: StoryboardBeat, durationCapSeconds: number): Pick<StoryboardBeat, "startHint" | "endHint"> {
   if (
     scene.startHint !== undefined &&
     scene.endHint !== undefined &&
     scene.endHint > scene.startHint
   ) {
-    return { startHint: scene.startHint, endHint: scene.endHint };
+    const startHint = Math.min(scene.startHint, durationCapSeconds);
+    const endHint = Math.min(scene.endHint, durationCapSeconds);
+    if (endHint > startHint) {
+      return { startHint, endHint };
+    }
   }
   return {
     ...(fallback.startHint === undefined ? {} : { startHint: fallback.startHint }),
@@ -208,13 +241,50 @@ function approvedTiming(scene: DemoOutlineScene, fallback: StoryboardBeat): Pick
   };
 }
 
+function supportCorpusTokens(understanding: ProductUnderstanding): Set<string> {
+  return contentTokens(
+    [
+      understanding.product.name,
+      understanding.product.category,
+      understanding.product.oneLine,
+      understanding.product.primaryProblem,
+      understanding.product.primaryValueProposition,
+      ...understanding.product.targetUsers,
+      understanding.valueNarrative.problem,
+      understanding.valueNarrative.audience,
+      understanding.valueNarrative.howItSolves,
+      understanding.valueNarrative.whyItMatters,
+      understanding.valueNarrative.viewerTakeaway,
+      ...understanding.capabilities.flatMap((capability) => [capability.name, capability.description]),
+      ...understanding.demoableFlows.flatMap((flow) => [
+        flow.name,
+        flow.whyItMatters,
+        ...flow.requiredInputs,
+        flow.expectedOutcome,
+        flow.proves,
+        flow.viewerTakeaway,
+      ]),
+      ...understanding.evidence.flatMap((evidence) => [evidence.claim, evidence.quoteOrReference]),
+    ].join(" "),
+  );
+}
+
 function unsupportedOutlineWarnings(understanding: ProductUnderstanding, outline: DemoOutline): string[] {
   const availableSources = new Set(understanding.evidence.map((evidence) => evidence.sourceType));
-  return outline.scenes.flatMap((scene) =>
-    scene.evidence
+  const supportedTokens = supportCorpusTokens(understanding);
+  return outline.scenes.flatMap((scene) => {
+    const evidenceWarnings = scene.evidence
       .filter((source) => !availableSources.has(source))
-      .map((source) => `Approved scene ${scene.id} requests ${source} evidence, but the current understanding has no ${source} evidence.`),
-  );
+      .map((source) => `Approved scene ${scene.id} requests ${source} evidence, but the current understanding has no ${source} evidence.`);
+    const sceneTokens = contentTokens(`${scene.goal} ${scene.visual}`);
+    if (sceneTokens.size > 0 && overlapCount(sceneTokens, supportedTokens) === 0) {
+      return [
+        ...evidenceWarnings,
+        `Approved scene ${scene.id} is unsupported: cannot match its goal or visual to available demoable flows, capabilities, evidence, or product text.`,
+      ];
+    }
+    return evidenceWarnings;
+  });
 }
 
 function deriveApprovedOutlineStrategy(input: DeriveDemoStrategyInput & { approvedOutline: DemoOutline }): DemoStrategyResult {
@@ -271,7 +341,7 @@ function deriveApprovedOutlineStrategy(input: DeriveDemoStrategyInput & { approv
   const fallbackTimed = withTiming(untimedBeats, durationCapSeconds);
   const beats = fallbackTimed.map((beat, index) => ({
     ...beat,
-    ...approvedTiming(approvedOutline.scenes[index]!, beat),
+    ...approvedTiming(approvedOutline.scenes[index]!, beat, durationCapSeconds),
   }));
 
   const storyboard: Storyboard = StoryboardSchema.parse({
