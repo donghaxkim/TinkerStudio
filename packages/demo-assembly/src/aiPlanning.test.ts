@@ -9,19 +9,19 @@ import {
   createFixtureAiUrlPlanner,
   createOpencodeAiUrlPlanner,
   defaultRunAiPlannerOpencode,
-  parseCapturePlanJson,
   parseStoryboardJson,
 } from "./aiPlanning.js";
 import {
   createEnvironmentAiUrlPlanner as exportedCreateEnvironmentAiUrlPlanner,
   createFixtureAiUrlPlanner as exportedCreateFixtureAiUrlPlanner,
   createOpencodeAiUrlPlanner as exportedCreateOpencodeAiUrlPlanner,
-  parseCapturePlanJson as exportedParseCapturePlanJson,
+  parseTestreelGenerationPlanJson as exportedParseTestreelGenerationPlanJson,
   parseStoryboardJson as exportedParseStoryboardJson,
   type AiUrlPlanner as ExportedAiUrlPlanner,
   type AiUrlPlannerInput as ExportedAiUrlPlannerInput,
   type AiUrlPlannerResult as ExportedAiUrlPlannerResult,
 } from "./index.js";
+import { parseTestreelGenerationPlanJson } from "./testreelPlan.js";
 
 const productAnalysisFixture: ProductAnalysis = {
   url: "http://127.0.0.1:3000/",
@@ -42,10 +42,10 @@ const repoAnalysisFixture: RepoAnalysis = {
   commit: "abcdef1",
   productName: "Fixture Product",
   summary: "Fixture Product turns source context into better product demos.",
-  features: ["Repo-aware storyboard planning", "Deterministic capture plan generation"],
+  features: ["Repo-aware storyboard planning", "Deterministic Testreel recording plan generation"],
   likelyRoutes: ["/", "/pricing"],
   demoIdeas: ["Show a repo-aware hero-to-export flow."],
-  importantTerms: ["storyboard", "capture plan"],
+  importantTerms: ["storyboard", "recording plan"],
   setupNotes: ["package.json is present; setup remains source-only and is not executed."],
   sourceHints: [{ path: "README.md", reason: "Explains the product promise." }],
 };
@@ -54,7 +54,7 @@ const narrativeExplorationFixture: NarrativeExploration = {
   productSummary: "Fixture Product creates repo-aware product demos.",
   bestDemoAngle: "Show a URL becoming an editable demo with deterministic capture.",
   userProblem: "Teams need a short product demo but do not know the best workflow to show.",
-  promisedOutcome: "A verified capture plan and storyboard are produced from grounded evidence.",
+  promisedOutcome: "A verified Testreel recording plan and storyboard are produced from grounded evidence.",
   workflowCandidates: [
     {
       name: "URL to demo project",
@@ -91,23 +91,31 @@ const storyboardFixture = {
   ],
 } as const;
 
-const capturePlanFixture = {
-  targetUrl: "http://127.0.0.1:3000/",
-  viewport: { width: 1280, height: 720 },
-  steps: [
-    { type: "goto", url: "http://127.0.0.1:3000/" },
-    { type: "waitForSelector", selector: "[data-testid='hero']" },
-    { type: "click", selector: "[data-testid='start-demo']" },
-    { type: "press", selector: "[data-testid='workspace-name']", key: "Enter" },
-    { type: "pause", ms: 300 },
-  ],
+const recordingPlanFixture = {
+  engine: "testreel",
+  definition: {
+    url: "http://127.0.0.1:3000/",
+    viewport: { width: 1280, height: 720 },
+    outputSize: { width: 1920, height: 1080 },
+    outputFormat: "mp4",
+    cursor: { enabled: true, size: 48, rippleSize: 100 },
+    chrome: { enabled: true, url: true },
+    background: { enabled: true, gradient: { from: "#0f172a", to: "#38bdf8" }, padding: 60, borderRadius: 18 },
+    steps: [
+      { action: "wait", ms: 500 },
+      { action: "click", selector: "[data-testid='start-demo']" },
+      { action: "type", selector: "[data-testid='workspace-name']", text: "Fixture workspace" },
+      { action: "keyboard", key: "Enter" },
+      { action: "screenshot", name: "final" },
+    ],
+  },
   expectedCheckpoints: [{ id: "hero", label: "Hero", selector: "[data-testid='hero']" }],
 } as const;
 
 assert.equal(exportedCreateEnvironmentAiUrlPlanner, createEnvironmentAiUrlPlanner);
 assert.equal(exportedCreateFixtureAiUrlPlanner, createFixtureAiUrlPlanner);
 assert.equal(exportedCreateOpencodeAiUrlPlanner, createOpencodeAiUrlPlanner);
-assert.equal(exportedParseCapturePlanJson, parseCapturePlanJson);
+assert.equal(exportedParseTestreelGenerationPlanJson, parseTestreelGenerationPlanJson);
 assert.equal(exportedParseStoryboardJson, parseStoryboardJson);
 const exportedPlannerTypeCheck: ExportedAiUrlPlanner = createFixtureAiUrlPlanner();
 const exportedPlannerInputTypeCheck: ExportedAiUrlPlannerInput = {
@@ -139,12 +147,6 @@ const parsedStoryboardWithNarration = parseStoryboardJson(
 );
 assert.equal(parsedStoryboardWithNarration.beats.length, 2);
 assert.equal("narration" in parsedStoryboardWithNarration.beats[0]!, false);
-
-const parsedCapturePlan = parseCapturePlanJson(JSON.stringify(capturePlanFixture));
-assert.equal(parsedCapturePlan.targetUrl, "http://127.0.0.1:3000/");
-assert.deepEqual(parsedCapturePlan.viewport, { width: 1280, height: 720 });
-assert.equal(parsedCapturePlan.steps.length, 5);
-assert.equal(parsedCapturePlan.expectedCheckpoints[0]?.id, "hero");
 
 assert.throws(() => parseStoryboardJson("{"), /Planner returned malformed storyboard JSON/);
 assert.throws(
@@ -181,65 +183,6 @@ assert.throws(
     ),
   /Storyboard is invalid/,
 );
-assert.throws(
-  () => parseCapturePlanJson(JSON.stringify({ ...capturePlanFixture, steps: [] })),
-  /Capture plan is invalid/,
-);
-assert.throws(
-  () =>
-    parseCapturePlanJson(
-      JSON.stringify({
-        ...capturePlanFixture,
-        steps: [{ type: "waitForSelector", selector: "[data-testid='hero']", timeoutMs: 10_001 }],
-      }),
-    ),
-  /Capture plan is invalid/,
-);
-assert.throws(
-  () =>
-    parseCapturePlanJson(
-      JSON.stringify({
-        ...capturePlanFixture,
-        steps: [{ type: "pause", ms: 5_001 }],
-      }),
-    ),
-  /Capture plan is invalid/,
-);
-assert.throws(
-  () =>
-    parseCapturePlanJson(
-      JSON.stringify({
-        ...capturePlanFixture,
-        steps: [{ type: "pressKey", key: "Enter" }],
-      }),
-    ),
-  /Capture plan is invalid/,
-);
-assert.throws(
-  () =>
-    parseCapturePlanJson(
-      JSON.stringify({
-        ...capturePlanFixture,
-        steps: Array.from({ length: 51 }, () => ({ type: "pause", ms: 0 })),
-      }),
-    ),
-  /Capture plan is invalid/,
-);
-assert.throws(
-  () =>
-    parseCapturePlanJson(
-      JSON.stringify({
-        ...capturePlanFixture,
-        expectedCheckpoints: Array.from({ length: 21 }, (_, index) => ({
-          id: `checkpoint-${index}`,
-          label: `Checkpoint ${index}`,
-          selector: "body",
-        })),
-      }),
-    ),
-  /Capture plan is invalid/,
-);
-
 const fixturePlanner = createFixtureAiUrlPlanner();
 const fixtureResult = await fixturePlanner({
   productUrl: "http://127.0.0.1:3000/",
@@ -250,9 +193,10 @@ const fixtureResult = await fixturePlanner({
 });
 
 assert.equal(fixtureResult.storyboard.aspectRatio, "9:16");
-assert.equal(fixtureResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
-assert.deepEqual(fixtureResult.capturePlan.viewport, { width: 720, height: 1280 });
-assert.deepEqual(fixtureResult.capturePlan.steps[0], { type: "goto", url: "http://127.0.0.1:3000/" });
+assert.equal(fixtureResult.recordingPlan.definition.url, "http://127.0.0.1:3000/");
+assert.deepEqual(fixtureResult.recordingPlan.definition.viewport, { width: 720, height: 1280 });
+assert.deepEqual(fixtureResult.recordingPlan.definition.outputSize, { width: 1080, height: 1920 });
+assert.equal(fixtureResult.recordingPlan.definition.outputFormat, "mp4");
 
 const directCalls: RequestInit[] = [];
 const directPlanner = createEnvironmentAiUrlPlanner({
@@ -265,7 +209,7 @@ const directPlanner = createEnvironmentAiUrlPlanner({
     return {
       ok: true,
       status: 200,
-      json: async () => ({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }),
+      json: async () => ({ storyboard: storyboardFixture, recordingPlan: recordingPlanFixture }),
       text: async () => "",
     } as Response;
   },
@@ -282,7 +226,7 @@ const directResult = await directPlanner({
 });
 
 assert.equal(directResult.storyboard.title, "Fixture demo");
-assert.equal(directResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
+assert.equal(directResult.recordingPlan.definition.url, "http://127.0.0.1:3000/");
 assert.equal(directCalls.length, 1);
 assert.equal(directCalls[0]?.method, "POST");
 assert.deepEqual(directCalls[0]?.headers, {
@@ -297,8 +241,11 @@ assert.match(directPrompt, /"storyboard"/);
 assert.match(directPrompt, /"durationCapSeconds": 10/);
 assert.match(directPrompt, /"aspectRatio": "16:9"/);
 assert.match(directPrompt, /"beats": \[/);
-assert.match(directPrompt, /"capturePlan"/);
-assert.match(directPrompt, /"targetUrl": "http:\/\/127\.0\.0\.1:3000\/"/);
+assert.match(directPrompt, /"recordingPlan"/);
+assert.match(directPrompt, /Testreel recording definition/);
+assert.doesNotMatch(directPrompt, /"capturePlan"/);
+assert.equal(directResult.recordingPlan.definition.outputFormat, "mp4");
+assert.match(directPrompt, /"url": "http:\/\/127\.0\.0\.1:3000\/"/);
 assert.match(directPrompt, /"steps": \[/);
 assert.match(directPrompt, /Do not include schema, scenes, captions, audio, style, metadata, or editableTextFields/);
 assert.match(directPrompt, /Do not type into inputs unless the user prompt provides a safe value/);
@@ -331,7 +278,7 @@ const gpt55Planner = createEnvironmentAiUrlPlanner({
     return {
       ok: true,
       status: 200,
-      json: async () => ({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }),
+      json: async () => ({ storyboard: storyboardFixture, recordingPlan: recordingPlanFixture }),
       text: async () => "",
     } as Response;
   },
@@ -357,7 +304,7 @@ const noRepoPlanner = createEnvironmentAiUrlPlanner({
     return {
       ok: true,
       status: 200,
-      json: async () => ({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }),
+      json: async () => ({ storyboard: storyboardFixture, recordingPlan: recordingPlanFixture }),
       text: async () => "",
     } as Response;
   },
@@ -402,7 +349,7 @@ await assert.rejects(
         return {
           ok: true,
           status: 200,
-          json: async () => ({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }),
+          json: async () => ({ storyboard: storyboardFixture, recordingPlan: recordingPlanFixture }),
           text: async () => "",
         } as Response;
       },
@@ -430,7 +377,7 @@ await assert.rejects(
         return {
           ok: true,
           status: 200,
-          json: async () => ({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }),
+          json: async () => ({ storyboard: storyboardFixture, recordingPlan: recordingPlanFixture }),
           text: async () => "",
         } as Response;
       },
@@ -458,7 +405,7 @@ const opencodePlanner = createOpencodeAiUrlPlanner({
 
     return [
       JSON.stringify({ type: "message", text: "planning" }),
-      JSON.stringify({ type: "message", text: JSON.stringify({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }) }),
+      JSON.stringify({ type: "message", text: JSON.stringify({ storyboard: storyboardFixture, recordingPlan: recordingPlanFixture }) }),
     ].join("\n");
   },
 });
@@ -480,18 +427,18 @@ const opencodeResult = await opencodePlanner({
 });
 
 assert.equal(opencodeResult.storyboard.title, "Fixture demo");
-assert.equal(opencodeResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
+assert.equal(opencodeResult.recordingPlan.definition.url, "http://127.0.0.1:3000/");
 assert.equal(opencodeCalls.length, 1);
 assert.equal(opencodeCalls[0]?.cwd, "/tmp/repo-checkout");
-assert.match(opencodeCalls[0]?.prompt ?? "", /primary demo planning agent/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /Testreel recording plan/);
 assert.match(opencodeCalls[0]?.prompt ?? "", /web research/);
 assert.match(opencodeCalls[0]?.prompt ?? "", /safe public sample inputs/);
 assert.match(opencodeCalls[0]?.prompt ?? "", /Feeling Lucky/);
 assert.match(opencodeCalls[0]?.prompt ?? "", /generated-result controls/);
-assert.match(opencodeCalls[0]?.prompt ?? "", /press step with key Enter/);
+assert.match(opencodeCalls[0]?.prompt ?? "", /keyboard action with key Enter/);
 assert.match(opencodeCalls[0]?.prompt ?? "", /product workflow/);
 assert.match(opencodeCalls[0]?.prompt ?? "", /homepage-only/);
-assert.match(opencodeCalls[0]?.prompt ?? "", /at least one safe click, type, or press/i);
+assert.match(opencodeCalls[0]?.prompt ?? "", /at least one safe click, type, fill, or keyboard/i);
 assert.match(opencodeCalls[0]?.prompt ?? "", /prefer click over hover for tab-like controls/i);
 assert.match(opencodeCalls[0]?.prompt ?? "", /Generate highlight reels/);
 assert.match(opencodeCalls[0]?.prompt ?? "", /Hook -> Demo: Use Case -> End Result -> CTA/);
@@ -512,15 +459,17 @@ await assert.rejects(
           type: "message",
           text: JSON.stringify({
             storyboard: storyboardFixture,
-            capturePlan: {
-              ...capturePlanFixture,
-              steps: [
-                { type: "goto", url: "http://127.0.0.1:3000/" },
-                { type: "waitForSelector", selector: "[data-testid='hero']" },
-                { type: "hover", selector: "[data-testid='start-demo']" },
-                { type: "scroll", y: 720 },
-                { type: "pause", ms: 300 },
-              ],
+            recordingPlan: {
+              ...recordingPlanFixture,
+              definition: {
+                ...recordingPlanFixture.definition,
+                steps: [
+                  { action: "wait", ms: 500 },
+                  { action: "hover", selector: "[data-testid='start-demo']" },
+                  { action: "scroll", y: 720 },
+                  { action: "screenshot", name: "final" },
+                ],
+              },
             },
           }),
         }),
@@ -533,7 +482,7 @@ await assert.rejects(
       repoAnalysis: repoAnalysisFixture,
       repoCheckoutDirectory: "/tmp/repo-checkout",
     }),
-  /OpenCode demo planner returned a passive capture plan/,
+  /OpenCode demo planner returned a passive recording plan/,
 );
 
 await assert.rejects(
@@ -557,7 +506,7 @@ const claudeCalls: { prompt: string; cwd: string }[] = [];
 const claudePlanner = createClaudeCodeAiUrlPlanner({
   runClaudeCode: async (prompt, options) => {
     claudeCalls.push({ prompt, cwd: options.cwd });
-    return JSON.stringify({ storyboard: storyboardFixture, capturePlan: capturePlanFixture });
+    return JSON.stringify({ storyboard: storyboardFixture, recordingPlan: recordingPlanFixture });
   },
 });
 
@@ -571,14 +520,14 @@ const claudeResult = await claudePlanner({
   repoCheckoutDirectory: "/tmp/repo-checkout",
 });
 assert.equal(claudeResult.storyboard.title, "Fixture demo");
-assert.equal(claudeResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
+assert.equal(claudeResult.recordingPlan.definition.url, "http://127.0.0.1:3000/");
 assert.equal(claudeCalls.length, 1);
 assert.equal(claudeCalls[0]?.cwd, "/tmp/repo-checkout");
 
 // It also tolerates prose / code fences around the JSON object.
 const fencedClaudePlanner = createClaudeCodeAiUrlPlanner({
   runClaudeCode: async () =>
-    "Here is the plan:\n\n```json\n" + JSON.stringify({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }) + "\n```\n",
+    "Here is the plan:\n\n```json\n" + JSON.stringify({ storyboard: storyboardFixture, recordingPlan: recordingPlanFixture }) + "\n```\n",
 });
 const fencedResult = await fencedClaudePlanner({
   productUrl: "http://127.0.0.1:3000/",
@@ -589,7 +538,7 @@ const fencedResult = await fencedClaudePlanner({
   repoAnalysis: repoAnalysisFixture,
   repoCheckoutDirectory: "/tmp/repo-checkout",
 });
-assert.equal(fencedResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
+assert.equal(fencedResult.recordingPlan.definition.url, "http://127.0.0.1:3000/");
 
 await assert.rejects(
   () =>
@@ -837,7 +786,7 @@ const openAiPlanner = createEnvironmentAiUrlPlanner({
         choices: [
           {
             message: {
-              content: JSON.stringify({ storyboard: storyboardFixture, capturePlan: capturePlanFixture }),
+              content: JSON.stringify({ storyboard: storyboardFixture, recordingPlan: recordingPlanFixture }),
             },
           },
         ],
@@ -855,7 +804,7 @@ const openAiResult = await openAiPlanner({
 });
 
 assert.equal(openAiResult.storyboard.title, "Fixture demo");
-assert.equal(openAiResult.capturePlan.targetUrl, "http://127.0.0.1:3000/");
+assert.equal(openAiResult.recordingPlan.definition.url, "http://127.0.0.1:3000/");
 
 await assert.rejects(
   () =>
@@ -869,7 +818,7 @@ await assert.rejects(
           status: 200,
           json: async () => ({
             storyboard: storyboardFixture,
-            capturePlan: { ...capturePlanFixture, targetUrl: "https://evil.example/" },
+            recordingPlan: { ...recordingPlanFixture, definition: { ...recordingPlanFixture.definition, url: "https://evil.example/" } },
           }),
           text: async () => "",
         }) as Response,
@@ -880,7 +829,7 @@ await assert.rejects(
       aspectRatio: "16:9",
       analysis: productAnalysisFixture,
     }),
-  /Capture plan is invalid/,
+  /recording URL must stay on product origin/,
 );
 
 await assert.rejects(
@@ -895,7 +844,7 @@ await assert.rejects(
           status: 200,
           json: async () => ({
             storyboard: { ...storyboardFixture, durationCapSeconds: 99 },
-            capturePlan: capturePlanFixture,
+            recordingPlan: recordingPlanFixture,
           }),
           text: async () => "",
         }) as Response,
@@ -921,7 +870,7 @@ await assert.rejects(
           status: 200,
           json: async () => ({
             storyboard: { ...storyboardFixture, aspectRatio: "9:16" },
-            capturePlan: capturePlanFixture,
+            recordingPlan: recordingPlanFixture,
           }),
           text: async () => "",
         }) as Response,
@@ -933,35 +882,6 @@ await assert.rejects(
       analysis: productAnalysisFixture,
     }),
   /Storyboard is invalid/,
-);
-
-await assert.rejects(
-  () =>
-    createEnvironmentAiUrlPlanner({
-      endpoint: "https://planner.example/v1/chat/completions",
-      apiKey: "test-key",
-      model: "planner-model",
-      fetchImpl: async () =>
-        ({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            storyboard: storyboardFixture,
-            capturePlan: {
-              ...capturePlanFixture,
-              steps: [{ type: "goto", url: "https://evil.example/" }, ...capturePlanFixture.steps.slice(1)],
-            },
-          }),
-          text: async () => "",
-        }) as Response,
-    })({
-      productUrl: "http://127.0.0.1:3000/",
-      prompt: "Show the hero.",
-      durationCapSeconds: 10,
-      aspectRatio: "16:9",
-      analysis: productAnalysisFixture,
-    }),
-  /Capture plan is invalid/,
 );
 
 await assert.rejects(

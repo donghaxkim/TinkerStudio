@@ -10,6 +10,7 @@ export * from "./applyEditDecisionList.js";
 export * from "./directorPlan.js";
 export * from "./productUnderstanding.js";
 export * from "./demoStrategy.js";
+export * from "./testreelPlan.js";
 export * from "./runSummary.js";
 export * from "./runAiUrlDemo.js";
 export * from "./demoStrategyAgent.js";
