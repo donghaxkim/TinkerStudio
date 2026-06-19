@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import type { ActionTrace } from "@tinker/browser-capture";
-import { CoreCoverageItemSchema, MEANINGFUL_ACTION_TYPES, buildCoreCoverage } from "./coreCoverage.js";
+import { CoreCoverageItemSchema, MEANINGFUL_ACTION_TYPES, buildCoreCoverage, type CoreActionTrace } from "./coreCoverage.js";
 import { deriveDemoStrategy } from "./demoStrategy.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
@@ -20,11 +19,9 @@ const repoAnalysis: RepoAnalysis = {
 const understanding = deriveProductUnderstanding({ productUrl: "https://x.dev/", repoUrl: repoAnalysis.repoUrl, websiteAnalysis, repoAnalysis });
 const { strategy, storyboard } = deriveDemoStrategy({ understanding, durationCapSeconds: 40, aspectRatio: "16:9" });
 
-function trace(actions: Array<{ id: string; type: ActionTrace["actions"][number]["type"]; beatId: string }>): ActionTrace {
+function trace(actions: Array<{ id: string; type: string; beatId: string }>): CoreActionTrace {
   return {
-    version: 1, targetUrl: "https://x.dev/", viewport: { width: 1280, height: 720 }, fps: 25,
-    startedAt: "2026-06-18T00:00:00.000Z", completedAt: "2026-06-18T00:00:05.000Z",
-    actions: actions.map((a) => ({ id: a.id, type: a.type, status: "success", startTime: 0, endTime: 0, beatId: a.beatId })),
+    actions: actions.map((a) => ({ type: a.type, beatId: a.beatId })),
   };
 }
 
@@ -82,6 +79,6 @@ const missingCoverage = buildCoreCoverage({
 const missingItem = missingCoverage.items.find((i) => i.id === "core-message-1")!;
 assert.ok(missingItem, "core-message-1 item must exist");
 assert.equal(missingItem.status, "missing");
-assert.ok(!missingItem.artifactRefs.includes("playwright/final.mp4"), "missing item must NOT cite final.mp4");
+assert.ok(!missingItem.artifactRefs.includes("testreel/final.mp4"), "missing item must NOT cite final.mp4");
 
 console.log("coreCoverage.test PASS");

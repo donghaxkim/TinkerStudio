@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { CapturePlan, CaptureResult } from "@tinker/browser-capture";
-import { DemoProjectSchema } from "@tinker/project-schema";
 import type { NarrativeExploration, ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { runAiUrlDemo, type AiUrlDemoPhase } from "./runAiUrlDemo.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
+import type { TestreelGenerationPlan } from "./testreelPlan.js";
+import type { RunTestreelRecordingResult } from "./testreelRunner.js";
 
 const outputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-"));
-const playwrightOutputRoot = join(outputRoot, "playwright");
 const productUrl = "http://127.0.0.1:3000/";
 const canonicalProductUrl = "http://127.0.0.1:3000/canonical";
 const prompt = "Show the hero and value proposition.";
@@ -64,75 +63,48 @@ const narrativeExploration: NarrativeExploration = {
   explorationNotes: ["Only same-origin UI was observed."],
 };
 
-const capturePlan: CapturePlan = {
-  targetUrl: canonicalProductUrl,
-  viewport: { width: 1280, height: 720 },
-  steps: [
-    { type: "goto", url: canonicalProductUrl },
-    { type: "waitForSelector", selector: "[data-testid='hero']" },
-  ],
+const recordingPlan: TestreelGenerationPlan = {
+  engine: "testreel",
+  definition: {
+    url: canonicalProductUrl,
+    viewport: { width: 1280, height: 720 },
+    outputSize: { width: 1920, height: 1080 },
+    outputFormat: "mp4",
+    cursor: { enabled: true },
+    chrome: { enabled: true, url: true },
+    background: { enabled: true, gradient: { from: "#0f172a", to: "#38bdf8" } },
+    steps: [{ action: "wait", ms: 500 }, { action: "screenshot", name: "final" }],
+  },
   expectedCheckpoints: [{ id: "hero", label: "Hero", selector: "[data-testid='hero']" }],
 };
 
-const captureResult: CaptureResult = {
-  clips: [
-    {
-      id: "capture-video-main",
-      type: "video",
-      uri: "videos/main.webm",
-      source: "captured",
-      mimeType: "video/webm",
-      duration: 10,
-      width: 1280,
-      height: 720,
-      sizeBytes: 1234,
-    },
-  ],
-  screenshots: [],
-  events: [],
-  checkpoints: [{ id: "hero", label: "Hero", selector: "[data-testid='hero']", passed: true }],
-  metadata: {
-    startedAt: "2026-06-09T00:00:00.000Z",
-    completedAt: "2026-06-09T00:00:10.000Z",
-    targetUrl: canonicalProductUrl,
-    viewport: { width: 1280, height: 720 },
-  },
-};
-
-const captureResultWithRenderPlanAction: CaptureResult = {
-  ...captureResult,
-  events: [{ type: "click", time: 1.5, x: 420, y: 260, label: "Start demo" }],
-  actionTrace: {
-    version: 1,
-    targetUrl: canonicalProductUrl,
-    viewport: { width: 1280, height: 720 },
-    fps: 25,
-    startedAt: "2026-06-09T00:00:00.000Z",
-    completedAt: "2026-06-09T00:00:10.000Z",
-    actions: [
-      {
-        id: "click-1",
-        type: "click",
-        description: "Start demo",
-        selector: "[data-testid='start-demo']",
-        startTime: 1.5,
-        endTime: 1.55,
-        clickPoint: { x: 420, y: 260 },
-        targetBox: { x: 360, y: 230, width: 120, height: 60 },
-        status: "success",
-      },
-    ],
-  },
-};
-
-async function waitForPath(path: string) {
-  const startedAt = Date.now();
-  while (!existsSync(path)) {
-    if (Date.now() - startedAt > 5_000) {
-      throw new Error(`Timed out waiting for ${path}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
+async function fakeRunTestreel(testreelRoot: string, onPhase?: (phase: "verification" | "capture" | "assembly") => void): Promise<RunTestreelRecordingResult> {
+  const recordingPlanPath = join(testreelRoot, "recording-plan.json");
+  const recordingPath = join(testreelRoot, "recording.json");
+  const outputDirectory = join(testreelRoot, "output");
+  const manifestPath = join(outputDirectory, "output.json");
+  const screenshotPath = join(outputDirectory, "final.png");
+  const finalVideoPath = join(testreelRoot, "final.mp4");
+  onPhase?.("verification");
+  onPhase?.("capture");
+  onPhase?.("assembly");
+  await mkdir(outputDirectory, { recursive: true });
+  await writeFile(recordingPlanPath, JSON.stringify(recordingPlan, null, 2));
+  await writeFile(recordingPath, JSON.stringify(recordingPlan.definition, null, 2));
+  await writeFile(manifestPath, "{}\n");
+  await writeFile(screenshotPath, "png");
+  await writeFile(finalVideoPath, "mp4");
+  return {
+    recordingPlanPath,
+    recordingPath,
+    outputDirectory,
+    finalVideoPath,
+    manifestPath,
+    screenshotPaths: [screenshotPath],
+    artifactPaths: [recordingPlanPath, recordingPath, manifestPath, screenshotPath, finalVideoPath],
+    stdout: "",
+    stderr: "",
+  };
 }
 
 const agentSignalOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-agent-signal-"));
@@ -198,13 +170,13 @@ await runAiUrlDemo({
         aspectRatio: "16:9",
         beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
       },
-      capturePlan,
+      recordingPlan,
     };
   },
-  runCapture: async (plan, options) => {
+  runTestreel: async (options) => {
     assert.equal(options.signal, agentSignalController.signal);
-    assert.equal(plan.targetUrl, canonicalProductUrl);
-    return captureResultWithRenderPlanAction;
+    assert.deepEqual(options.plan, recordingPlan);
+    return fakeRunTestreel(options.testreelRoot, options.onPhase);
   },
 });
 
@@ -234,7 +206,7 @@ const analysisAbortRun = runAiUrlDemo({
   planner: async () => {
     throw new Error("planner should not run after analysis abort");
   },
-  runCapture: async () => captureResult,
+  runTestreel: async () => fakeRunTestreel(join(analysisAbortOutputRoot, "testreel")),
 });
 analysisAbortController.abort();
 await assert.rejects(analysisAbortRun, (error) => error instanceof DOMException && error.name === "AbortError");
@@ -264,77 +236,11 @@ const repoAbortRun = runAiUrlDemo({
     repoAbortPlannerCalled = true;
     throw new Error("planner should not run after repo abort");
   },
-  runCapture: async () => captureResult,
+  runTestreel: async () => fakeRunTestreel(join(repoAbortOutputRoot, "testreel")),
 });
 repoAbortController.abort();
 await assert.rejects(repoAbortRun, (error) => error instanceof DOMException && error.name === "AbortError");
 assert.equal(repoAbortPlannerCalled, false);
-
-if (process.platform !== "win32") {
-  const finalVideoAbortOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-final-video-abort-"));
-  const finalVideoAbortToolRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-final-video-abort-tools-"));
-  const fakeBinDirectory = join(finalVideoAbortToolRoot, "fake-bin");
-  const ffmpegStartedPath = join(finalVideoAbortToolRoot, "ffmpeg-started.txt");
-  const ffmpegSigtermPath = join(finalVideoAbortToolRoot, "ffmpeg-sigterm.txt");
-  await mkdir(fakeBinDirectory, { recursive: true });
-  const fakeFfmpegPath = join(fakeBinDirectory, "ffmpeg");
-  await writeFile(
-    fakeFfmpegPath,
-    [
-      "#!/usr/bin/env node",
-      "const { writeFileSync } = require('node:fs');",
-      `writeFileSync(${JSON.stringify(ffmpegStartedPath)}, 'started');`,
-      `process.on('SIGTERM', () => { writeFileSync(${JSON.stringify(ffmpegSigtermPath)}, 'SIGTERM'); process.exit(0); });`,
-      "setInterval(() => {}, 1000);",
-    ].join("\n"),
-  );
-  await chmod(fakeFfmpegPath, 0o755);
-
-  const finalVideoAbortController = new AbortController();
-  const originalPath = process.env.PATH;
-  try {
-    process.env.PATH = `${fakeBinDirectory}${delimiter}${originalPath ?? ""}`;
-    const runPromise = runAiUrlDemo({
-      outputRoot: finalVideoAbortOutputRoot,
-      projectId: "ai-url-demo-final-video-abort-test",
-      createdAt: "2026-06-09T00:00:00.000Z",
-      productUrl,
-      repoUrl,
-      prompt,
-      durationCapSeconds: 10,
-      aspectRatio: "16:9",
-      signal: finalVideoAbortController.signal,
-      analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
-      analyzeRepo: async (_url, options) => {
-        await mkdir(options.checkoutDirectory, { recursive: true });
-        return repoAnalysis;
-      },
-      planner: async () => ({
-        storyboard: {
-          title: "Final Video Abort Demo",
-          durationCapSeconds: 10,
-          aspectRatio: "16:9",
-          beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
-        },
-        capturePlan,
-      }),
-      runCapture: async (_plan, options) => {
-        const videoPath = join(options.outputDir, "videos", "main.webm");
-        await mkdir(join(options.outputDir, "videos"), { recursive: true });
-        await writeFile(videoPath, "fake webm bytes");
-        return captureResult;
-      },
-    });
-
-    await waitForPath(ffmpegStartedPath);
-    finalVideoAbortController.abort();
-    await assert.rejects(runPromise, (error) => error instanceof DOMException && error.name === "AbortError");
-    await waitForPath(ffmpegSigtermPath);
-  } finally {
-    process.env.PATH = originalPath;
-    await rm(finalVideoAbortToolRoot, { recursive: true, force: true });
-  }
-}
 
 const narrativeSuccessOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-narrative-success-"));
 let narrativePlannerSawArtifact = false;
@@ -374,10 +280,10 @@ const narrativeSuccessResult = await runAiUrlDemo({
         aspectRatio: "16:9",
         beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
       },
-      capturePlan,
+      recordingPlan,
     };
   },
-  runCapture: async () => captureResult,
+  runTestreel: async (options) => fakeRunTestreel(options.testreelRoot, options.onPhase),
 });
 assert.equal(narrativePlannerSawArtifact, true);
 const narrativePath = join(narrativeSuccessOutputRoot, "narrative-exploration.json");
@@ -414,10 +320,10 @@ await runAiUrlDemo({
         aspectRatio: "16:9",
         beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
       },
-      capturePlan,
+      recordingPlan,
     };
   },
-  runCapture: async () => captureResult,
+  runTestreel: async (options) => fakeRunTestreel(options.testreelRoot, options.onPhase),
 });
 assert.equal(existsSync(join(narrativeFailureOutputRoot, "narrative-exploration.json")), false);
 assert.ok(narrativeWarnings.some((message) => message.includes("Narrative exploration failed: Stagehand unavailable")));
@@ -453,7 +359,7 @@ const narrativeAbortRun = runAiUrlDemo({
     narrativeAbortPlannerCalled = true;
     throw new Error("planner should not run after narrative abort");
   },
-  runCapture: async () => captureResult,
+  runTestreel: async (options) => fakeRunTestreel(options.testreelRoot, options.onPhase),
 });
 narrativeAbortController.abort();
 await assert.rejects(narrativeAbortRun, (error) => error instanceof DOMException && error.name === "AbortError");
@@ -515,26 +421,26 @@ const result = await runAiUrlDemo({
           },
         ],
       },
-      capturePlan,
+      recordingPlan,
     };
   },
-  runCapture: async (plan, options) => {
-    assert.deepEqual(plan, capturePlan);
-    assert.deepEqual(options, { outputDir: join(outputRoot, "playwright", "capture"), headless: true, smooth: true });
-
-    return captureResultWithRenderPlanAction;
+  runTestreel: async (options) => {
+    assert.equal(options.testreelRoot, join(outputRoot, "testreel"));
+    assert.deepEqual(options.plan, recordingPlan);
+    return fakeRunTestreel(options.testreelRoot, options.onPhase);
   },
 });
 
 assert.deepEqual(phases, ["analysis", "understanding", "strategy", "planning", "verification", "capture", "assembly"]);
 
 const expectedPaths = [
-  join(playwrightOutputRoot, "demo-project.json"),
   join(outputRoot, "product-analysis.json"),
   join(outputRoot, "repo-analysis.json"),
-  join(playwrightOutputRoot, "storyboard.json"),
-  join(playwrightOutputRoot, "capture-plan.json"),
-  join(playwrightOutputRoot, "capture-result.json"),
+  join(outputRoot, "testreel", "recording-plan.json"),
+  join(outputRoot, "testreel", "recording.json"),
+  join(outputRoot, "testreel", "output", "output.json"),
+  join(outputRoot, "testreel", "output", "final.png"),
+  join(outputRoot, "testreel", "final.mp4"),
 ];
 
 for (const path of expectedPaths) {
@@ -581,58 +487,35 @@ assert.ok(runSummaryJson.execution, "run-summary has an execution block");
 // backend is OFF in tests (no TINKER_AGENT_BACKEND) → deterministic modes.
 assert.equal(runSummaryJson.execution.understandingMode, "deterministic");
 assert.equal(runSummaryJson.execution.strategyMode, "deterministic");
-// render-plan zooms are materialized into demo-project.json before EDL trimming.
-assert.equal(runSummaryJson.execution.directorPlanApplied, "none");
-assert.equal(runSummaryJson.execution.renderPlanApplied, "full");
-assert.ok(runSummaryJson.execution.cameraSource.length > 0);
+assert.equal(runSummaryJson.execution.plannerMode, "opencode");
+assert.equal(runSummaryJson.execution.finalVideoMode, "testreel");
+assert.equal(runSummaryJson.execution.finalVideoSource, "testreel-cli");
+assert.equal(runSummaryJson.execution.checkpointMode, "planner-declared");
 // coreCoverage exists with the stricter selected-flow item.
 assert.ok(Array.isArray(runSummaryJson.coreCoverage) && runSummaryJson.coreCoverage.length >= 1);
 assert.ok(runSummaryJson.coreCoverage.some((i: { sourceType: string; required: boolean }) => i.sourceType === "selected-flow" && i.required === true));
 
-// Both storyboards (strategic root + playwright capture) and the run summary exist on disk
+// Strategic storyboard, Testreel artifacts, and the run summary exist on disk
 // AND are listed in run-summary.generatedArtifacts (clear, non-ambiguous artifact map).
 assert.ok(existsSync(join(outputRoot, "storyboard.json")), "root strategic storyboard.json must exist");
-assert.ok(existsSync(join(playwrightOutputRoot, "storyboard.json")), "playwright capture storyboard.json must exist");
+assert.equal(existsSync(join(outputRoot, "playwright", "demo-project.json")), false);
+assert.equal(existsSync(join(outputRoot, "testreel", "recording-plan.json")), true);
+assert.equal(existsSync(join(outputRoot, "testreel", "recording.json")), true);
+assert.equal(existsSync(join(outputRoot, "testreel", "final.mp4")), true);
 assert.ok(existsSync(join(outputRoot, "run-summary.json")), "run-summary.json must exist");
-for (const listed of ["storyboard.json", "playwright/storyboard.json", "run-summary.json"]) {
+for (const listed of ["storyboard.json", "testreel/recording-plan.json", "testreel/recording.json", "testreel/final.mp4", "run-summary.json"]) {
   assert.ok(
     runSummaryJson.generatedArtifacts.includes(listed),
     `run-summary.generatedArtifacts should list ${listed}`,
   );
 }
 
-// capture-lineage.json is a first-class artifact mapping every capture step to a beat.
-const captureLineageJson = JSON.parse(await readFile(join(playwrightOutputRoot, "capture-lineage.json"), "utf8"));
-assert.equal(captureLineageJson.version, 1);
-assert.ok(captureLineageJson.steps.length >= 1, "capture-lineage should have step entries");
-assert.ok(
-  captureLineageJson.steps.every((step: { beatId?: string }) => typeof step.beatId === "string" && step.beatId.length > 0),
-  "every capture-lineage step should reference a beat",
-);
-assert.ok(runSummaryJson.generatedArtifacts.includes("playwright/capture-lineage.json"));
-
-// action-trace.json entries carry best-effort storyboard-beat lineage.
-const actionTraceJson = JSON.parse(await readFile(join(playwrightOutputRoot, "action-trace.json"), "utf8"));
-assert.ok(
-  actionTraceJson.actions.every((action: { beatId?: string }) => typeof action.beatId === "string" && action.beatId.length > 0),
-  "every traced action should be stamped with a storyboard beatId",
-);
-
-const projectJson = JSON.parse(await readFile(join(playwrightOutputRoot, "demo-project.json"), "utf8"));
-assert.equal(projectJson.metadata.productUrl, productUrl);
-assert.equal(projectJson.metadata.prompt, prompt);
-assert.ok(
-  projectJson.zooms.some((zoom: { id: string }) => zoom.id.startsWith("render-plan-")),
-  "demo-project.json should include materialized render-plan zooms",
-);
-const parsedProject = DemoProjectSchema.parse(projectJson);
-assert.equal(result.renderer, "playwright");
-assert.equal(result.rendererResults.playwright?.projectPath, join(playwrightOutputRoot, "demo-project.json"));
-assert.equal(result.projectPath, join(playwrightOutputRoot, "demo-project.json"));
-assert.equal(parsedProject.metadata.productUrl, productUrl);
+assert.equal(result.renderer, "testreel");
+assert.equal(result.publishedVideoPath, join(outputRoot, "testreel", "final.mp4"));
+assert.equal(result.rendererResults.testreel.finalVideoPath, join(outputRoot, "testreel", "final.mp4"));
+assert.ok(result.artifactPaths.includes(join(outputRoot, "testreel", "final.mp4")));
 const repoAnalysisJson = JSON.parse(await readFile(join(outputRoot, "repo-analysis.json"), "utf8"));
 assert.deepEqual(repoAnalysisJson, repoAnalysis);
-assert.equal(projectJson.metadata.sourceRepoUrl, repoUrl);
 assert.equal(result.artifactPaths.includes(join(outputRoot, ".repo-scratch", "checkout")), false);
 assert.equal(result.artifactPaths.some((artifactPath) => artifactPath.startsWith(join(outputRoot, ".repo-scratch"))), false);
 assert.equal(existsSync(join(outputRoot, ".repo-scratch")), false);
@@ -654,7 +537,7 @@ await assert.rejects(
       planner: async () => {
         throw new Error("planner should not run with mismatched repo analysis");
       },
-      runCapture: async () => captureResult,
+      runTestreel: async (options) => fakeRunTestreel(options.testreelRoot, options.onPhase),
     }),
   /repoUrl must match requested repository URL/,
 );
@@ -682,7 +565,7 @@ await assert.rejects(
       planner: async () => {
         throw new Error("planner should not run after repo analysis failure");
       },
-      runCapture: async () => captureResult,
+      runTestreel: async (options) => fakeRunTestreel(options.testreelRoot, options.onPhase),
     }),
   (error) => {
     assert.equal(error, repoAnalysisError);
@@ -714,7 +597,7 @@ try {
     planner: async () => {
       throw new Error("planner should not run after repo analysis failure");
     },
-    runCapture: async () => captureResult,
+    runTestreel: async (options) => fakeRunTestreel(options.testreelRoot, options.onPhase),
   });
 } catch (error) {
   cleanupMaskRejection = error;
@@ -746,7 +629,7 @@ await assert.rejects(
         noRepoPlannerCalled = true;
         throw new Error("planner should not run without repoUrl");
       },
-      runCapture: async () => captureResult,
+      runTestreel: async (options) => fakeRunTestreel(options.testreelRoot, options.onPhase),
     }),
   /repoUrl is required for AI URL demo generation/,
 );
@@ -782,9 +665,9 @@ await runAiUrlDemo({
       aspectRatio: "16:9",
       beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
     },
-    capturePlan,
+    recordingPlan,
   }),
-  runCapture: async () => captureResult,
+  runTestreel: async (options) => fakeRunTestreel(options.testreelRoot, options.onPhase),
 });
 assert.equal(sawCheckout, true, "understandProduct gets the repo checkout dir");
 

@@ -12,27 +12,22 @@ import type { Storyboard } from "./demoStrategy.js";
 import type { AspectRatio } from "./types.js";
 import { CoreCoverageItemSchema, type CoreCoverageItem } from "./coreCoverage.js";
 
-const RendererSchema = z.literal("playwright");
+const RendererSchema = z.literal("testreel");
 type RunRenderer = z.infer<typeof RendererSchema>;
 
 const ExecutionModeSchema = z.enum(["claude-code", "opencode", "deterministic-fallback", "deterministic"]);
 const PlannerModeSchema = z.enum(["claude-code", "opencode"]);
-const FinalVideoModeSchema = z.enum(["rendered", "transcoded", "none"]);
-const FinalVideoSourceSchema = z.enum(["demo-project", "raw-playwright-recording", "none"]);
-const AppliedSchema = z.enum(["none", "partial", "full"]);
+const FinalVideoModeSchema = z.enum(["testreel", "none"]);
+const FinalVideoSourceSchema = z.enum(["testreel-cli", "none"]);
 
 export const RunExecutionSchema = z
   .object({
     understandingMode: ExecutionModeSchema,
     strategyMode: ExecutionModeSchema,
-    playwrightPlannerMode: PlannerModeSchema,
+    plannerMode: PlannerModeSchema,
     finalVideoMode: FinalVideoModeSchema,
     finalVideoSource: FinalVideoSourceSchema,
-    directorPlanApplied: AppliedSchema,
-    renderPlanApplied: AppliedSchema,
-    editDecisionListApplied: z.boolean(),
-    finalVideoReflectsEditDecisionList: z.boolean(),
-    cameraSource: z.string(),
+    checkpointMode: z.literal("planner-declared"),
     notes: z.array(z.string()),
   })
   .strict();
@@ -128,7 +123,7 @@ function nextRecommendedAction(finalVideoProduced: boolean, captureSucceeded: bo
   }
   return finalVideoProduced
     ? "review final.mp4"
-    : "install ffmpeg and re-run to produce final.mp4, then review the smooth recording";
+    : "re-run generation; Testreel did not produce final.mp4";
 }
 
 export function buildRunSummary(args: BuildRunSummaryArgs): RunSummary {
@@ -138,9 +133,9 @@ export function buildRunSummary(args: BuildRunSummaryArgs): RunSummary {
   // same capture evidence (the recording / trace). This is honest about its granularity.
   const beatEvidence = args.captureSucceeded
     ? [
-        ...(args.finalVideoProduced ? ["playwright/final.mp4"] : []),
-        "playwright/action-trace.json",
-        "playwright/capture-result.json",
+        ...(args.finalVideoProduced ? ["testreel/final.mp4"] : []),
+        "testreel/recording-plan.json",
+        "testreel/recording.json",
       ].filter((candidate) => generatedArtifacts.some((artifact) => artifact.endsWith(candidate)))
     : [];
 
@@ -153,7 +148,7 @@ export function buildRunSummary(args: BuildRunSummaryArgs): RunSummary {
   const allCaptured = args.coreCoverage.every((item) => item.status === "captured");
   const status: RunSummary["status"] = !args.captureSucceeded
     ? "failed"
-    : args.execution.finalVideoMode === "rendered" && allCaptured
+    : args.execution.finalVideoMode === "testreel" && args.finalVideoProduced && allCaptured
       ? "success"
       : "partial";
 

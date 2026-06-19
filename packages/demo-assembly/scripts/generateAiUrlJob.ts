@@ -11,10 +11,10 @@ const aspectRatios = ["16:9", "9:16", "1:1"] as const satisfies readonly CreateD
 const packagesToBuild = [
   "@tinker/generation-contract",
   "@tinker/project-schema",
-  "@tinker/browser-capture",
   "@tinker/product-analysis",
-  "@tinker/motion",
+  "@tinker/demo-assembly",
 ] as const;
+// Old capture/render packages such as "@tinker/browser-capture", "@tinker/motion", and "@tinker/rendering" are intentionally omitted.
 
 loadLocalEnvFile(resolveWorkspaceEnvPath(import.meta.url));
 
@@ -56,7 +56,7 @@ async function printPipelineSummary(outputDirectory: string) {
     // run-summary is best-effort for the printout.
   }
 
-  const finalMp4 = at("playwright", "final.mp4");
+  const finalMp4 = at("testreel", "final.mp4");
   const backend = (process.env.TINKER_AGENT_BACKEND ?? "").trim().toLowerCase() || "opencode";
 
   console.log("\n=== Pipeline complete ===");
@@ -66,13 +66,10 @@ async function printPipelineSummary(outputDirectory: string) {
   console.log(`product-understanding : ${at("product-understanding.json")}`);
   console.log(`demo-strategy         : ${at("demo-strategy.json")}`);
   console.log(`storyboard            : ${at("storyboard.json")}`);
-  console.log(`capture-plan          : ${at("playwright", "capture-plan.json")}`);
-  console.log(`action-trace          : ${at("playwright", "action-trace.json")}`);
-  console.log(`capture-lineage       : ${at("playwright", "capture-lineage.json")}`);
-  console.log(`render-plan           : ${at("playwright", "render-plan.json")}`);
-  console.log(`director-plan         : ${at("playwright", "director-plan.json")}`);
-  console.log(`edit-decision-list    : ${at("playwright", "edit-decision-list.json")}`);
-  console.log(`final.mp4             : ${existsSync(finalMp4) ? finalMp4 : "(not produced - ffmpeg unavailable)"}`);
+  console.log(`recording-plan        : ${at("testreel", "recording-plan.json")}`);
+  console.log(`recording             : ${at("testreel", "recording.json")}`);
+  console.log(`testreel manifest     : ${at("testreel", "output", "output.json")}`);
+  console.log(`final.mp4             : ${existsSync(finalMp4) ? finalMp4 : "(not produced)"}`);
   console.log(`run-summary           : ${at("run-summary.json")}`);
   console.log(`warnings              : ${warnings.length ? warnings.join(" | ") : "(none)"}`);
 }

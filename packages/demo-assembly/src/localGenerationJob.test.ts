@@ -19,47 +19,49 @@ function nextTime() {
   return times.shift() ?? "2026-06-09T00:00:06.000Z";
 }
 
-const successfulPlaywrightAiUrlRunner: AiUrlDemoRunner = async (input) => {
-  assert.equal(input.projectId, "ai-url-playwright-job");
-  assert.ok(input.outputRoot.endsWith("generated/local-job/ai-url-playwright-job"));
+const successfulTestreelAiUrlRunner: AiUrlDemoRunner = async (input) => {
+  assert.equal(input.projectId, "ai-url-testreel-job");
+  assert.ok(input.outputRoot.endsWith("generated/local-job/ai-url-testreel-job"));
   assert.equal(input.productUrl, "http://127.0.0.1:3000/");
   assert.equal(input.repoUrl, "https://github.com/example/product");
   assert.equal("renderer" in input, false);
   assert.equal(removedAgentField in input, false);
   assert.equal(input.prompt, "Show the AI URL path.");
 
-  const phases = ["analysis", "planning", "verification", "capture", "assembly"] as const;
+  const phases = ["analysis", "understanding", "strategy", "planning", "verification", "capture", "assembly"] as const;
   for (const phase of phases) {
     input.onPhase?.(phase);
   }
 
   return {
-    renderer: "playwright",
+    renderer: "testreel",
     rendererResults: {
-      playwright: {
-        projectPath: `${input.outputRoot}/playwright/demo-project.json`,
-        captureResultPath: `${input.outputRoot}/playwright/capture-result.json`,
+      testreel: {
+        recordingPlanPath: `${input.outputRoot}/testreel/recording-plan.json`,
+        recordingPath: `${input.outputRoot}/testreel/recording.json`,
+        outputDirectory: `${input.outputRoot}/testreel/output`,
+        finalVideoPath: `${input.outputRoot}/testreel/final.mp4`,
+        manifestPath: `${input.outputRoot}/testreel/output/output.json`,
+        screenshotPaths: [`${input.outputRoot}/testreel/output/final.png`],
       },
     },
-    projectPath: `${input.outputRoot}/playwright/demo-project.json`,
-    captureResultPath: `${input.outputRoot}/playwright/capture-result.json`,
+    publishedVideoPath: `${input.outputRoot}/testreel/final.mp4`,
     outputRoot: input.outputRoot,
     artifactPaths: [
       `${input.outputRoot}/product-analysis.json`,
-      `${input.outputRoot}/playwright/storyboard.json`,
-      `${input.outputRoot}/playwright/capture-plan.json`,
-      `${input.outputRoot}/playwright/capture-result.json`,
-      `${input.outputRoot}/playwright/demo-project.json`,
-      `${input.outputRoot}/playwright/final.mp4`,
+      `${input.outputRoot}/testreel/recording-plan.json`,
+      `${input.outputRoot}/testreel/recording.json`,
+      `${input.outputRoot}/testreel/output/output.json`,
+      `${input.outputRoot}/testreel/output/final.png`,
+      `${input.outputRoot}/testreel/final.mp4`,
     ],
-    captureCounts: { clips: 1, screenshots: 1, events: 3, checkpoints: 2 },
     pipeline: {
       runInputPath: `${input.outputRoot}/input.json`,
       productUnderstandingPath: `${input.outputRoot}/product-understanding.json`,
       demoStrategyPath: `${input.outputRoot}/demo-strategy.json`,
       storyboardPath: `${input.outputRoot}/storyboard.json`,
       runSummaryPath: `${input.outputRoot}/run-summary.json`,
-      finalVideoPath: `${input.outputRoot}/playwright/final.mp4`,
+      finalVideoPath: `${input.outputRoot}/testreel/final.mp4`,
       warnings: [],
     },
   };
@@ -92,47 +94,54 @@ await assert.rejects(
 
 assert.deepEqual(manualStatuses(events), ["failed"]);
 
-const playwrightAiUrlEvents: GenerationProgressEvent[] = [];
+const testreelAiUrlEvents: GenerationProgressEvent[] = [];
 
-const playwrightAiUrlResult = await runLocalGenerationJob(
+const testreelAiUrlResult = await runLocalGenerationJob(
   {
-    id: "ai-url-playwright-job",
+    id: "ai-url-testreel-job",
     durationCapSeconds: 10,
     aspectRatio: "16:9",
     mode: "ai-url-planning",
     productUrl: "http://127.0.0.1:3000/",
     repoUrl: "https://github.com/example/product",
     prompt: "Show the AI URL path.",
-    outputDirectory: "generated/local-job/ai-url-playwright-job",
+    outputDirectory: "generated/local-job/ai-url-testreel-job",
   },
   {
     now: nextTime,
-    onProgress: (event) => playwrightAiUrlEvents.push(event),
-    runAiUrlDemo: successfulPlaywrightAiUrlRunner,
+    onProgress: (event) => testreelAiUrlEvents.push(event),
+    runAiUrlDemo: successfulTestreelAiUrlRunner,
   },
 );
 
-assert.equal(playwrightAiUrlResult.jobId, "ai-url-playwright-job");
-assert.equal(playwrightAiUrlResult.status, "completed");
-assert.ok(playwrightAiUrlResult.projectPath.endsWith("generated/local-job/ai-url-playwright-job/playwright/demo-project.json"));
+assert.equal(testreelAiUrlResult.jobId, "ai-url-testreel-job");
+assert.equal(testreelAiUrlResult.status, "completed");
 assert.equal(
-  "captureResultPath" in playwrightAiUrlResult ? playwrightAiUrlResult.captureResultPath : undefined,
-  `${playwrightAiUrlResult.outputDirectory}/playwright/capture-result.json`,
+  "publishedVideoPath" in testreelAiUrlResult ? testreelAiUrlResult.publishedVideoPath : undefined,
+  `${testreelAiUrlResult.outputDirectory}/testreel/final.mp4`,
 );
-assert.equal("renderer" in playwrightAiUrlResult ? playwrightAiUrlResult.renderer : undefined, "playwright");
+assert.equal("renderer" in testreelAiUrlResult ? testreelAiUrlResult.renderer : undefined, "testreel");
 assert.deepEqual(
-  "rendererResults" in playwrightAiUrlResult ? playwrightAiUrlResult.rendererResults : undefined,
+  "rendererResults" in testreelAiUrlResult ? testreelAiUrlResult.rendererResults : undefined,
   {
-    playwright: {
-      projectPath: playwrightAiUrlResult.projectPath,
-      captureResultPath: `${playwrightAiUrlResult.outputDirectory}/playwright/capture-result.json`,
+    testreel: {
+      recordingPlanPath: `${testreelAiUrlResult.outputDirectory}/testreel/recording-plan.json`,
+      recordingPath: `${testreelAiUrlResult.outputDirectory}/testreel/recording.json`,
+      outputDirectory: `${testreelAiUrlResult.outputDirectory}/testreel/output`,
+      finalVideoPath: `${testreelAiUrlResult.outputDirectory}/testreel/final.mp4`,
+      manifestPath: `${testreelAiUrlResult.outputDirectory}/testreel/output/output.json`,
+      screenshotPaths: [`${testreelAiUrlResult.outputDirectory}/testreel/output/final.png`],
     },
   },
 );
-assert.deepEqual(playwrightAiUrlEvents.map((event) => event.message), [
+const completedEvent = testreelAiUrlEvents.at(-1);
+assert.equal(completedEvent !== undefined && "artifactPath" in completedEvent ? completedEvent.artifactPath : undefined, `${testreelAiUrlResult.outputDirectory}/testreel/final.mp4`);
+assert.deepEqual(testreelAiUrlEvents.map((event) => event.message), [
   "Generation job queued",
   "Generation job running",
   "AI URL analysis started",
+  "AI URL understanding started",
+  "AI URL strategy started",
   "AI URL planning started",
   "AI URL verification started",
   "AI URL capture started",

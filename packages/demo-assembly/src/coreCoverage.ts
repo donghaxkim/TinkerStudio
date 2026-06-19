@@ -1,12 +1,10 @@
-// Core-concept coverage for the Playwright path (heuristic, additive run-summary input).
+// Core-concept coverage for the Testreel path (heuristic, additive run-summary input).
 //
 // Canonical source: strategy.messageHierarchy + strategy.selectedFlow. Each concept maps to
 // storyboard beats, then to captured evidence via action-trace (beatId + type). Coverage is
 // heuristic — proportional capture-lineage, not verified pixels — and says so in warnings.
 
-import type { ActionTrace } from "@tinker/browser-capture";
 import { z } from "zod";
-import type { CaptureLineage } from "./captureLineage.js";
 import type { DemoStrategy, Storyboard } from "./demoStrategy.js";
 
 export const MEANINGFUL_ACTION_TYPES: readonly string[] = ["click", "type", "press"];
@@ -28,12 +26,16 @@ export const CoreCoverageItemSchema = z
 
 export type CoreCoverageItem = z.infer<typeof CoreCoverageItemSchema>;
 
+export type CoreActionTrace = { actions: Array<{ type: string; beatId?: string }> };
+export type CoreCaptureLineage = { steps: Array<{ beatId?: string }> };
+
 export type BuildCoreCoverageInput = {
   strategy: DemoStrategy;
   storyboard: Storyboard;
-  actionTrace?: ActionTrace;
-  captureLineage?: CaptureLineage;
+  actionTrace?: CoreActionTrace;
+  captureLineage?: CoreCaptureLineage;
   finalVideoProduced: boolean;
+  finalVideoRef?: string;
 };
 
 type Beat = Storyboard["beats"][number];
@@ -44,6 +46,7 @@ function isStaticBeat(beat: Beat): boolean {
 
 export function buildCoreCoverage(input: BuildCoreCoverageInput): { items: CoreCoverageItem[]; warnings: string[] } {
   const { strategy, storyboard, actionTrace, captureLineage, finalVideoProduced } = input;
+  const finalVideoRef = input.finalVideoRef ?? "testreel/final.mp4";
   const beats = storyboard.beats;
   const hasTrace = actionTrace !== undefined && actionTrace.actions.length > 0;
 
@@ -56,9 +59,9 @@ export function buildCoreCoverage(input: BuildCoreCoverageInput): { items: CoreC
 
   function refsFor(beatIds: string[], meaningful: boolean, includeFinalVideo: boolean): string[] {
     const refs = beatIds.map((id) => `storyboard.json#${id}`);
-    if (meaningful && actionTrace) refs.push(...beatIds.filter((id) => meaningfulBeatIds.has(id)).map((id) => `playwright/action-trace.json#${id}`));
-    if (meaningful && captureLineage) refs.push("playwright/capture-lineage.json");
-    if (includeFinalVideo) refs.push("playwright/final.mp4");
+    if (meaningful && actionTrace) refs.push(...beatIds.filter((id) => meaningfulBeatIds.has(id)).map((id) => `testreel/action-trace.json#${id}`));
+    if (meaningful && captureLineage) refs.push("testreel/capture-lineage.json");
+    if (includeFinalVideo) refs.push(finalVideoRef);
     return refs;
   }
 

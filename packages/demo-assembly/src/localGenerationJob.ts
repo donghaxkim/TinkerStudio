@@ -5,7 +5,7 @@ import {
   GenerationErrorSchema,
   GenerationJobSchema,
   GenerationProgressEventSchema,
-  GenerationResultSchema,
+  ManualFixtureGenerationResultSchema,
   type CreateDemoRequest,
   type GenerationError,
   type GenerationFailureStage,
@@ -220,22 +220,17 @@ export async function runLocalGenerationJob(
       },
     });
 
-    const result = GenerationResultSchema.parse({
+    const result = ManualFixtureGenerationResultSchema.parse({
       jobId,
       status: "completed",
-      projectPath: demoResult.projectPath,
-      captureResultPath: demoResult.captureResultPath,
+      publishedVideoPath: demoResult.publishedVideoPath,
       outputDirectory,
       artifactPaths: demoResult.artifactPaths,
       renderer: demoResult.renderer,
       rendererResults: demoResult.rendererResults,
     });
 
-    if (!("projectPath" in result)) {
-      throw new Error("Local generation job result is missing projectPath");
-    }
-
-    emit("completed", "Generation job completed", result.projectPath);
+    emit("completed", "Generation job completed", result.publishedVideoPath);
 
     return result;
   } catch (error) {
