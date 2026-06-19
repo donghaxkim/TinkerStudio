@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/motion build && pnpm --filter @tinker/rendering build && tsc -p tsconfig.json --noEmit",
-    "test": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/motion build && pnpm --filter @tinker/rendering build && tsx src/compileProject.test.ts && tsx src/productUnderstanding.test.ts && tsx src/demoStrategy.test.ts && tsx src/runSummary.test.ts && tsx src/coreCoverage.test.ts && tsx src/captureLineage.test.ts && tsx src/editDecisionList.test.ts && tsx src/applyEditDecisionList.test.ts && tsx src/directorPlan.test.ts && tsx src/testreelPlan.test.ts && tsx src/aiPlanning.test.ts && tsx src/understandingAgent.test.ts && tsx src/claudeCodeAgent.test.ts && tsx src/runAiUrlDemo.test.ts && tsx src/localGenerationJob.test.ts && tsx src/localEnv.test.ts && tsx src/fixtureSamples.test.ts && tsx src/demoStrategyAgent.test.ts",
+    "test": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/motion build && pnpm --filter @tinker/rendering build && tsx src/compileProject.test.ts && tsx src/productUnderstanding.test.ts && tsx src/demoStrategy.test.ts && tsx src/runSummary.test.ts && tsx src/coreCoverage.test.ts && tsx src/captureLineage.test.ts && tsx src/editDecisionList.test.ts && tsx src/applyEditDecisionList.test.ts && tsx src/directorPlan.test.ts && tsx src/testreelPlan.test.ts && tsx src/testreelRunner.test.ts && tsx src/aiPlanning.test.ts && tsx src/understandingAgent.test.ts && tsx src/claudeCodeAgent.test.ts && tsx src/runAiUrlDemo.test.ts && tsx src/localGenerationJob.test.ts && tsx src/localEnv.test.ts && tsx src/fixtureSamples.test.ts && tsx src/demoStrategyAgent.test.ts",
     "generate:ai-url-fixture-job": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/motion build && pnpm --filter @tinker/rendering build && tsx scripts/generateAiUrlFixtureJob.ts",
     "generate:ai-url-job": "tsx scripts/generateAiUrlJob.ts",
     "smoke:pipeline": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/project-schema build && pnpm --filter @tinker/browser-capture build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/motion build && pnpm --filter @tinker/rendering build && tsx src/pipeline.smoke.ts",
@@ -29,6 +29,8 @@
     "@tinker/product-analysis": "workspace:*",
     "@tinker/project-schema": "workspace:*",
     "@tinker/rendering": "workspace:*",
+    "playwright-core": "^1.58.2",
+    "testreel": "0.2.0",
     "zod": "^4.2.1"
   },
   "devDependencies": {
