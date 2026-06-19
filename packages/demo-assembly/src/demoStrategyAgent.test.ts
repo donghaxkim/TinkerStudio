@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createClaudeStrategyAgent } from "./demoStrategyAgent.js";
+import { buildStrategyPrompt, createClaudeStrategyAgent } from "./demoStrategyAgent.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
 import { DemoStrategySchema, StoryboardSchema } from "./demoStrategy.js";
 import type { ProductAnalysis } from "@tinker/product-analysis";
@@ -7,6 +7,23 @@ import type { ProductAnalysis } from "@tinker/product-analysis";
 const websiteAnalysis: ProductAnalysis = { url: "https://x.dev/", title: "X", headings: ["H"], bodySnippets: ["b"], links: [], buttons: ["Go"], inputs: [], brandHints: { colors: [], fontFamilies: [] } };
 const understanding = deriveProductUnderstanding({ productUrl: "https://x.dev/", websiteAnalysis });
 const baseInput = { understanding, durationCapSeconds: 40, aspectRatio: "16:9" as const };
+
+const approvedOutline = {
+  title: "Approved X demo",
+  durationCapSeconds: 40,
+  aspectRatio: "16:9",
+  summary: "Use the approved story.",
+  scenes: [{ id: "scene-1", goal: "Open with X", visual: "Show the hero.", evidence: ["website"] }],
+  generationNotes: ["Keep scene IDs."],
+} as const;
+
+const strategyPrompt = JSON.parse(buildStrategyPrompt({ ...baseInput, approvedOutline }));
+assert.equal(strategyPrompt.approvedOutline.title, "Approved X demo");
+assert.equal(strategyPrompt.approvedOutline.scenes[0].id, "scene-1");
+assert.ok(
+  strategyPrompt.instructions.some((instruction: string) => instruction.includes("approved outline as the preferred story structure")),
+  "strategy prompt should instruct the agent to prefer the approved outline",
+);
 
 const valid = JSON.stringify({
   strategy: { version:1, selectedAngle:{title:"A",whyThisAngle:"because",targetAudience:"devs",primaryProof:"P"},

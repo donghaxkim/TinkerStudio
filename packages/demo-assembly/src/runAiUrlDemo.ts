@@ -620,6 +620,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const { strategy, storyboard: strategyStoryboard } = await strategize({
     understanding,
     prompt: prompt,
+    ...(input.approvedOutline === undefined ? {} : { approvedOutline: input.approvedOutline }),
     systemPrompt,
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,

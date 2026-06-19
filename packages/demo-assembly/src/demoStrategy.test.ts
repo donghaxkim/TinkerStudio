@@ -39,6 +39,19 @@ const understanding = deriveProductUnderstanding({
   repoAnalysis,
 });
 
+const approvedOutline = {
+  title: "LongCut approved demo",
+  durationCapSeconds: 45,
+  aspectRatio: "16:9",
+  summary: "Follow the reviewed LongCut story.",
+  scenes: [
+    { id: "scene-1", goal: "Open with the editing problem", visual: "Show the hero headline.", startHint: 0, endHint: 6, evidence: ["website"] },
+    { id: "scene-2", goal: "Show the YouTube URL workflow", visual: "Paste a safe URL and generate highlights.", startHint: 6, endHint: 32, evidence: ["repo", "website"] },
+    { id: "scene-3", goal: "Close on exported highlights", visual: "Show the output and CTA.", startHint: 32, endHint: 45, evidence: ["repo"] },
+  ],
+  generationNotes: ["Keep the user-approved order."],
+} as const;
+
 // ---- selectFlow honours the prompt over document order ----
 // "Open the transcript chat" comes first in demoIdeas, but the prompt is about the
 // YouTube URL flow, so the strategist must select that one.
@@ -89,5 +102,21 @@ for (let index = 1; index < storyboard.beats.length; index += 1) {
   const current = storyboard.beats[index];
   assert.ok((current.startHint ?? 0) >= (previous.startHint ?? 0), "beats must be ordered by start time");
 }
+
+const approved = deriveDemoStrategy({
+  understanding,
+  prompt: "Show how a user pastes a YouTube URL and generates highlights.",
+  approvedOutline,
+  durationCapSeconds: 45,
+  aspectRatio: "16:9",
+});
+DemoStrategySchema.parse(approved.strategy);
+StoryboardSchema.parse(approved.storyboard);
+assert.equal(approved.storyboard.title, "LongCut approved demo");
+assert.deepEqual(approved.storyboard.beats.map((beat) => beat.id), ["scene-1", "scene-2", "scene-3"]);
+assert.deepEqual(approved.storyboard.beats.map((beat) => beat.type), ["hook", "screen_capture", "cta"]);
+assert.equal(approved.storyboard.beats[0]?.startHint, 0);
+assert.equal(approved.storyboard.beats[0]?.endHint, 6);
+assert.ok(approved.strategy.warnings.every((warning) => warning.length > 0));
 
 console.log("demoStrategy.test PASS");
