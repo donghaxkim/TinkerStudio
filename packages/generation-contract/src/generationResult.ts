@@ -1,14 +1,5 @@
 import { z } from "zod";
 import { DemoProjectSchema } from "@tinker/project-schema";
-import { AiUrlRendererSchema } from "./createDemoRequest.js";
-
-const HyperframesRendererResultSchema = z
-  .object({
-    outputVideoPath: z.string().min(1),
-    generationManifestPath: z.string().min(1),
-    assetManifestPath: z.string().min(1),
-  })
-  .strict();
 
 const PlaywrightRendererResultSchema = z
   .object({
@@ -19,8 +10,7 @@ const PlaywrightRendererResultSchema = z
 
 const RendererResultsSchema = z
   .object({
-    hyperframes: HyperframesRendererResultSchema.optional(),
-    playwright: PlaywrightRendererResultSchema.optional(),
+    playwright: PlaywrightRendererResultSchema,
   })
   .strict();
 
@@ -29,91 +19,27 @@ export const ManualFixtureGenerationResultSchema = z
     jobId: z.string().min(1),
     status: z.literal("completed"),
     projectPath: z.string().min(1),
-    captureResultPath: z.string().min(1).optional(),
+    captureResultPath: z.string().min(1),
     outputDirectory: z.string().min(1),
     artifactPaths: z.array(z.string().min(1)),
-    renderer: AiUrlRendererSchema.optional(),
-    rendererResults: RendererResultsSchema.optional(),
+    renderer: z.literal("playwright"),
+    rendererResults: RendererResultsSchema,
   })
   .strict()
   .superRefine((result, ctx) => {
-    if (result.renderer === undefined) {
-      if (result.rendererResults !== undefined) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["rendererResults"],
-          message: "rendererResults are not allowed without renderer",
-        });
-      }
-
-      return;
-    }
-
-    if (result.rendererResults === undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["rendererResults"],
-        message: "rendererResults are required when renderer is set",
-      });
-      return;
-    }
-
-    const requiresHyperframes = result.renderer === "hyperframes" || result.renderer === "both";
-    const requiresPlaywright = result.renderer === "playwright" || result.renderer === "both";
-
-    if (requiresHyperframes && result.rendererResults.hyperframes === undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["rendererResults", "hyperframes"],
-        message: "hyperframes result is required",
-      });
-    }
-
-    if (requiresPlaywright && result.rendererResults.playwright === undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["rendererResults", "playwright"],
-        message: "playwright result is required",
-      });
-    }
-
-    if (result.renderer === "hyperframes" && result.rendererResults.playwright !== undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["rendererResults", "playwright"],
-        message: "playwright result is not allowed for hyperframes renderer",
-      });
-    }
-
-    if (result.renderer === "playwright" && result.rendererResults.hyperframes !== undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["rendererResults", "hyperframes"],
-        message: "hyperframes result is not allowed for playwright renderer",
-      });
-    }
-
-    const primaryHyperframes =
-      result.renderer === "hyperframes" || result.renderer === "both"
-        ? result.rendererResults.hyperframes
-        : undefined;
-    const primaryPlaywright = result.renderer === "playwright" ? result.rendererResults.playwright : undefined;
-    const primaryProjectPath = primaryHyperframes?.outputVideoPath ?? primaryPlaywright?.projectPath;
-    const primaryCaptureResultPath = primaryHyperframes?.generationManifestPath ?? primaryPlaywright?.captureResultPath;
-
-    if (primaryProjectPath !== undefined && result.projectPath !== primaryProjectPath) {
+    if (result.projectPath !== result.rendererResults.playwright.projectPath) {
       ctx.addIssue({
         code: "custom",
         path: ["projectPath"],
-        message: "projectPath must match the primary renderer result",
+        message: "projectPath must match the Playwright renderer result",
       });
     }
 
-    if (primaryCaptureResultPath !== undefined && result.captureResultPath !== primaryCaptureResultPath) {
+    if (result.captureResultPath !== result.rendererResults.playwright.captureResultPath) {
       ctx.addIssue({
         code: "custom",
         path: ["captureResultPath"],
-        message: "captureResultPath must match the primary renderer result",
+        message: "captureResultPath must match the Playwright renderer result",
       });
     }
   });

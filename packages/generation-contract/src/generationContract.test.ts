@@ -41,7 +41,8 @@ const validAiUrlRequest = CreateDemoRequestSchema.parse({
 
 assert.equal("mode" in validAiUrlRequest ? validAiUrlRequest.mode : undefined, "ai-url-planning");
 assert.equal(validAiUrlRequest.productUrl, "http://127.0.0.1:3000/");
-assert.equal("hyperframesAgent" in validAiUrlRequest ? validAiUrlRequest.hyperframesAgent : undefined, "opencode");
+assert.equal("renderer" in validAiUrlRequest, false);
+assert.equal("hyperframesAgent" in validAiUrlRequest, false);
 
 const aiUrlBaseRequest = {
   mode: "ai-url-planning",
@@ -51,21 +52,19 @@ const aiUrlBaseRequest = {
   aspectRatio: "16:9",
 } as const;
 
-const parsedDefaultRendererRequest = parseCreateDemoRequest(aiUrlBaseRequest);
-assert.equal("mode" in parsedDefaultRendererRequest ? parsedDefaultRendererRequest.mode : undefined, "ai-url-planning");
-assert.equal("renderer" in parsedDefaultRendererRequest ? parsedDefaultRendererRequest.renderer : undefined, "hyperframes");
-assert.equal("hyperframesAgent" in parsedDefaultRendererRequest ? parsedDefaultRendererRequest.hyperframesAgent : undefined, "opencode");
+const parsedDefaultRequest = parseCreateDemoRequest(aiUrlBaseRequest);
+assert.equal("mode" in parsedDefaultRequest ? parsedDefaultRequest.mode : undefined, "ai-url-planning");
+assert.equal("renderer" in parsedDefaultRequest, false);
+assert.equal("hyperframesAgent" in parsedDefaultRequest, false);
 
-for (const renderer of ["hyperframes", "playwright", "both"] as const) {
-  const parsed = parseCreateDemoRequest({ ...aiUrlBaseRequest, renderer });
-  assert.equal("mode" in parsed ? parsed.mode : undefined, "ai-url-planning");
-  assert.equal("renderer" in parsed ? parsed.renderer : undefined, renderer);
-}
-
-for (const hyperframesAgent of ["opencode", "claude"] as const) {
-  const parsed = parseCreateDemoRequest({ ...aiUrlBaseRequest, hyperframesAgent });
-  assert.equal("mode" in parsed ? parsed.mode : undefined, "ai-url-planning");
-  assert.equal("hyperframesAgent" in parsed ? parsed.hyperframesAgent : undefined, hyperframesAgent);
+for (const removedField of [
+  { renderer: "hyperframes" },
+  { renderer: "playwright" },
+  { renderer: "both" },
+  { hyperframesAgent: "opencode" },
+  { hyperframesAgent: "claude" },
+] as const) {
+  assert.equal(safeParseCreateDemoRequest({ ...aiUrlBaseRequest, ...removedField }).success, false);
 }
 
 assert.equal(
@@ -434,17 +433,25 @@ const progress = GenerationProgressEventSchema.parse({
   status: "capturing",
   message: "Capturing AI URL demo",
   time: "2026-06-09T00:00:01.000Z",
-  artifactPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
+  artifactPath: "generated/local-job/ai-url-job/playwright/final.mp4",
 });
 
 assert.equal("status" in progress ? progress.status : undefined, "capturing");
 
+const playwrightRendererResult = {
+  projectPath: "generated/local-job/ai-url-job/playwright/demo-project.json",
+  captureResultPath: "generated/local-job/ai-url-job/playwright/capture-result.json",
+};
+
 const result = GenerationResultSchema.parse({
   jobId: "ai-url-job",
   status: "completed",
-  projectPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
+  projectPath: playwrightRendererResult.projectPath,
+  captureResultPath: playwrightRendererResult.captureResultPath,
   outputDirectory: "generated/local-job/ai-url-job",
-  artifactPaths: ["generated/local-job/ai-url-job/hyperframes/output.mp4"],
+  artifactPaths: ["generated/local-job/ai-url-job/playwright/final.mp4"],
+  renderer: "playwright",
+  rendererResults: { playwright: playwrightRendererResult },
 });
 
 assert.equal("status" in result ? result.status : undefined, "completed");
@@ -452,9 +459,12 @@ assert.equal(
   GenerationResultSchema.safeParse({
     jobId: "ai-url-job",
     status: "completed",
-    projectPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
+    projectPath: playwrightRendererResult.projectPath,
+    captureResultPath: playwrightRendererResult.captureResultPath,
     outputDirectory: "generated/local-job/ai-url-job",
-    artifactPaths: ["generated/local-job/ai-url-job/hyperframes/output.mp4"],
+    artifactPaths: ["generated/local-job/ai-url-job/playwright/final.mp4"],
+    renderer: "playwright",
+    rendererResults: { playwright: playwrightRendererResult },
     unexpected: "field",
   }).success,
   false,
@@ -481,28 +491,27 @@ assert.equal(
   false,
 );
 
-const hyperframesRendererResult = {
-  outputVideoPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
-  generationManifestPath: "generated/local-job/ai-url-job/hyperframes/generation-manifest.json",
-  assetManifestPath: "generated/local-job/ai-url-job/hyperframes/asset-manifest.json",
-};
-const playwrightRendererResult = {
-  projectPath: "generated/local-job/ai-url-job/playwright/demo-project.json",
-  captureResultPath: "generated/local-job/ai-url-job/playwright/capture-result.json",
-};
 const aiUrlGenerationResult = {
   jobId: "ai-url-job",
   status: "completed",
-  projectPath: "generated/local-job/ai-url-job/hyperframes/output.mp4",
-  captureResultPath: "generated/local-job/ai-url-job/hyperframes/generation-manifest.json",
+  projectPath: playwrightRendererResult.projectPath,
+  captureResultPath: playwrightRendererResult.captureResultPath,
   outputDirectory: "generated/local-job/ai-url-job",
-  artifactPaths: ["generated/local-job/ai-url-job/hyperframes/output.mp4"],
+  artifactPaths: ["generated/local-job/ai-url-job/playwright/final.mp4"],
 };
 
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    rendererResults: { hyperframes: hyperframesRendererResult },
+    rendererResults: { playwright: playwrightRendererResult },
+  }).success,
+  false,
+);
+assert.equal(
+  GenerationResultSchema.safeParse({
+    ...aiUrlGenerationResult,
+    renderer: "hyperframes",
+    rendererResults: { playwright: playwrightRendererResult },
   }).success,
   false,
 );
@@ -510,14 +519,6 @@ assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
     renderer: "both",
-    rendererResults: { hyperframes: hyperframesRendererResult },
-  }).success,
-  false,
-);
-assert.equal(
-  GenerationResultSchema.safeParse({
-    ...aiUrlGenerationResult,
-    renderer: "hyperframes",
     rendererResults: { playwright: playwrightRendererResult },
   }).success,
   false,
@@ -525,8 +526,8 @@ assert.equal(
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    renderer: "hyperframes",
-    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
+    renderer: "playwright",
+    rendererResults: { playwright: { ...playwrightRendererResult, extra: "not allowed" } },
   }).success,
   false,
 );
@@ -534,39 +535,14 @@ assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
     renderer: "playwright",
-    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
+    rendererResults: { playwright: playwrightRendererResult, hyperframes: {} },
   }).success,
   false,
 );
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    renderer: "hyperframes",
-    rendererResults: { hyperframes: { ...hyperframesRendererResult, extra: "not allowed" } },
-  }).success,
-  false,
-);
-assert.equal(
-  GenerationResultSchema.safeParse({
-    ...aiUrlGenerationResult,
-    projectPath: "generated/local-job/ai-url-job/hyperframes/other.mp4",
-    renderer: "hyperframes",
-    rendererResults: { hyperframes: hyperframesRendererResult },
-  }).success,
-  false,
-);
-assert.equal(
-  GenerationResultSchema.safeParse({
-    ...aiUrlGenerationResult,
-    captureResultPath: "generated/local-job/ai-url-job/hyperframes/other-manifest.json",
-    renderer: "hyperframes",
-    rendererResults: { hyperframes: hyperframesRendererResult },
-  }).success,
-  false,
-);
-assert.equal(
-  GenerationResultSchema.safeParse({
-    ...aiUrlGenerationResult,
+    projectPath: "generated/local-job/ai-url-job/playwright/other-project.json",
     renderer: "playwright",
     rendererResults: { playwright: playwrightRendererResult },
   }).success,
@@ -575,7 +551,6 @@ assert.equal(
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    projectPath: playwrightRendererResult.projectPath,
     captureResultPath: "generated/local-job/ai-url-job/playwright/other-capture-result.json",
     renderer: "playwright",
     rendererResults: { playwright: playwrightRendererResult },
@@ -585,17 +560,8 @@ assert.equal(
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    projectPath: "generated/local-job/ai-url-job/playwright/demo-project.json",
-    renderer: "both",
-    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
-  }).success,
-  false,
-);
-assert.equal(
-  GenerationResultSchema.safeParse({
-    ...aiUrlGenerationResult,
-    renderer: "both",
-    rendererResults: { hyperframes: hyperframesRendererResult, playwright: playwrightRendererResult },
+    renderer: "playwright",
+    rendererResults: { playwright: playwrightRendererResult },
   }).success,
   true,
 );

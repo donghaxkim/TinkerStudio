@@ -7,8 +7,6 @@ import {
   ApiGenerationJobSchema,
   ApiGenerationJobStatusSchema,
   ApiGenerationResultSchema,
-  ApiRevisionSchema,
-  ApiRevisionResultSchema,
   parseApiGenerationJob,
   safeParseApiGenerationJob,
 } from "./index.js";
@@ -21,7 +19,6 @@ const request = {
   prompt: "Make a short demo.",
   durationCapSeconds: 12,
   aspectRatio: "16:9",
-  renderer: "hyperframes",
 } as const;
 
 const progressEvent = {
@@ -33,25 +30,18 @@ const progressEvent = {
 
 const goldenProject = DemoProjectSchema.parse(goldenProjectInput);
 
-const compositionIndexArtifact = {
-  kind: "composition-index",
-  relativePath: "hyperframes/index.html",
-  url: "/api/jobs/job-test/artifacts/hyperframes/index.html",
-  mediaType: "text/html; charset=utf-8",
-} as const;
-
-const outputVideoArtifact = {
-  kind: "output-video",
-  relativePath: "hyperframes/output.mp4",
-  url: "/api/jobs/job-test/artifacts/hyperframes/output.mp4",
-  mediaType: "video/mp4",
-} as const;
-
 const playwrightProjectArtifact = {
   kind: "playwright-demo-project",
   relativePath: "playwright/demo-project.json",
   url: "/api/jobs/job-test/artifacts/playwright/demo-project.json",
   mediaType: "application/json; charset=utf-8",
+} as const;
+
+const playwrightVideoArtifact = {
+  kind: "playwright-video",
+  relativePath: "playwright/final.mp4",
+  url: "/api/jobs/job-test/artifacts/playwright/final.mp4",
+  mediaType: "video/mp4",
 } as const;
 
 describe("API generation job contract", () => {
@@ -68,12 +58,6 @@ describe("API generation job contract", () => {
 
   it("exports the artifact kind enum", () => {
     expect(ApiArtifactKindSchema.options).toEqual([
-      "output-video",
-      "composition-index",
-      "asset-manifest",
-      "generation-manifest",
-      "lint-log",
-      "render-log",
       "product-analysis",
       "product-analysis-screenshot",
       "repo-analysis",
@@ -84,26 +68,23 @@ describe("API generation job contract", () => {
       "playwright-video",
       "playwright-screenshot",
       "playwright-trace",
-      "asset",
       "other",
     ]);
   });
 
   it("parses queued and completed API job snapshots", () => {
-    for (const renderer of ["hyperframes", "playwright"] as const) {
-      const queued = parseApiGenerationJob({
-        id: `job-${renderer}`,
-        status: "queued",
-        request: { ...request, id: `job-${renderer}`, renderer },
-        createdAt: "2026-06-11T00:00:00.000Z",
-        updatedAt: "2026-06-11T00:00:00.000Z",
-        progressEvents: [],
-      });
+    const queued = parseApiGenerationJob({
+      id: "job-test",
+      status: "queued",
+      request,
+      createdAt: "2026-06-11T00:00:00.000Z",
+      updatedAt: "2026-06-11T00:00:00.000Z",
+      progressEvents: [],
+    });
 
-      expect(queued.status).toBe("queued");
-      expect(queued.request.id).toBe(`job-${renderer}`);
-      expect(queued.request.renderer).toBe(renderer);
-    }
+    expect(queued.status).toBe("queued");
+    expect(queued.request.id).toBe("job-test");
+    expect("renderer" in queued.request).toBe(false);
 
     const completed = parseApiGenerationJob({
       id: "job-test",
@@ -113,18 +94,18 @@ describe("API generation job contract", () => {
       updatedAt: "2026-06-11T00:00:02.000Z",
       progressEvents: [progressEvent],
       result: {
-        method: "hyperframes",
-        composition: {
-          indexArtifact: compositionIndexArtifact,
-          outputVideoArtifact,
-        },
-        artifacts: [compositionIndexArtifact, outputVideoArtifact],
+        method: "playwright",
+        project: goldenProject,
+        artifacts: [playwrightProjectArtifact, playwrightVideoArtifact],
         warnings: [],
       },
     });
 
-    expect(completed.result?.method).toBe("hyperframes");
-    expect(completed.result?.artifacts.map((artifact) => artifact.kind)).toEqual(["composition-index", "output-video"]);
+    expect(completed.result?.method).toBe("playwright");
+    expect(completed.result?.artifacts.map((artifact) => artifact.kind)).toEqual([
+      "playwright-demo-project",
+      "playwright-video",
+    ]);
   });
 
   it("accepts Playwright API results with a valid DemoProject", () => {
@@ -136,116 +117,55 @@ describe("API generation job contract", () => {
     });
 
     expect(result.method).toBe("playwright");
-    if (result.method !== "playwright") {
-      throw new Error("expected playwright result");
-    }
     expect(result.project.id).toBe(goldenProject.id);
   });
 
-  it("accepts HyperFrames API results with required composition artifacts", () => {
-    const result = ApiGenerationResultSchema.parse({
-      method: "hyperframes",
-      composition: {
-        indexArtifact: compositionIndexArtifact,
-        outputVideoArtifact,
-      },
-      artifacts: [compositionIndexArtifact, outputVideoArtifact],
-      warnings: [],
-    });
-
-    expect(result.method).toBe("hyperframes");
-    if (result.method !== "hyperframes") {
-      throw new Error("expected hyperframes result");
-    }
-    expect(result.composition.indexArtifact.kind).toBe("composition-index");
-    expect(result.composition.outputVideoArtifact.kind).toBe("output-video");
-  });
-
-  it("rejects method/result mismatches and missing native outputs", () => {
-    expect(
-      ApiGenerationResultSchema.safeParse({
-        method: "playwright",
-        artifacts: [playwrightProjectArtifact],
-        warnings: [],
-      }).success,
-    ).toBe(false);
-
-    expect(
-      ApiGenerationResultSchema.safeParse({
-        method: "playwright",
-        project: goldenProject,
-        artifacts: [playwrightProjectArtifact],
-      }).success,
-    ).toBe(false);
-
-    expect(
-      ApiGenerationResultSchema.safeParse({
-        method: "playwright",
-        project: goldenProject,
-        composition: {
-          indexArtifact: compositionIndexArtifact,
-          outputVideoArtifact,
-        },
-        artifacts: [playwrightProjectArtifact],
-        warnings: [],
-      }).success,
-    ).toBe(false);
-
-    expect(
-      ApiGenerationResultSchema.safeParse({
-        method: "hyperframes",
-        composition: {
-          indexArtifact: compositionIndexArtifact,
-        },
-        artifacts: [compositionIndexArtifact],
-        warnings: [],
-      }).success,
-    ).toBe(false);
-
-    expect(
-      ApiGenerationResultSchema.safeParse({
-        method: "hyperframes",
-        composition: {
-          indexArtifact: outputVideoArtifact,
-          outputVideoArtifact: compositionIndexArtifact,
-        },
-        artifacts: [compositionIndexArtifact, outputVideoArtifact],
-        warnings: [],
-      }).success,
-    ).toBe(false);
-  });
-
-  it("rejects renderer both in API job snapshots", () => {
+  it("rejects stale HyperFrames request/result fields", () => {
     expect(
       safeParseApiGenerationJob({
-        id: "job-both",
+        id: "job-hyperframes",
         status: "queued",
-        request: { ...request, id: "job-both", renderer: "both" },
+        request: { ...request, renderer: "hyperframes" },
         createdAt: "2026-06-11T00:00:00.000Z",
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [],
       }).success,
     ).toBe(false);
+
+    expect(
+      ApiGenerationResultSchema.safeParse({
+        method: "hyperframes",
+        composition: {},
+        artifacts: [],
+        warnings: [],
+      }).success,
+    ).toBe(false);
   });
 
-  it("rejects completed API jobs when request renderer and result method disagree", () => {
+  it("rejects missing native outputs and extra result fields", () => {
     expect(
-      safeParseApiGenerationJob({
-        id: "job-test",
-        status: "completed",
-        request: { ...request, renderer: "playwright" },
-        createdAt: "2026-06-11T00:00:00.000Z",
-        updatedAt: "2026-06-11T00:00:02.000Z",
-        progressEvents: [progressEvent],
-        result: {
-          method: "hyperframes",
-          composition: {
-            indexArtifact: compositionIndexArtifact,
-            outputVideoArtifact,
-          },
-          artifacts: [compositionIndexArtifact, outputVideoArtifact],
-          warnings: [],
-        },
+      ApiGenerationResultSchema.safeParse({
+        method: "playwright",
+        artifacts: [playwrightProjectArtifact],
+        warnings: [],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ApiGenerationResultSchema.safeParse({
+        method: "playwright",
+        project: goldenProject,
+        artifacts: [playwrightProjectArtifact],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ApiGenerationResultSchema.safeParse({
+        method: "playwright",
+        project: goldenProject,
+        composition: {},
+        artifacts: [playwrightProjectArtifact],
+        warnings: [],
       }).success,
     ).toBe(false);
   });
@@ -285,7 +205,6 @@ describe("API generation job contract", () => {
         id: "job-test",
         status: "queued",
         request: {
-          id: "job-test",
           mode: "ai-url-planning",
           repoUrl: "https://github.com/example/product",
           productUrl: "https://example.com",
@@ -304,17 +223,6 @@ describe("API generation job contract", () => {
         id: "job-test",
         status: "queued",
         request: { ...request, unexpected: true },
-        createdAt: "2026-06-11T00:00:00.000Z",
-        updatedAt: "2026-06-11T00:00:00.000Z",
-        progressEvents: [],
-      }).success,
-    ).toBe(false);
-
-    expect(
-      safeParseApiGenerationJob({
-        id: "job-test",
-        status: "queued",
-        request: { ...request, renderer: "canvas" },
         createdAt: "2026-06-11T00:00:00.000Z",
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [],
@@ -365,12 +273,9 @@ describe("API generation job contract", () => {
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [progressEvent],
         result: {
-          method: "hyperframes",
-          composition: {
-            indexArtifact: compositionIndexArtifact,
-            outputVideoArtifact,
-          },
-          artifacts: [compositionIndexArtifact, outputVideoArtifact],
+          method: "playwright",
+          project: goldenProject,
+          artifacts: [playwrightProjectArtifact],
           warnings: [],
         },
       }).success,
@@ -417,12 +322,9 @@ describe("API generation job contract", () => {
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [progressEvent],
         result: {
-          method: "hyperframes",
-          composition: {
-            indexArtifact: compositionIndexArtifact,
-            outputVideoArtifact,
-          },
-          artifacts: [compositionIndexArtifact, outputVideoArtifact],
+          method: "playwright",
+          project: goldenProject,
+          artifacts: [playwrightProjectArtifact],
           warnings: [],
         },
         error: {
@@ -442,12 +344,9 @@ describe("API generation job contract", () => {
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [progressEvent],
         result: {
-          method: "hyperframes",
-          composition: {
-            indexArtifact: compositionIndexArtifact,
-            outputVideoArtifact,
-          },
-          artifacts: [compositionIndexArtifact, outputVideoArtifact],
+          method: "playwright",
+          project: goldenProject,
+          artifacts: [playwrightProjectArtifact],
           warnings: [],
         },
         error: {
@@ -474,75 +373,5 @@ describe("API generation job contract", () => {
         progressEvents: [],
       }).success,
     ).toBe(false);
-  });
-});
-
-const revBaseJob = {
-  id: "job-1",
-  status: "completed" as const,
-  request: {
-    id: "job-1",
-    mode: "ai-url-planning",
-    repoUrl: "https://github.com/a/b",
-    productUrl: "https://a.com",
-    durationCapSeconds: 60,
-    aspectRatio: "16:9",
-    renderer: "hyperframes",
-  },
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
-  progressEvents: [],
-  result: {
-    method: "hyperframes",
-    composition: {
-      indexArtifact: compositionIndexArtifact,
-      outputVideoArtifact,
-    },
-    artifacts: [compositionIndexArtifact, outputVideoArtifact],
-    warnings: [],
-  },
-};
-
-const editOnlyRevisionResult = {
-  method: "hyperframes",
-  composition: {
-    indexArtifact: compositionIndexArtifact,
-  },
-  artifacts: [compositionIndexArtifact],
-  warnings: [],
-} as const;
-
-describe("ApiRevisionSchema", () => {
-  it("accepts edit-only HyperFrames revision results before render", () => {
-    const result = ApiRevisionResultSchema.parse(editOnlyRevisionResult);
-
-    expect(result.method).toBe("hyperframes");
-    expect(result.composition.indexArtifact.kind).toBe("composition-index");
-    expect(result.composition.outputVideoArtifact).toBeUndefined();
-  });
-
-  it("requires result when completed, error when failed", () => {
-    expect(
-      ApiRevisionSchema.safeParse({
-        id: "rev-1",
-        status: "completed",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        result: editOnlyRevisionResult,
-      }).success,
-    ).toBe(true);
-    expect(ApiRevisionSchema.safeParse({ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:00.000Z" }).success).toBe(false);
-    expect(ApiRevisionSchema.safeParse({ id: "rev-1", status: "failed", createdAt: "2026-01-01T00:00:00.000Z", error: { status: "failed", stage: "unknown", message: "boom" } }).success).toBe(true);
-  });
-});
-
-describe("ApiGenerationJobSchema with revisions", () => {
-  it("accepts a completed job carrying revisions + currentRevisionId", () => {
-    expect(ApiGenerationJobSchema.safeParse({
-      ...revBaseJob, currentRevisionId: "rev-1",
-      revisions: [{ id: "rev-1", status: "completed", createdAt: "2026-01-01T00:00:00.000Z", result: editOnlyRevisionResult }],
-    }).success).toBe(true);
-  });
-  it("still accepts a job with no revisions (back-compat)", () => {
-    expect(ApiGenerationJobSchema.safeParse(revBaseJob).success).toBe(true);
   });
 });
