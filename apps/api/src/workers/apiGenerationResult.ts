@@ -1,12 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DemoProjectSchema } from "@tinker/project-schema";
-import type {
-  ApiArtifact,
-  ApiArtifactKind,
-  ApiGenerationResult,
-  ManualFixtureGenerationResult,
-} from "@tinker/generation-contract";
+import type { ApiArtifact, ApiArtifactKind, ApiGenerationResult, ManualFixtureGenerationResult } from "@tinker/generation-contract";
 import { indexArtifacts } from "../jobs/artifactIndex.js";
 
 export type BuildApiGenerationResultInput = {
@@ -23,10 +18,6 @@ function requireArtifact(artifacts: ApiArtifact[], kind: ApiArtifactKind) {
   return artifact;
 }
 
-function optionalArtifact(artifacts: ApiArtifact[], kind: ApiArtifactKind) {
-  return artifacts.find((candidate) => candidate.kind === kind);
-}
-
 async function readDemoProject(projectPath: string) {
   const raw = await readFile(projectPath, "utf8");
   return DemoProjectSchema.parse(JSON.parse(raw));
@@ -39,32 +30,16 @@ export async function buildApiGenerationResult(input: BuildApiGenerationResultIn
     artifactPaths: input.generationResult.artifactPaths,
   });
 
-  if (input.generationResult.renderer === "playwright") {
-    const projectArtifact = requireArtifact(artifacts, "playwright-demo-project");
-    const project = await readDemoProject(join(input.outputRoot, projectArtifact.relativePath));
-    return {
-      method: "playwright",
-      project,
-      artifacts,
-      warnings: [],
-    };
+  if (input.generationResult.renderer !== "playwright") {
+    throw new Error(`Unsupported API renderer: ${String(input.generationResult.renderer)}`);
   }
 
-  if (input.generationResult.renderer === "hyperframes") {
-    const generationManifestArtifact = optionalArtifact(artifacts, "generation-manifest");
-    const assetManifestArtifact = optionalArtifact(artifacts, "asset-manifest");
-    return {
-      method: "hyperframes",
-      composition: {
-        indexArtifact: requireArtifact(artifacts, "composition-index"),
-        outputVideoArtifact: requireArtifact(artifacts, "output-video"),
-        ...(generationManifestArtifact === undefined ? {} : { generationManifestArtifact }),
-        ...(assetManifestArtifact === undefined ? {} : { assetManifestArtifact }),
-      },
-      artifacts,
-      warnings: [],
-    };
-  }
-
-  throw new Error(`Unsupported API renderer: ${String(input.generationResult.renderer)}`);
+  const projectArtifact = requireArtifact(artifacts, "playwright-demo-project");
+  const project = await readDemoProject(join(input.outputRoot, projectArtifact.relativePath));
+  return {
+    method: "playwright",
+    project,
+    artifacts,
+    warnings: [],
+  };
 }

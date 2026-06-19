@@ -4,22 +4,13 @@ import {
   type ApiGenerationJob,
   type ApiGenerationJobStatus,
   type ApiGenerationResult,
-  type ApiRevision,
-  type ApiRevisionResult,
-  type EditContextRef,
   type GenerationError,
   type ManualFixtureProgressEvent,
 } from "@tinker/generation-contract";
 
-export type PendingEdit = { revId: string; instruction: string; context: EditContextRef[] };
-
-export type PendingRender = { revId: string };
-
 export type JobRecord = Omit<ApiGenerationJob, "request"> & {
   request: AiUrlPlanningCreateDemoRequest & { id: string };
   outputRoot: string;
-  pendingEdit?: PendingEdit;
-  pendingRender?: PendingRender;
 };
 
 export type CreateJobInput = {
@@ -43,7 +34,7 @@ function isNonTerminalStatus(status: ManualFixtureProgressEvent["status"]): stat
 }
 
 function snapshot(record: JobRecord): ApiGenerationJob {
-  const { outputRoot: _outputRoot, pendingEdit: _pendingEdit, pendingRender: _pendingRender, ...job } = record;
+  const { outputRoot: _outputRoot, ...job } = record;
   return ApiGenerationJobSchema.parse(job);
 }
 
@@ -52,7 +43,7 @@ function isTerminalStatus(status: ApiGenerationJobStatus) {
 }
 
 function hasValidSnapshotDatetime(record: JobRecord, updatedAt: string) {
-  const { outputRoot: _outputRoot, pendingEdit: _pendingEdit, pendingRender: _pendingRender, ...job } = { ...record, updatedAt };
+  const { outputRoot: _outputRoot, ...job } = { ...record, updatedAt };
   return ApiGenerationJobSchema.safeParse(job).success;
 }
 
@@ -117,61 +108,5 @@ export function createJobStore() {
       record.updatedAt = now;
     },
 
-    setPendingEdit(id: string, edit: PendingEdit) {
-      const record = records.get(id);
-      if (record === undefined) return;
-      record.pendingEdit = edit;
-    },
-
-    setPendingRender(id: string, render: PendingRender) {
-      const record = records.get(id);
-      if (record === undefined) return;
-      record.pendingRender = render;
-    },
-
-    setRevisionResult(id: string, revId: string, result: ApiRevisionResult, now: string) {
-      const record = records.get(id);
-      if (record === undefined) return;
-      record.revisions = (record.revisions ?? []).map((r) => (r.id === revId ? { id: r.id, status: "completed", createdAt: r.createdAt, result } : r));
-      delete record.pendingRender;
-      record.updatedAt = now;
-    },
-
-    clearPendingRender(id: string) {
-      const record = records.get(id);
-      if (record === undefined) return;
-      delete record.pendingRender;
-    },
-
-    /**
-     * Record a render-on-demand failure on a revision. The revision keeps its `completed`
-     * status (the edit succeeded; only the MP4 render failed) so it can be re-rendered, and
-     * the export poll can detect the failure via `renderError`.
-     */
-    failRevisionRender(id: string, revId: string, error: GenerationError, now: string) {
-      const record = records.get(id);
-      if (record === undefined) return;
-      record.revisions = (record.revisions ?? []).map((r) => (r.id === revId ? { ...r, renderError: error } : r));
-      delete record.pendingRender;
-      record.updatedAt = now;
-    },
-
-    appendRevision(id: string, revision: ApiRevision, now: string) {
-      const record = records.get(id);
-      if (record === undefined) return;
-      record.revisions = [...(record.revisions ?? []), revision];
-      record.currentRevisionId = revision.id;
-      delete record.pendingEdit;
-      record.updatedAt = now;
-    },
-
-    failRevision(id: string, revId: string, error: GenerationError, now: string) {
-      const record = records.get(id);
-      if (record === undefined) return;
-      const failed: ApiRevision = { id: revId, status: "failed", createdAt: now, error };
-      record.revisions = [...(record.revisions ?? []), failed];
-      delete record.pendingEdit;
-      record.updatedAt = now;
-    },
   };
 }
