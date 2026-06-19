@@ -1,7 +1,7 @@
 # Design: Testreel Published Video Engine
 
 **Date:** 2026-06-19
-**Status:** Draft for review
+**Status:** Approved for implementation
 **Related:** `docs/demo-pipeline.md`, `docs/smooth-playwright-capture.md`, `docs/superpowers/specs/2026-06-19-playwright-only-full-deletion-design.md`
 
 ## Goal
