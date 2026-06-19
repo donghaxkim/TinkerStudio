@@ -224,6 +224,36 @@ try {
     await coveredHoverServer.close();
   }
 
+  const disabledClickServer = await startHtmlServer(`
+    <html>
+      <body style="margin:0">
+        <button disabled style="position:absolute;top:120px;left:180px;width:160px;height:48px">Current plan</button>
+        <main>Billing sandbox result</main>
+      </body>
+    </html>
+  `);
+  try {
+    const disabledClickResult = await runPlaywrightCapture(
+      {
+        targetUrl: disabledClickServer.url,
+        viewport: { width: 640, height: 480 },
+        steps: [
+          { type: "goto", url: disabledClickServer.url },
+          { type: "click", text: "Current plan" },
+        ],
+        expectedCheckpoints: [{ id: "current-plan", label: "Current plan", text: "Current plan" }],
+      },
+      { outputDir },
+    );
+
+    assert.equal(disabledClickResult.checkpoints[0]?.passed, true);
+    const clickTrace = disabledClickResult.actionTrace?.actions.find((action) => action.type === "click");
+    assert.equal(clickTrace?.status, "success", "disabled click should be best-effort, not fail capture");
+    assert.ok(clickTrace?.targetBox !== undefined, "disabled click should still record the visible target");
+  } finally {
+    await disabledClickServer.close();
+  }
+
   let offOriginRequestCount = 0;
   const offOriginServer = await startHtmlServer("<html><body><h1>Off origin</h1></body></html>", () => {
     offOriginRequestCount += 1;

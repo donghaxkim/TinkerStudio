@@ -53,6 +53,26 @@ async function settledCenter(locator: ReturnType<Page["locator"]>): Promise<
   };
 }
 
+async function isDisabledClickTarget(locator: ReturnType<Page["locator"]>) {
+  try {
+    return await locator.evaluate((element) => {
+      const target = element as unknown as {
+        matches?: (selector: string) => boolean;
+        getAttribute?: (name: string) => string | null;
+        hasAttribute?: (name: string) => boolean;
+      };
+
+      return (
+        target.matches?.(":disabled") === true ||
+        target.getAttribute?.("aria-disabled") === "true" ||
+        target.hasAttribute?.("data-disabled") === true
+      );
+    });
+  } catch {
+    return false;
+  }
+}
+
 function assetUri(outputDir: string, path: string) {
   return relative(outputDir, path).split("\\").join("/");
 }
@@ -327,8 +347,8 @@ export async function runPlaywrightCapture(
             }
 
             const popupPromise = page.waitForEvent("popup", { timeout: 250 }).catch(() => undefined);
-            await locator.click();
-            const popup = await popupPromise;
+            const disabled = await isDisabledClickTarget(locator);
+            const popup = disabled ? undefined : await locator.click().then(() => popupPromise);
 
             if (popup !== undefined) {
               popupError = new CaptureError(`Capture step ${index} created a new page`, index);
@@ -337,11 +357,14 @@ export async function runPlaywrightCapture(
 
             if (target !== undefined) {
               const label = step.label ?? step.text;
-              if (smooth) {
+              if (smooth && !disabled) {
                 await clickRipple(page, target.center).catch(() => undefined);
                 await page.waitForTimeout(CURSOR_POST_CLICK_HOLD_MS);
               }
-              events.push(createClickEvent({ startedAtMs, x: target.center.x, y: target.center.y, label }));
+              if (!disabled) {
+                events.push(createClickEvent({ startedAtMs, x: target.center.x, y: target.center.y, label }));
+                entry.clickPoint = { x: target.center.x, y: target.center.y };
+              }
               events.push(createZoomTargetEvent({
                 startedAtMs,
                 x: Math.round(target.box.x),
@@ -350,7 +373,6 @@ export async function runPlaywrightCapture(
                 height: Math.round(target.box.height),
                 label,
               }));
-              entry.clickPoint = { x: target.center.x, y: target.center.y };
               entry.targetBox = roundedBox(target.box);
               if (label && !entry.description) entry.description = label;
             }
