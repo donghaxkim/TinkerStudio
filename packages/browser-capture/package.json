@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx src/verifyCapturePlan.test.ts && tsx src/captureEvents.test.ts && tsx src/cursorPath.test.ts && tsx src/smoothScroll.test.ts && tsx src/actionTrace.test.ts && tsx src/renderPlan.test.ts && tsx src/fixtureServer.test.ts && tsx src/playwrightCapture.test.ts",
+    "test": "tsx src/verifyCapturePlan.test.ts && tsx src/captureEvents.test.ts && tsx src/cursorPath.test.ts && tsx src/smoothScroll.test.ts && tsx src/actionTrace.test.ts && tsx src/renderPlan.test.ts && tsx src/fixtureServer.test.ts && tsx src/finalVideo.test.ts && tsx src/playwrightCapture.test.ts",
     "smoke:smooth": "tsx src/smoothCapture.smoke.ts",
     "capture:manual": "tsx src/manualCapture.cli.ts"
   },

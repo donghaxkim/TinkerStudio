@@ -15,7 +15,7 @@ import { CoreCoverageItemSchema, type CoreCoverageItem } from "./coreCoverage.js
 
 const RendererSchema = z.enum(["hyperframes", "playwright", "both"]);
 
-const ExecutionModeSchema = z.enum(["claude-code", "deterministic-fallback", "deterministic"]);
+const ExecutionModeSchema = z.enum(["claude-code", "opencode", "deterministic-fallback", "deterministic"]);
 const PlannerModeSchema = z.enum(["claude-code", "opencode"]);
 const FinalVideoModeSchema = z.enum(["rendered", "transcoded", "none"]);
 const FinalVideoSourceSchema = z.enum(["demo-project", "raw-playwright-recording", "none"]);

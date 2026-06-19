@@ -10,7 +10,9 @@ import { freezeExportProjectSnapshot } from "./exportSnapshot.js";
 import { buildRealMediaFilterGraph, type FfmpegFilterGraph } from "./ffmpegFilterGraph.js";
 import { probeMp4Artifact, type ProbeCommandRunner, type ProbedMp4Artifact } from "./probeMp4Artifact.js";
 
-export type CommandRunner = (command: string, args: string[]) => Promise<void>;
+const ABORT_KILL_GRACE_MS = 500;
+
+export type CommandRunner = (command: string, args: string[], options: { signal?: AbortSignal }) => Promise<void>;
 
 export type RenderFinalToMp4Options = {
   outputPath: string;
@@ -21,6 +23,7 @@ export type RenderFinalToMp4Options = {
   ffprobePath?: string;
   runCommand?: CommandRunner;
   runProbe?: ProbeCommandRunner;
+  signal?: AbortSignal;
 };
 
 export type RenderedMp4Artifact = {
@@ -38,6 +41,9 @@ export type RenderFinalToMp4Result = {
 };
 
 export async function renderFinalToMp4(project: DemoProject, options: RenderFinalToMp4Options): Promise<RenderFinalToMp4Result> {
+  if (options.signal?.aborted) {
+    throw new DOMException("Render cancelled.", "AbortError");
+  }
   const snapshot = freezeExportProjectSnapshot(project);
   const outputPath = resolve(options.outputPath);
 
@@ -59,11 +65,17 @@ export async function renderFinalToMp4(project: DemoProject, options: RenderFina
 
   try {
     const cursorImage = await writeDefaultCursorPng(renderTempRoot);
+    if (options.signal?.aborted) {
+      throw new DOMException("Render cancelled.", "AbortError");
+    }
     const graph = buildRealMediaFilterGraph(snapshot, plan, resolutions, { cursorImage });
     const args = buildFfmpegArgs(plan, graph, outputPath);
 
     await mkdir(dirname(outputPath), { recursive: true });
-    await runCommand(options.ffmpegPath ?? "ffmpeg", args);
+    if (options.signal?.aborted) {
+      throw new DOMException("Render cancelled.", "AbortError");
+    }
+    await runCommand(options.ffmpegPath ?? "ffmpeg", args, { signal: options.signal });
   } catch (error) {
     primaryError = error;
     throw error;
@@ -80,6 +92,7 @@ export async function renderFinalToMp4(project: DemoProject, options: RenderFina
   const probe = await probeMp4Artifact(outputPath, {
     ffprobePath: options.ffprobePath,
     runCommand: options.runProbe,
+    signal: options.signal,
   });
   const probedDuration = Number(probe.format.duration);
 
@@ -139,17 +152,71 @@ function basename(path: string) {
   return normalized.slice(normalized.lastIndexOf("/") + 1);
 }
 
-export async function runSpawnedFfmpegCommand(command: string, args: string[]) {
+export async function runSpawnedFfmpegCommand(command: string, args: string[], options: { signal?: AbortSignal } = {}) {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const detached = process.platform !== "win32";
+    const child = spawn(command, args, { detached, stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
+    let aborted = options.signal?.aborted ?? false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function killChild(signal: NodeJS.Signals) {
+      if (detached && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, signal);
+          return;
+        } catch {
+          // Fall back to the direct child when process-group kill is unavailable.
+        }
+      }
+
+      child.kill(signal);
+    }
+
+    function destroyStreams() {
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+    }
+
+    function cleanup() {
+      options.signal?.removeEventListener("abort", onAbort);
+      if (killTimer !== undefined) {
+        clearTimeout(killTimer);
+        killTimer = undefined;
+      }
+    }
+
+    const onAbort = () => {
+      aborted = true;
+      destroyStreams();
+      killChild("SIGTERM");
+      killTimer ??= setTimeout(() => {
+        destroyStreams();
+        killChild("SIGKILL");
+      }, ABORT_KILL_GRACE_MS);
+      killTimer.unref?.();
+    };
+
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    if (aborted) {
+      killChild("SIGTERM");
+    }
 
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
 
-    child.on("error", reject);
+    child.on("error", (error) => {
+      cleanup();
+      reject(aborted ? new DOMException("Render cancelled.", "AbortError") : error);
+    });
     child.on("close", (code) => {
+      cleanup();
+      if (aborted) {
+        reject(new DOMException("Render cancelled.", "AbortError"));
+        return;
+      }
+
       if (code === 0) {
         resolve();
         return;

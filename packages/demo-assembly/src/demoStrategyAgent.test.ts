@@ -32,3 +32,17 @@ const sFallback = createClaudeStrategyAgent({ runSynthesis: async () => "nope" }
 const sOut = await sFallback(baseInput);
 assert.ok(sOut.strategy.warnings.includes(STRATEGY_FALLBACK_WARNING), "strategy fallback emits the exported constant");
 console.log("demoStrategyAgent fallback-constant PASS");
+
+let abortFallbackCalled = false;
+const abortStrategy = createClaudeStrategyAgent({
+  runSynthesis: async () => {
+    throw new DOMException("aborted", "AbortError");
+  },
+  fallback: async () => {
+    abortFallbackCalled = true;
+    throw new Error("fallback should not run after abort");
+  },
+});
+await assert.rejects(() => abortStrategy(baseInput), { name: "AbortError" });
+assert.equal(abortFallbackCalled, false);
+console.log("demoStrategyAgent abort PASS");

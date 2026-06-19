@@ -18,22 +18,79 @@ import { spawn } from "node:child_process";
 import { access, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
+const ABORT_KILL_GRACE_MS = 500;
+
 export type TranscodeToMp4Options = {
   ffmpegPath?: string;
   fps?: number;
+  signal?: AbortSignal;
   /** Injectable runner for tests; defaults to spawning ffmpeg. */
-  runFfmpeg?: (command: string, args: string[]) => Promise<void>;
+  runFfmpeg?: (command: string, args: string[], options: { signal?: AbortSignal }) => Promise<void>;
 };
 
-function defaultRunFfmpeg(command: string, args: string[]): Promise<void> {
+function defaultRunFfmpeg(command: string, args: string[], options: { signal?: AbortSignal } = {}): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "ignore", "pipe"] });
+    const detached = process.platform !== "win32";
+    const child = spawn(command, args, { detached, stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
+    let aborted = options.signal?.aborted ?? false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function killChild(signal: NodeJS.Signals) {
+      if (detached && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, signal);
+          return;
+        } catch {
+          // Fall back to direct child kill when process-group kill is unavailable.
+        }
+      }
+
+      child.kill(signal);
+    }
+
+    function destroyStreams() {
+      child.stderr?.destroy();
+    }
+
+    function cleanup() {
+      options.signal?.removeEventListener("abort", onAbort);
+      if (killTimer !== undefined) {
+        clearTimeout(killTimer);
+        killTimer = undefined;
+      }
+    }
+
+    const onAbort = () => {
+      aborted = true;
+      destroyStreams();
+      killChild("SIGTERM");
+      killTimer ??= setTimeout(() => {
+        destroyStreams();
+        killChild("SIGKILL");
+      }, ABORT_KILL_GRACE_MS);
+      killTimer.unref?.();
+    };
+
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    if (aborted) {
+      killChild("SIGTERM");
+    }
+
     child.stderr?.on("data", (chunk) => {
       stderr += String(chunk);
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      cleanup();
+      reject(aborted ? new DOMException("Transcode cancelled.", "AbortError") : error);
+    });
     child.on("close", (code) => {
+      cleanup();
+      if (aborted) {
+        reject(new DOMException("Transcode cancelled.", "AbortError"));
+        return;
+      }
+
       if (code === 0) {
         resolve();
       } else {
@@ -52,8 +109,17 @@ export async function transcodeToMp4(
   outputPath: string,
   options: TranscodeToMp4Options = {},
 ): Promise<string> {
+  if (options.signal?.aborted) {
+    throw new DOMException("Transcode cancelled.", "AbortError");
+  }
   await access(inputPath);
+  if (options.signal?.aborted) {
+    throw new DOMException("Transcode cancelled.", "AbortError");
+  }
   await mkdir(dirname(outputPath), { recursive: true });
+  if (options.signal?.aborted) {
+    throw new DOMException("Transcode cancelled.", "AbortError");
+  }
 
   const fps = options.fps ?? 30;
   const args = [
@@ -77,6 +143,6 @@ export async function transcodeToMp4(
   ];
 
   const run = options.runFfmpeg ?? defaultRunFfmpeg;
-  await run(options.ffmpegPath ?? "ffmpeg", args);
+  await run(options.ffmpegPath ?? "ffmpeg", args, { signal: options.signal });
   return outputPath;
 }

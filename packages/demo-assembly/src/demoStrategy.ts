@@ -82,6 +82,7 @@ export type DeriveDemoStrategyInput = {
   systemPrompt?: string;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
+  signal?: AbortSignal;
 };
 
 export type DemoStrategyResult = {

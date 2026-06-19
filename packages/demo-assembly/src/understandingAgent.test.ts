@@ -51,3 +51,17 @@ const outConst = await agentConst(input);
 assert.ok(outConst.warnings.includes(UNDERSTANDING_FALLBACK_INVALID), "fallback emits the exported constant");
 assert.ok(UNDERSTANDING_FALLBACK_WARNINGS.includes(UNDERSTANDING_FALLBACK_INVALID));
 console.log("understandingAgent fallback-constants PASS");
+
+let abortFallbackCalled = false;
+const abortAgent = createClaudeUnderstandingAgent({
+  runAgent: async () => {
+    throw new DOMException("aborted", "AbortError");
+  },
+  fallback: async () => {
+    abortFallbackCalled = true;
+    throw new Error("fallback should not run after abort");
+  },
+});
+await assert.rejects(() => abortAgent(input), { name: "AbortError" });
+assert.equal(abortFallbackCalled, false);
+console.log("understandingAgent abort PASS");

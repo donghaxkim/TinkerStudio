@@ -181,6 +181,10 @@ export function parseNarrativeExploration(value: unknown, productUrl: string): N
 const DEFAULT_EXPLORATION_TIMEOUT_MS = 90_000;
 const DEFAULT_STAGEHAND_DOM_SETTLE_TIMEOUT_MS = 5_000;
 
+function abortError() {
+  return new DOMException("Narrative exploration cancelled.", "AbortError");
+}
+
 type NarrativeStagehandModel = {
   modelName: string;
   apiKey?: string;
@@ -350,10 +354,21 @@ function buildExplorationPrompt(productUrl: string, options: ExploreNarrativeWeb
 }
 
 async function runStagehandExploration(productUrl: string, options: ExploreNarrativeWebsiteOptions) {
+  if (options.signal?.aborted) {
+    throw abortError();
+  }
+
   const stagehand = options.createStagehand === undefined ? await createDefaultStagehand() : options.createStagehand();
   const timeoutMs = options.timeoutMs ?? DEFAULT_EXPLORATION_TIMEOUT_MS;
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  let timedOut = false;
+  let closePromise: Promise<void> | undefined;
+
+  function closeStagehand() {
+    closePromise ??= stagehand.close().catch(() => undefined);
+    return closePromise;
+  }
+
+  let onAbort: (() => void) | undefined;
 
   try {
     return await Promise.race([
@@ -375,20 +390,34 @@ async function runStagehandExploration(productUrl: string, options: ExploreNarra
       })(),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(() => {
-          timedOut = true;
-          void stagehand.close().catch(() => undefined);
+          void closeStagehand();
           reject(new Error(`Narrative exploration timed out after ${timeoutMs}ms`));
         }, timeoutMs);
       }),
+      new Promise<never>((_, reject) => {
+        onAbort = () => {
+          void closeStagehand();
+          reject(abortError());
+        };
+
+        if (options.signal?.aborted) {
+          onAbort();
+          return;
+        }
+
+        options.signal?.addEventListener("abort", onAbort, { once: true });
+      }),
     ]);
   } finally {
+    if (onAbort !== undefined) {
+      options.signal?.removeEventListener("abort", onAbort);
+    }
+
     if (timeout !== undefined) {
       clearTimeout(timeout);
     }
 
-    if (!timedOut) {
-      await stagehand.close();
-    }
+    await closeStagehand();
   }
 }
 
@@ -398,6 +427,10 @@ export async function exploreNarrativeWebsite(
 ): Promise<NarrativeExploration | undefined> {
   if (!isExplorationEnabled(options)) {
     return undefined;
+  }
+
+  if (options.signal?.aborted) {
+    throw abortError();
   }
 
   if (options.createStagehand === undefined && !hasDefaultStagehandCredentials()) {

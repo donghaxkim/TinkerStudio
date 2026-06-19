@@ -21,6 +21,7 @@ async function pathExists(path: string) {
 const hyperframesDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-render-"));
 await mkdir(hyperframesDir, { recursive: true });
 const outputVideoPath = join(hyperframesDir, "output.mp4");
+const signalController = new AbortController();
 
 const calls: Parameters<HyperframesCommandRun>[0][] = [];
 const runner: HyperframesCommandRun = async (command) => {
@@ -28,7 +29,7 @@ const runner: HyperframesCommandRun = async (command) => {
   return { status: 0, stdout: `${command.args.join(" ")} ok`, stderr: `${command.args.join(" ")} warning` };
 };
 
-const result = await runHyperframesRender({ hyperframesDir, outputVideoPath, runCommand: runner });
+const result = await runHyperframesRender({ hyperframesDir, outputVideoPath, runCommand: runner, signal: signalController.signal });
 assert.equal(result.lintLogPath, join(hyperframesDir, "lint.log"));
 assert.equal(result.renderLogPath, join(hyperframesDir, "render.log"));
 assert.equal(result.outputVideoPath, outputVideoPath);
@@ -38,12 +39,14 @@ assert.deepEqual(calls[0], {
   args: ["--yes", "--package", "hyperframes", "hyperframes", "lint"],
   cwd: hyperframesDir,
   timeoutMs: 120_000,
+  signal: signalController.signal,
 });
 assert.deepEqual(calls[1], {
   command: "npx",
   args: ["--yes", "--package", "hyperframes", "hyperframes", "render", "--output", outputVideoPath],
   cwd: hyperframesDir,
   timeoutMs: 600_000,
+  signal: signalController.signal,
 });
 const lintLog = await readFile(result.lintLogPath, "utf8");
 const renderLog = await readFile(result.renderLogPath, "utf8");
@@ -302,6 +305,48 @@ assert.ok(Date.now() - fallbackStartedAt < 1_500);
 const defaultTimeoutLog = await readFile(join(defaultTimeoutDir, "lint.log"), "utf8");
 assert.match(defaultTimeoutLog, /timedOut: true/);
 assert.match(defaultTimeoutLog, /lint started/);
+
+const abortDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-abort-"));
+const abortBinDir = join(abortDir, "bin");
+await mkdir(abortBinDir);
+const abortFakeNpxPath = join(abortBinDir, "npx");
+await writeFile(
+  abortFakeNpxPath,
+  `#!/usr/bin/env node
+process.stdout.write("lint started\\n");
+process.on("SIGTERM", () => {});
+setInterval(() => {}, 1000);
+`,
+);
+await chmod(abortFakeNpxPath, 0o755);
+const abortOriginalPath = process.env.PATH;
+process.env.PATH = `${abortBinDir}${delimiter}${abortOriginalPath ?? ""}`;
+const abortController = new AbortController();
+let abortFallbackBound: ReturnType<typeof setTimeout> | undefined;
+try {
+  const running = Promise.race([
+    runHyperframesRender({
+      hyperframesDir: abortDir,
+      outputVideoPath: join(abortDir, "output.mp4"),
+      signal: abortController.signal,
+      timeoutKillGraceMs: 50,
+      timeoutCloseFallbackMs: 50,
+    }),
+    new Promise((_, reject) => {
+      abortFallbackBound = setTimeout(() => reject(new Error("abort did not settle")), 1_500);
+    }),
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  abortController.abort();
+  await assert.rejects(() => running, /Hyperframes lint failed/);
+} finally {
+  if (abortFallbackBound !== undefined) {
+    clearTimeout(abortFallbackBound);
+  }
+  process.env.PATH = abortOriginalPath;
+}
+const abortLog = await readFile(join(abortDir, "lint.log"), "utf8");
+assert.match(abortLog, /Aborted/);
 
 const oversizedLogDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-oversized-log-"));
 const oversizedStdout = `${"stdout-start\n"}${"o".repeat(200_000)}\nstdout-end`;

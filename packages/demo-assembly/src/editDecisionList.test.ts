@@ -65,4 +65,48 @@ const tight: ActionTrace = {
 const tightEdl = buildEditDecisionList(tight);
 assert.equal(tightEdl.cuts.length, 0, "a tight trace yields no compression cuts");
 
+// When a requested duration cap is available, compression should tighten the recording
+// toward that cap without over-compressing useful viewing holds into jump cuts.
+const passiveWorkflowTrace: ActionTrace = {
+  version: 1,
+  targetUrl: "https://example.test/",
+  viewport: { width: 1280, height: 720 },
+  fps: 25,
+  startedAt: "2026-06-17T00:00:00.000Z",
+  completedAt: "2026-06-17T00:00:23.067Z",
+  actions: [
+    { id: "navigation-1", type: "navigation", status: "success", startTime: 5.338, endTime: 6.867 },
+    { id: "hover-1", type: "hover", status: "success", startTime: 8.326, endTime: 8.752 },
+    { id: "scroll-1", type: "scroll", status: "success", startTime: 10.068, endTime: 10.901 },
+    { id: "scroll-2", type: "scroll", status: "success", startTime: 19.903, endTime: 21.177 },
+  ],
+};
+const capAwareEdl = buildEditDecisionList(passiveWorkflowTrace, { targetDurationSeconds: 12 });
+assert.ok(
+  Math.abs(capAwareEdl.compressedDurationSeconds - 12) < 0.05,
+  `cap-aware compression should land near 12s, got ${capAwareEdl.compressedDurationSeconds}`,
+);
+assert.ok(
+  capAwareEdl.compressedDurationSeconds > 10,
+  `cap-aware compression should not collapse a 12s request to ${capAwareEdl.compressedDurationSeconds}s`,
+);
+const longInteriorGap = capAwareEdl.cuts.find((cut) => cut.afterActionId === "scroll-1" && cut.beforeActionId === "scroll-2");
+assert.ok(longInteriorGap, "fixture should include the long interior hold gap");
+assert.ok(
+  longInteriorGap.compressedGapSeconds > 1,
+  `long workflow hold should keep more than a token 0.5s slice, got ${longInteriorGap.compressedGapSeconds}s`,
+);
+
+// A duration cap above the source duration should not neutralize normal dead-gap compression.
+const belowCapEdl = buildEditDecisionList(trace, { targetDurationSeconds: 12 });
+assert.ok(belowCapEdl.removedSeconds > 0, "below-cap captures should still remove dead time");
+assert.ok(
+  belowCapEdl.compressedDurationSeconds < belowCapEdl.sourceDurationSeconds,
+  "below-cap captures with dead gaps should still compress",
+);
+assert.ok(
+  belowCapEdl.cuts.every((cut) => cut.removedSeconds > 0),
+  "below-cap cuts should not be restored back to zero removal",
+);
+
 console.log("editDecisionList.test PASS");

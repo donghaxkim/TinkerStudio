@@ -10,6 +10,7 @@ import {
   type CaptureAsset,
   type CapturePlan,
   type CaptureResult,
+  type RenderPlan,
 } from "@tinker/browser-capture";
 import {
   analyzeRepo as defaultAnalyzeRepo,
@@ -33,8 +34,8 @@ import {
 } from "./aiPlanning.js";
 import { deriveProductUnderstanding, type UnderstandProduct } from "./productUnderstanding.js";
 import { deriveDemoStrategy, type Storyboard, type Strategize } from "./demoStrategy.js";
-import { createClaudeUnderstandingAgent, UNDERSTANDING_FALLBACK_WARNINGS } from "./understandingAgent.js";
-import { createClaudeStrategyAgent, STRATEGY_FALLBACK_WARNING } from "./demoStrategyAgent.js";
+import { createClaudeUnderstandingAgent, createOpencodeUnderstandingAgent, UNDERSTANDING_FALLBACK_WARNINGS } from "./understandingAgent.js";
+import { createClaudeStrategyAgent, createOpencodeStrategyAgent, STRATEGY_FALLBACK_WARNING } from "./demoStrategyAgent.js";
 import { buildCoreCoverage } from "./coreCoverage.js";
 import type { CaptureLineage } from "./captureLineage.js";
 import type { RunExecution } from "./runSummary.js";
@@ -45,7 +46,7 @@ import { applyEditDecisionList } from "./applyEditDecisionList.js";
 import { buildRunInput, buildRunSummary } from "./runSummary.js";
 import { renderFinalToMp4 } from "@tinker/rendering/node";
 import { DEFAULT_SYSTEM_PROMPT } from "@tinker/generation-contract";
-import type { DemoProject } from "@tinker/project-schema";
+import type { DemoProject, ZoomKeyframe } from "@tinker/project-schema";
 import { validateHyperframesArtifacts } from "./hyperframesArtifacts.js";
 import {
   createOpencodeHyperframesGenerator,
@@ -78,7 +79,7 @@ type ExploreNarrativeWebsiteDependency = (
 ) => Promise<NarrativeExploration | undefined>;
 type RunCaptureDependency = (
   plan: CapturePlan,
-  options: { outputDir: string; headless?: boolean; smooth?: boolean },
+  options: { outputDir: string; headless?: boolean; smooth?: boolean; signal?: AbortSignal },
 ) => Promise<CaptureResult>;
 type GenerateHyperframesProjectDependency = GenerateHyperframesProject;
 type RepairHyperframesProjectDependency = RepairHyperframesProject;
@@ -113,6 +114,7 @@ export type RunAiUrlDemoInput = {
   repoUrl?: string;
   renderer?: AiUrlRenderer;
   hyperframesAgent?: HyperframesAgent;
+  signal?: AbortSignal;
   onPhase?: (phase: AiUrlDemoPhase) => void;
   analyzeWebsite?: AnalyzeWebsiteDependency;
   analyzeRepo?: AnalyzeRepoDependency;
@@ -164,6 +166,7 @@ type InternalRendererResult = Omit<RunAiUrlDemoResult, "renderer" | "pipeline"> 
   finalVideoMode?: "rendered" | "transcoded" | "none";
   finalVideoSource?: "demo-project" | "raw-playwright-recording" | "none";
   editDecisionListApplied?: boolean;
+  renderPlanApplied?: boolean;
   coverageActionTrace?: ActionTrace;
   coverageCaptureLineage?: CaptureLineage;
 };
@@ -199,7 +202,15 @@ async function produceFinalVideo(
   captureOutputDir: string,
   finalVideoPath: string,
   fps: number,
+  signal: AbortSignal | undefined,
 ): Promise<FinalVideoMode> {
+  function throwIfAborted() {
+    if (signal?.aborted) {
+      throw new DOMException("Generation cancelled.", "AbortError");
+    }
+  }
+
+  throwIfAborted();
   const mainClip = captureResult.clips.find((clip) => clip.type === "video");
   if (mainClip === undefined) {
     return "none";
@@ -219,18 +230,21 @@ async function produceFinalVideo(
       projectRoot: playwrightOutputRoot,
       allowedInputRoots: [playwrightOutputRoot],
       allowedOutputRoots: [playwrightOutputRoot],
+      signal,
     });
     return "rendered";
   } catch (renderError) {
+    throwIfAborted();
     console.warn(
       `final.mp4 project render failed, falling back to flat transcode: ${
         renderError instanceof Error ? renderError.message : String(renderError)
       }`,
     );
     try {
-      await transcodeToMp4(rawVideoPath, finalVideoPath, { fps });
+      await transcodeToMp4(rawVideoPath, finalVideoPath, { fps, signal });
       return "transcoded";
     } catch (transcodeError) {
+      throwIfAborted();
       console.warn(
         `final.mp4 transcode skipped: ${transcodeError instanceof Error ? transcodeError.message : String(transcodeError)}`,
       );
@@ -259,6 +273,10 @@ async function cleanupRepoScratch(repoScratchDir: string | undefined, priorError
 
 function formatErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function isNarrativeExplorationEnabled(value: boolean | undefined) {
@@ -306,14 +324,17 @@ function mergeArtifactPaths(...artifactPathGroups: string[][]) {
   return [...new Set(artifactPathGroups.flat())];
 }
 
-/**
- * Returns true when TINKER_AGENT_BACKEND is set to "claude-code" or "claude", enabling
- * the real Claude-backed Understanding and Strategy agents instead of the deterministic
- * fallbacks.
- */
-function agentBackendEnabled(): boolean {
+type AgentBackend = "claude-code" | "opencode" | "deterministic";
+
+function selectedAgentBackend(): AgentBackend {
   const b = (process.env.TINKER_AGENT_BACKEND ?? "").trim().toLowerCase();
-  return b === "claude-code" || b === "claude";
+  if (b === "claude-code" || b === "claude") {
+    return "claude-code";
+  }
+  if (b === "opencode") {
+    return "opencode";
+  }
+  return "deterministic";
 }
 
 /**
@@ -322,29 +343,93 @@ function agentBackendEnabled(): boolean {
  * without opencode installed). The planner contract is identical for both backends.
  */
 function selectDefaultAiUrlPlanner(): AiUrlPlanner {
-  const backend = (process.env.TINKER_AGENT_BACKEND ?? "").trim().toLowerCase();
-  if (backend === "claude-code" || backend === "claude") {
+  const backend = selectedAgentBackend();
+  if (backend === "claude-code") {
     return createClaudeCodeAiUrlPlanner();
   }
   return createOpencodeAiUrlPlanner();
 }
 
 function selectDefaultUnderstandProduct(): UnderstandProduct {
-  if (agentBackendEnabled()) {
+  const backend = selectedAgentBackend();
+  if (backend === "claude-code") {
     return createClaudeUnderstandingAgent();
+  }
+  if (backend === "opencode") {
+    return createOpencodeUnderstandingAgent();
   }
   return async (a) => deriveProductUnderstanding(a);
 }
 
 function selectDefaultStrategize(): Strategize {
-  if (agentBackendEnabled()) {
+  const backend = selectedAgentBackend();
+  if (backend === "claude-code") {
     return createClaudeStrategyAgent();
+  }
+  if (backend === "opencode") {
+    return createOpencodeStrategyAgent();
   }
   return async (a) => deriveDemoStrategy(a);
 }
 
 function dedupeStrings(values: string[]) {
   return [...new Set(values)];
+}
+
+function cleanNumber(value: number) {
+  return Number(value.toFixed(6));
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function renderPlanZoomTarget(segment: RenderPlan["zoomSegments"][number], frame: { width: number; height: number }): ZoomKeyframe["target"] {
+  const scale = Math.max(segment.scale, 1);
+  const width = frame.width / scale;
+  const height = frame.height / scale;
+  return {
+    x: cleanNumber(clamp(segment.focus.x * frame.width - width / 2, 0, frame.width - width)),
+    y: cleanNumber(clamp(segment.focus.y * frame.height - height / 2, 0, frame.height - height)),
+    width: cleanNumber(width),
+    height: cleanNumber(height),
+  };
+}
+
+function applyRenderPlanZooms(project: DemoProject, renderPlan: RenderPlan): { project: DemoProject; applied: boolean } {
+  if (renderPlan.zoomSegments.length === 0) {
+    return { project, applied: false };
+  }
+
+  const videoAsset = project.assets.find((asset) => asset.type === "video");
+  const frame =
+    videoAsset?.width !== undefined && videoAsset.height !== undefined
+      ? { width: videoAsset.width, height: videoAsset.height }
+      : renderPlan.resolution;
+  const zooms = renderPlan.zoomSegments
+    .map((segment, index): ZoomKeyframe | undefined => {
+      const start = cleanNumber(clamp(segment.start, 0, project.duration));
+      const end = cleanNumber(clamp(segment.end, start, project.duration));
+      if (end <= start) {
+        return undefined;
+      }
+      return {
+        id: `render-plan-${segment.id || index + 1}`,
+        start,
+        end,
+        target: renderPlanZoomTarget(segment, frame),
+        scale: cleanNumber(Math.max(segment.scale, 1)),
+        easing: "easeInOut",
+        name: segment.reason,
+      };
+    })
+    .filter((zoom): zoom is ZoomKeyframe => zoom !== undefined);
+
+  if (zooms.length === 0) {
+    return { project, applied: false };
+  }
+
+  return { project: { ...project, zooms: [...project.zooms, ...zooms] }, applied: true };
 }
 
 /**
@@ -392,6 +477,14 @@ async function prepareHyperframesWebsiteAnalysis(analysis: ProductAnalysis, hype
 export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDemoResult> {
   const renderer = input.renderer ?? "hyperframes";
 
+  function throwIfAborted() {
+    if (input.signal?.aborted) {
+      throw new DOMException("Generation cancelled.", "AbortError");
+    }
+  }
+
+  throwIfAborted();
+
   if (renderer !== "hyperframes" && renderer !== "playwright" && renderer !== "both") {
     throw new Error(`Unknown AI URL renderer: ${String(renderer)}`);
   }
@@ -419,6 +512,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
 
   await rm(input.outputRoot, { recursive: true, force: true });
   await mkdir(input.outputRoot, { recursive: true });
+  throwIfAborted();
 
   // input.json: provenance for everything else in the run.
   const runInput = buildRunInput({
@@ -433,15 +527,19 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   });
   const runInputPath = join(input.outputRoot, "input.json");
   await writeFile(runInputPath, toPrettyJson(runInput));
+  throwIfAborted();
 
   input.onPhase?.("analysis");
+  throwIfAborted();
   const analysis = await analyzeWebsite(input.productUrl, {
     outputDirectory: input.outputRoot,
     screenshotFileName: PRODUCT_ANALYSIS_SCREENSHOT_FILE_NAME,
     headless: true,
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
   });
   const productAnalysisPath = join(input.outputRoot, "product-analysis.json");
   await writeFile(productAnalysisPath, toPrettyJson(analysis));
+  throwIfAborted();
 
   let repoAnalysis: RepoAnalysis | undefined;
   let repoAnalysisPath: string | undefined;
@@ -453,9 +551,16 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     repoCheckoutDirectory = join(repoScratchDir, "checkout");
 
     try {
-      repoAnalysis = parseRepoAnalysis(await analyzeRepo(input.repoUrl, { checkoutDirectory: repoCheckoutDirectory }), input.repoUrl);
+      repoAnalysis = parseRepoAnalysis(
+        await analyzeRepo(input.repoUrl, {
+          checkoutDirectory: repoCheckoutDirectory,
+          ...(input.signal === undefined ? {} : { signal: input.signal }),
+        }),
+        input.repoUrl,
+      );
       repoAnalysisPath = join(input.outputRoot, "repo-analysis.json");
       await writeFile(repoAnalysisPath, toPrettyJson(repoAnalysis));
+      throwIfAborted();
     } catch (error) {
       await cleanupRepoScratch(repoScratchDir, error);
       throw error;
@@ -466,25 +571,32 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   let narrativeExplorationPath: string | undefined;
 
   if (isNarrativeExplorationEnabled(input.enableNarrativeExploration)) {
+    throwIfAborted();
     try {
       narrativeExploration = await exploreNarrativeWebsite(analysis.url, {
         enabled: true,
         prompt: input.prompt,
         productAnalysis: analysis,
         repoAnalysis,
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
       });
 
       if (narrativeExploration !== undefined) {
         narrativeExplorationPath = join(input.outputRoot, "narrative-exploration.json");
         await writeFile(narrativeExplorationPath, toPrettyJson(narrativeExploration));
+        throwIfAborted();
       }
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
       input.onWarning?.(`Narrative exploration failed: ${formatErrorMessage(error)}`);
     }
   }
 
   // ---- Product Understanding phase (renderer-agnostic; runs for every renderer) ----
   input.onPhase?.("understanding");
+  throwIfAborted();
   const understanding = await understandProduct({
     productUrl: input.productUrl,
     ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
@@ -493,23 +605,28 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     websiteAnalysis: analysis,
     ...(repoAnalysis === undefined ? {} : { repoAnalysis }),
     ...(repoCheckoutDirectory === undefined ? {} : { repoCheckoutDirectory }),
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
   });
   const productUnderstandingPath = join(input.outputRoot, "product-understanding.json");
   await writeFile(productUnderstandingPath, toPrettyJson(understanding));
+  throwIfAborted();
 
   // ---- Demo Strategy + Story phase (selects the single flow, writes the storyboard) ----
   input.onPhase?.("strategy");
+  throwIfAborted();
   const { strategy, storyboard: strategyStoryboard } = await strategize({
     understanding,
     prompt: prompt,
     systemPrompt,
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
   });
   const demoStrategyPath = join(input.outputRoot, "demo-strategy.json");
   await writeFile(demoStrategyPath, toPrettyJson(strategy));
   const storyboardArtifactPath = join(input.outputRoot, "storyboard.json");
   await writeFile(storyboardArtifactPath, toPrettyJson(strategyStoryboard));
+  throwIfAborted();
 
   const pipelineArtifactPaths = [runInputPath, productUnderstandingPath, demoStrategyPath, storyboardArtifactPath];
   const pipelineWarnings = dedupeStrings([...understanding.warnings, ...strategy.warnings]);
@@ -522,8 +639,10 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     const hyperframesDir = join(input.outputRoot, "hyperframes");
     await mkdir(hyperframesDir, { recursive: true });
     const hyperframesWebsiteAnalysis = await prepareHyperframesWebsiteAnalysis(analysis, hyperframesDir);
+    throwIfAborted();
 
     input.onPhase?.("planning");
+    throwIfAborted();
     await generateHyperframes({
       productUrl: analysis.url,
       repoUrl: input.repoUrl,
@@ -535,14 +654,18 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       repoCheckoutDirectory,
       hyperframesDir,
       hyperframesAgent: input.hyperframesAgent,
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
     });
+    throwIfAborted();
 
     let validated: Awaited<ReturnType<typeof validateHyperframesArtifacts>> | undefined;
     let renderResult: RunHyperframesRenderResult | undefined;
     for (let attempt = 0; attempt <= maxHyperframesRepairAttempts; attempt += 1) {
       try {
         input.onPhase?.("validation");
+        throwIfAborted();
         validated = await validateHyperframesArtifacts({ hyperframesDir, productUrl: analysis.url, repoUrl: input.repoUrl });
+        throwIfAborted();
       } catch (error) {
         if (attempt >= maxHyperframesRepairAttempts) {
           throw error;
@@ -554,19 +677,28 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
           hyperframesAgent: input.hyperframesAgent,
           failureStage: "validation",
           logText: formatErrorMessage(error),
+          ...(input.signal === undefined ? {} : { signal: input.signal }),
         });
+        throwIfAborted();
         continue;
       }
 
       try {
         input.onPhase?.("capture");
-        renderResult = await runHyperframes({ hyperframesDir, outputVideoPath: validated.outputVideoPath });
+        throwIfAborted();
+        renderResult = await runHyperframes({
+          hyperframesDir,
+          outputVideoPath: validated.outputVideoPath,
+          ...(input.signal === undefined ? {} : { signal: input.signal }),
+        });
+        throwIfAborted();
         if (renderResult.outputVideoPath !== validated.outputVideoPath) {
           throw new Error("Hyperframes render output path must match generated outputVideoPath");
         }
         await access(renderResult.outputVideoPath);
         break;
       } catch (error) {
+        throwIfAborted();
         if (attempt >= maxHyperframesRepairAttempts) {
           throw error;
         }
@@ -578,7 +710,9 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
           hyperframesAgent: input.hyperframesAgent,
           failureStage: failure.failureStage,
           logText: await readHyperframesFailureLog(hyperframesDir, failure.failureStage, failure.message),
+          ...(input.signal === undefined ? {} : { signal: input.signal }),
         });
+        throwIfAborted();
       }
     }
 
@@ -587,6 +721,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     }
 
     input.onPhase?.("assembly");
+    throwIfAborted();
     const artifactPaths = [
       productAnalysisPath,
       ...(repoAnalysisPath ? [repoAnalysisPath] : []),
@@ -623,8 +758,10 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
 
   async function runPlaywrightRenderer(): Promise<InternalRendererResult> {
     await mkdir(captureOutputDir, { recursive: true });
+    throwIfAborted();
 
     input.onPhase?.("planning");
+    throwIfAborted();
     const plannerResult: AiUrlPlannerResult = await planner({
       productUrl: analysis.url,
       prompt: prompt,
@@ -635,24 +772,34 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       storyboard: strategyStoryboard,
       ...(repoAnalysis === undefined ? {} : { repoAnalysis, repoCheckoutDirectory }),
       ...(narrativeExploration === undefined ? {} : { narrativeExploration }),
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
     });
 
     const { storyboard, capturePlan } = plannerResult!;
     const storyboardPath = join(playwrightOutputRoot, "storyboard.json");
     await writeFile(storyboardPath, toPrettyJson(storyboard));
+    throwIfAborted();
 
     input.onPhase?.("verification");
+    throwIfAborted();
     const verification = verifyCapturePlan(capturePlan);
     if (!verification.valid) {
       throw new Error(`Generated capture plan failed verification: ${formatCapturePlanIssues(verification)}`);
     }
     const capturePlanPath = join(playwrightOutputRoot, "capture-plan.json");
     await writeFile(capturePlanPath, toPrettyJson(capturePlan));
+    throwIfAborted();
 
     input.onPhase?.("capture");
     // smooth: render a synthetic cursor, click ripples and eased scrolling into the
     // recording so the captured video already looks Screen Studio-like.
-    const captureResult = await runCapture(capturePlan, { outputDir: captureOutputDir, headless: true, smooth: true });
+    const captureResult = await runCapture(capturePlan, {
+      outputDir: captureOutputDir,
+      headless: true,
+      smooth: true,
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+    });
+    throwIfAborted();
     const captureResultPath = join(playwrightOutputRoot, "capture-result.json");
     await writeFile(captureResultPath, toPrettyJson(captureResult));
 
@@ -677,7 +824,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     await writeFile(renderPlanPath, toPrettyJson(renderPlan));
 
     // Director Mode: timeline-compression decisions + a shot list that frames the demo.
-    const editDecisionList = buildEditDecisionList(actionTrace);
+    const editDecisionList = buildEditDecisionList(actionTrace, { targetDurationSeconds: input.durationCapSeconds });
     const editDecisionListPath = join(playwrightOutputRoot, "edit-decision-list.json");
     await writeFile(editDecisionListPath, toPrettyJson(editDecisionList));
 
@@ -700,8 +847,10 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     });
     const directorPlanPath = join(playwrightOutputRoot, "director-plan.json");
     await writeFile(directorPlanPath, toPrettyJson(directorPlan));
+    throwIfAborted();
 
     input.onPhase?.("assembly");
+    throwIfAborted();
     // Compile the editable DemoProject (zoom keyframes + cursor.hidden), then apply the
     // dead-time EDL as editable clip trims. This trimmed project is BOTH the saved
     // demo-project.json and the source the final.mp4 is rendered from.
@@ -716,13 +865,15 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       ...(input.repoUrl === undefined ? {} : { sourceRepoUrl: input.repoUrl }),
       prompt: prompt,
     });
-    const project = applyEditDecisionList(compiledProject, editDecisionList);
+    const renderPlanAppliedToProject = applyRenderPlanZooms(compiledProject, renderPlan);
+    const project = applyEditDecisionList(renderPlanAppliedToProject.project, editDecisionList);
     const projectPath = join(playwrightOutputRoot, "demo-project.json");
     await writeFile(projectPath, toPrettyJson(project));
 
     // final.mp4 = a render OF the editable project (zoom + dead-time trims applied), with a
     // flat transcode fallback. Editable units stay in demo-project.json; the mp4 is a preview.
     const finalVideoPath = join(playwrightOutputRoot, "final.mp4");
+    throwIfAborted();
     const finalVideoMode = await produceFinalVideo(
       project,
       playwrightOutputRoot,
@@ -730,11 +881,12 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       captureOutputDir,
       finalVideoPath,
       renderPlan.fps,
+      input.signal,
     );
     const finalVideoProduced = finalVideoMode !== "none";
     const finalVideoSource =
       finalVideoMode === "rendered" ? "demo-project" : finalVideoMode === "transcoded" ? "raw-playwright-recording" : "none";
-    const editDecisionListApplied = editDecisionList.cuts.length > 0;
+    const editDecisionListApplied = editDecisionList.removedSeconds > 0;
 
     const artifactPaths = [
       productAnalysisPath,
@@ -775,6 +927,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       finalVideoMode,
       finalVideoSource,
       editDecisionListApplied,
+      renderPlanApplied: renderPlanAppliedToProject.applied,
       coverageActionTrace: actionTrace,
       coverageCaptureLineage: captureLineage,
     };
@@ -806,6 +959,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
         finalVideoMode: playwrightResult.finalVideoMode,
         finalVideoSource: playwrightResult.finalVideoSource,
         editDecisionListApplied: playwrightResult.editDecisionListApplied,
+        renderPlanApplied: playwrightResult.renderPlanApplied,
         coverageActionTrace: playwrightResult.coverageActionTrace,
         coverageCaptureLineage: playwrightResult.coverageCaptureLineage,
       };
@@ -817,8 +971,9 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     const artifactPaths = mergeArtifactPaths(pipelineArtifactPaths, internal.artifactPaths, [runSummaryPath]);
 
     const fellBack = (warnings: string[], markers: readonly string[]) => warnings.some((w) => markers.includes(w));
+    const backend = selectedAgentBackend();
     const phaseMode = (warnings: string[], markers: readonly string[]) =>
-      !agentBackendEnabled() ? "deterministic" : fellBack(warnings, markers) ? "deterministic-fallback" : "claude-code";
+      backend === "deterministic" ? "deterministic" : fellBack(warnings, markers) ? "deterministic-fallback" : backend;
 
     const coverage = buildCoreCoverage({
       strategy,
@@ -831,15 +986,19 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     const execution: RunExecution = {
       understandingMode: phaseMode(understanding.warnings, UNDERSTANDING_FALLBACK_WARNINGS),
       strategyMode: phaseMode(strategy.warnings, [STRATEGY_FALLBACK_WARNING]),
-      playwrightPlannerMode: agentBackendEnabled() ? "claude-code" : "opencode",
+      playwrightPlannerMode: backend === "claude-code" ? "claude-code" : "opencode",
       finalVideoMode: internal.finalVideoMode ?? "none",
       finalVideoSource: internal.finalVideoSource ?? "none",
       directorPlanApplied: "none",
-      renderPlanApplied: "none",
+      renderPlanApplied: internal.renderPlanApplied ? "full" : "none",
       editDecisionListApplied: internal.editDecisionListApplied ?? false,
       finalVideoReflectsEditDecisionList: (internal.editDecisionListApplied ?? false) && internal.finalVideoMode === "rendered",
-      cameraSource: "demo-project.zooms (compileProject suggestInteractionZooms); render-plan.json is metadata only",
-      notes: ["director-plan.json and render-plan.json are metadata only in this build; not applied to final.mp4."],
+      cameraSource: internal.renderPlanApplied
+        ? "demo-project.zooms from compileProject plus render-plan.json zoom segments"
+        : "demo-project.zooms from compileProject suggestInteractionZooms",
+      notes: internal.renderPlanApplied
+        ? ["render-plan.json zoom segments were materialized into demo-project.json before EDL trimming; director-plan.json remains metadata only."]
+        : ["No render-plan zoom segments were available to apply; director-plan.json remains metadata only."],
     };
 
     const runSummary = buildRunSummary({

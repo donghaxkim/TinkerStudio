@@ -108,6 +108,29 @@ const clampedProject = DemoProjectSchema.parse(
 
 assert.equal(clampedProject.cursorEvents.length, 2);
 
+const longCaptureProject = DemoProjectSchema.parse(
+  compileProject({
+    ...input,
+    storyboard: { ...input.storyboard, durationCapSeconds: 6 },
+    captureResult: {
+      ...input.captureResult,
+      clips: [{ ...input.captureResult.clips[0]!, duration: 20 }],
+      events: [
+        ...input.captureResult.events,
+        { type: "zoomTarget", time: 14, x: 160, y: 140, width: 180, height: 80, label: "Late source action" },
+      ],
+    },
+  }),
+);
+
+assert.equal(longCaptureProject.duration, 20);
+assert.equal(longCaptureProject.tracks[0]?.clips[0]?.end, 20);
+assert.equal(longCaptureProject.tracks[0]?.clips[0]?.sourceEnd, 20);
+assert.ok(
+  longCaptureProject.zooms.some((zoom) => zoom.start >= 14),
+  "late source actions must survive storyboard-cap assembly for EDL trimming",
+);
+
 const shortCaptureProject = DemoProjectSchema.parse(
   compileProject({
     ...input,

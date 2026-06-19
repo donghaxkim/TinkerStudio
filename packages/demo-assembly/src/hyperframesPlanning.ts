@@ -63,6 +63,7 @@ export type HyperframesOpencodeRunOptions = {
   logDir: string;
   repoCheckoutDirectory?: string;
   hyperframesAgent?: HyperframesAgent;
+  signal?: AbortSignal;
 };
 
 export type HyperframesOpencodeRun = (prompt: string, options: HyperframesOpencodeRunOptions) => Promise<string>;
@@ -78,6 +79,7 @@ export type GenerateHyperframesProjectInput = {
   repoCheckoutDirectory: string;
   hyperframesDir: string;
   hyperframesAgent?: HyperframesAgent;
+  signal?: AbortSignal;
 };
 
 export type RepairHyperframesProjectInput = {
@@ -86,6 +88,7 @@ export type RepairHyperframesProjectInput = {
   hyperframesAgent?: HyperframesAgent;
   failureStage: string;
   logText: string;
+  signal?: AbortSignal;
 };
 
 export type GenerateHyperframesProject = (input: GenerateHyperframesProjectInput) => Promise<void>;
@@ -94,6 +97,7 @@ export type RepairHyperframesProject = (input: RepairHyperframesProjectInput) =>
 type OpencodeHyperframesOptions = {
   runOpencode?: HyperframesOpencodeRun;
 };
+type OpencodeTerminationReason = "timeout" | "abort";
 
 function effectiveTimeout(value: number | undefined, fallback: number) {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
@@ -309,12 +313,12 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
     await prepareOpencodeSandbox(options);
     await mkdir(options.logDir, { recursive: true });
 
-    let result: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean };
+    let result: { code: number | null; signal: NodeJS.Signals | null; terminationReason?: OpencodeTerminationReason };
     const stdout = createRetainedOutput();
     const stderr = createRetainedOutput();
-    result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
+    result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; terminationReason?: OpencodeTerminationReason }>((resolve, reject) => {
       const detached = process.platform !== "win32";
-      let timedOut = false;
+      let terminationReason: OpencodeTerminationReason | undefined;
       let settled = false;
       let killTimeout: ReturnType<typeof setTimeout> | undefined;
       let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -324,16 +328,26 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
         env: sanitizedHyperframesAgentEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
-      const timer = setTimeout(() => {
-        timedOut = true;
+      function terminateChild(reason: OpencodeTerminationReason) {
+        if (terminationReason !== undefined) {
+          return;
+        }
+        terminationReason = reason;
+        if (reason === "abort") {
+          clearTimeout(timer);
+        }
         killChild("SIGTERM");
         killTimeout = setTimeout(() => {
           killChild("SIGKILL");
           closeFallbackTimeout = setTimeout(() => {
             destroyStreams();
-            resolveOnce({ code: null, signal: null, timedOut });
+            resolveOnce({ code: null, signal: null, terminationReason });
           }, TIMEOUT_CLOSE_FALLBACK_MS);
         }, TIMEOUT_KILL_GRACE_MS);
+      }
+
+      const timer = setTimeout(() => {
+        terminateChild("timeout");
       }, effectiveTimeoutMs);
 
       function killChild(signal: NodeJS.Signals) {
@@ -353,6 +367,13 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
         }
       }
 
+      const abortChild = () => terminateChild("abort");
+
+      if (options.signal?.aborted) {
+        abortChild();
+      }
+      options.signal?.addEventListener("abort", abortChild, { once: true });
+
       function clearTimers() {
         clearTimeout(timer);
         if (killTimeout !== undefined) {
@@ -368,6 +389,7 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
         child.stderr.removeAllListeners("data");
         child.removeAllListeners("close");
         child.removeAllListeners("error");
+        options.signal?.removeEventListener("abort", abortChild);
       }
 
       function destroyStreams() {
@@ -375,7 +397,7 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
         child.stderr.destroy();
       }
 
-      function resolveOnce(finalResult: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }) {
+      function resolveOnce(finalResult: { code: number | null; signal: NodeJS.Signals | null; terminationReason?: OpencodeTerminationReason }) {
         if (settled) {
           return;
         }
@@ -408,14 +430,18 @@ export async function defaultRunOpencode(prompt: string, options: HyperframesOpe
       });
 
       child.on("close", (code, signal) => {
-        resolveOnce({ code, signal, timedOut });
+        resolveOnce({ code, signal, terminationReason });
       });
     });
 
     const stdoutText = retainedOutputToLog("stdout", stdout);
     await Promise.all([writeFile(stdoutPath, stdoutText), writeFile(stderrPath, retainedOutputToLog("stderr", stderr))]);
 
-    if (result.timedOut) {
+    if (result.terminationReason === "abort") {
+      throw new DOMException(`${agentCommand.label} Hyperframes generation aborted.`, "AbortError");
+    }
+
+    if (result.terminationReason === "timeout") {
       throw new Error(`${agentCommand.label} Hyperframes generation timed out after ${effectiveTimeoutMs}ms; see ${stderrPath}`);
     }
 
@@ -539,6 +565,7 @@ export function createOpencodeHyperframesGenerator(options: OpencodeHyperframesO
         logDir: input.hyperframesDir,
         repoCheckoutDirectory: input.repoCheckoutDirectory,
         hyperframesAgent: input.hyperframesAgent,
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
       });
     } finally {
       await cleanupOpencodeSandbox(input.hyperframesDir);
@@ -561,6 +588,7 @@ export function createOpencodeHyperframesRepairer(options: OpencodeHyperframesOp
         logDir: input.hyperframesDir,
         repoCheckoutDirectory: input.repoCheckoutDirectory,
         hyperframesAgent: input.hyperframesAgent,
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
       });
     } finally {
       await cleanupOpencodeSandbox(input.hyperframesDir);

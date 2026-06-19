@@ -191,11 +191,12 @@ export function compileProject(input: CompileProjectInput): DemoProject {
     throw new Error("Cannot compile DemoProject without a captured video asset");
   }
 
-  // Footage is the source of truth: a timeline longer than the captured clip
-  // renders black frames past the end of footage.
+  // Footage is the source of truth. When Playwright reports source duration, keep the
+  // full recording so the EDL can trim late actions instead of dropping them at the
+  // storyboard cap before assembly.
   const duration =
     videoAsset.duration !== undefined
-      ? Math.min(input.storyboard.durationCapSeconds, videoAsset.duration)
+      ? videoAsset.duration
       : input.storyboard.durationCapSeconds;
   const clipDuration = duration;
   const assets = [...input.captureResult.clips, ...input.captureResult.screenshots].map(toProjectAsset);

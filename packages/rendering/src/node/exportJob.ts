@@ -94,18 +94,18 @@ export class ExportJobCoordinator {
 
     this.activeOutputPaths.add(outputPath);
 
-    const runCommand: CommandRunner = async (command, args) => {
+    const runCommand: CommandRunner = async (command, args, commandOptions) => {
       currentPhase = "rendering";
       currentCommand = { command, args: [...args] };
       emit({ id, phase: "rendering", progress: 0.55, outputPath, startedAt });
-      await (options.runCommand ?? runSpawnedFfmpegCommand)(command, args);
+      await (options.runCommand ?? runSpawnedFfmpegCommand)(command, args, commandOptions);
     };
 
-    const runProbe: ProbeCommandRunner = async (command, args) => {
+    const runProbe: ProbeCommandRunner = async (command, args, commandOptions) => {
       currentPhase = "probing";
       currentCommand = { command, args: [...args] };
       emit({ id, phase: "probing", progress: 0.85, outputPath, startedAt });
-      return (options.runProbe ?? runSpawnedFfprobeCommand)(command, args);
+      return (options.runProbe ?? runSpawnedFfprobeCommand)(command, args, commandOptions);
     };
 
     try {

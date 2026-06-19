@@ -193,6 +193,37 @@ try {
     await submitServer.close();
   }
 
+  const coveredHoverServer = await startHtmlServer(`
+    <html>
+      <body style="margin:0">
+        <button disabled style="position:absolute;top:120px;left:180px;width:160px;height:48px">Current plan</button>
+        <div style="position:absolute;top:100px;left:160px;width:220px;height:100px;background:rgba(0,0,0,0.02)"></div>
+        <main>Billing sandbox result</main>
+      </body>
+    </html>
+  `);
+  try {
+    const coveredHoverResult = await runPlaywrightCapture(
+      {
+        targetUrl: coveredHoverServer.url,
+        viewport: { width: 640, height: 480 },
+        steps: [
+          { type: "goto", url: coveredHoverServer.url },
+          { type: "hover", text: "Current plan" },
+        ],
+        expectedCheckpoints: [{ id: "current-plan", label: "Current plan", text: "Current plan" }],
+      },
+      { outputDir },
+    );
+
+    assert.equal(coveredHoverResult.checkpoints[0]?.passed, true);
+    const hoverTrace = coveredHoverResult.actionTrace?.actions.find((action) => action.type === "hover");
+    assert.equal(hoverTrace?.status, "success", "covered hover should be best-effort, not fail capture");
+    assert.ok(hoverTrace?.targetBox !== undefined, "covered hover should still record the visible target");
+  } finally {
+    await coveredHoverServer.close();
+  }
+
   let offOriginRequestCount = 0;
   const offOriginServer = await startHtmlServer("<html><body><h1>Off origin</h1></body></html>", () => {
     offOriginRequestCount += 1;
@@ -266,6 +297,32 @@ try {
     await iframeServer.close();
     await originServer.close();
     await offOriginServer.close();
+  }
+
+  const abortServer = await startHtmlServer("<html><body><h1>Waiting</h1></body></html>");
+  try {
+    const controller = new AbortController();
+    const abortPlan: CapturePlan = {
+      targetUrl: abortServer.url,
+      viewport: { width: 640, height: 480 },
+      steps: [
+        { type: "goto", url: abortServer.url },
+        { type: "pause", ms: 5_000 },
+      ],
+      expectedCheckpoints: [],
+    };
+    const startedAt = Date.now();
+    const capture = runPlaywrightCapture(abortPlan, { outputDir, signal: controller.signal });
+
+    setTimeout(() => controller.abort(), 1_000);
+
+    await assert.rejects(
+      () => capture,
+      (error: unknown) => error instanceof DOMException && error.name === "AbortError",
+    );
+    assert.ok(Date.now() - startedAt < 2_500, "capture should settle promptly after aborting a long Playwright pause");
+  } finally {
+    await abortServer.close();
   }
 
   Object.defineProperty(globalThis, "document", {

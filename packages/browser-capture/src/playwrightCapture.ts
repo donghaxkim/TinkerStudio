@@ -1,6 +1,6 @@
 import { mkdir, rename, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { chromium, type Page, type Route } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright";
 import {
   createClickEvent,
   createCursorPathEvents,
@@ -19,6 +19,7 @@ import { CaptureError, type CaptureAsset, type CaptureEvent, type CapturePlan, t
 export type RunPlaywrightCaptureOptions = {
   outputDir: string;
   headless?: boolean;
+  signal?: AbortSignal;
   /**
    * Render a synthetic cursor, click ripples and eased scrolling into the page so the
    * recording itself looks smooth (Screen Studio-like). Off by default to preserve the
@@ -178,6 +179,14 @@ export async function runPlaywrightCapture(
   assertValidCapturePlan(plan);
   assertGotoStepsStayOnTargetOrigin(plan);
 
+  function throwIfAborted() {
+    if (options.signal?.aborted) {
+      throw new DOMException("Capture cancelled.", "AbortError");
+    }
+  }
+
+  throwIfAborted();
+
   const smooth = options.smooth ?? false;
   const traceScreenshots = options.traceScreenshots ?? smooth;
 
@@ -201,9 +210,17 @@ export async function runPlaywrightCapture(
     await mkdir(actionShotDir, { recursive: true });
   }
 
-  let browser;
-  let context;
+  let browser: Browser | undefined;
+  let context: BrowserContext | undefined;
   let page!: Page;
+
+  const closeActiveTargets = () => {
+    void page?.close().catch(() => undefined);
+    void context?.close().catch(() => undefined);
+    void browser?.close().catch(() => undefined);
+  };
+
+  options.signal?.addEventListener("abort", closeActiveTargets, { once: true });
 
   // Best-effort viewport screenshot for the action trace; never fails the capture.
   async function traceShot(label: string): Promise<string | undefined> {
@@ -221,6 +238,7 @@ export async function runPlaywrightCapture(
 
   try {
     browser = await chromium.launch({ headless: options.headless ?? true });
+    throwIfAborted();
     context = await browser.newContext({
       viewport: plan.viewport,
       recordVideo: { dir: videoDir, size: plan.viewport },
@@ -264,6 +282,7 @@ export async function runPlaywrightCapture(
     });
 
     for (const [index, step] of plan.steps.entries()) {
+      throwIfAborted();
       const entry: ActionTraceEntry = {
         id: trace.nextId(TRACED_TYPE_BY_STEP[step.type]),
         type: TRACED_TYPE_BY_STEP[step.type],
@@ -409,13 +428,22 @@ export async function runPlaywrightCapture(
               entry.targetBox = roundedBox(target.box);
             }
 
-            await locator.hover();
+            if (target !== undefined) {
+              try {
+                await locator.hover({ timeout: 2_000 });
+              } catch {
+                await page.mouse.move(target.center.x, target.center.y);
+              }
+            } else {
+              await locator.hover();
+            }
             break;
           }
           case "pause":
             await page.waitForTimeout(step.ms);
             break;
         }
+        throwIfAborted();
         if (popupError !== undefined) {
           throw popupError;
         }
@@ -432,6 +460,7 @@ export async function runPlaywrightCapture(
         entry.endTime = trace.elapsed();
         entry.error = stepErrorMessage(error);
         trace.record(entry);
+        throwIfAborted();
         if (popupError !== undefined) {
           throw popupError;
         }
@@ -445,6 +474,7 @@ export async function runPlaywrightCapture(
       }
     }
 
+    throwIfAborted();
     await page.screenshot({ path: screenshotPath, fullPage: true });
     const screenshotDimensions = await page.evaluate<{ width: number; height: number }>(fullPageDocumentDimensions);
     const checkpoints = await evaluateCheckpoints(page, plan);
@@ -498,6 +528,9 @@ export async function runPlaywrightCapture(
     if (browser !== undefined) {
       await browser.close().catch(() => undefined);
     }
+    throwIfAborted();
     throw error;
+  } finally {
+    options.signal?.removeEventListener("abort", closeActiveTargets);
   }
 }

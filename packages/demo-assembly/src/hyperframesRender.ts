@@ -13,6 +13,7 @@ export type HyperframesCommand = {
   args: string[];
   cwd: string;
   timeoutMs: number;
+  signal?: AbortSignal;
   timeoutKillGraceMs?: number;
   timeoutCloseFallbackMs?: number;
 };
@@ -31,6 +32,7 @@ export type HyperframesCommandRun = (command: HyperframesCommand) => Promise<Hyp
 export type RunHyperframesRenderInput = {
   hyperframesDir: string;
   outputVideoPath: string;
+  signal?: AbortSignal;
   runCommand?: HyperframesCommandRun;
   lintTimeoutMs?: number;
   renderTimeoutMs?: number;
@@ -150,6 +152,10 @@ async function removeHyperframesRunnerRoot(hyperframesDir: string) {
 
 async function defaultRunCommand(command: HyperframesCommand): Promise<HyperframesCommandResult> {
   const env = await sanitizedHyperframesEnv(command.cwd);
+  if (command.signal?.aborted) {
+    return { status: null, stdout: "", stderr: "Aborted." };
+  }
+
   return await new Promise((resolve, reject) => {
     const detached = process.platform !== "win32";
     const child = spawn(command.command, command.args, {
@@ -161,23 +167,23 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
     const stdout = createRetainedOutput();
     const stderr = createRetainedOutput();
     let timedOut = false;
+    let aborted = false;
     let settled = false;
+    let terminating = false;
     let killTimeout: ReturnType<typeof setTimeout> | undefined;
     let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
     const timeoutKillGraceMs = effectiveTimeout(command.timeoutKillGraceMs, TIMEOUT_KILL_GRACE_MS);
     const timeoutCloseFallbackMs = effectiveTimeout(command.timeoutCloseFallbackMs, TIMEOUT_CLOSE_FALLBACK_MS);
     const timeout = setTimeout(() => {
       timedOut = true;
-      killChild("SIGTERM");
-      killTimeout = setTimeout(() => {
-        killChild("SIGKILL");
-        // Prefer close for flushed streams; this fallback breaks inherited pipe hangs.
-        closeFallbackTimeout = setTimeout(() => {
-          destroyStreams();
-          resolveOnce({ status: null, ...commandOutput(), timedOut });
-        }, timeoutCloseFallbackMs);
-      }, timeoutKillGraceMs);
+      terminateChild();
     }, command.timeoutMs);
+
+    const abortHandler = () => {
+      aborted = true;
+      terminateChild();
+    };
+    command.signal?.addEventListener("abort", abortHandler, { once: true });
 
     function killChild(signal: NodeJS.Signals) {
       if (detached && child.pid !== undefined) {
@@ -196,6 +202,22 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
       }
     }
 
+    function terminateChild() {
+      if (terminating) {
+        return;
+      }
+      terminating = true;
+      killChild("SIGTERM");
+      killTimeout = setTimeout(() => {
+        killChild("SIGKILL");
+        // Prefer close for flushed streams; this fallback breaks inherited pipe hangs.
+        closeFallbackTimeout = setTimeout(() => {
+          destroyStreams();
+          resolveOnce({ status: null, ...commandOutput(), timedOut });
+        }, timeoutCloseFallbackMs);
+      }, timeoutKillGraceMs);
+    }
+
     function clearTimers() {
       clearTimeout(timeout);
       if (killTimeout !== undefined) {
@@ -207,6 +229,7 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
     }
 
     function cleanupListeners() {
+      command.signal?.removeEventListener("abort", abortHandler);
       child.stdout.removeAllListeners("data");
       child.stderr.removeAllListeners("data");
       child.removeAllListeners("close");
@@ -221,9 +244,10 @@ async function defaultRunCommand(command: HyperframesCommand): Promise<Hyperfram
     function commandOutput() {
       const stdoutResult = retainedOutputToResult(stdout);
       const stderrResult = retainedOutputToResult(stderr);
+      const stderrText = `${stderrResult.text}${aborted ? `${stderrResult.text.length > 0 ? "\n" : ""}Aborted.` : ""}`;
       return {
         stdout: stdoutResult.text,
-        stderr: stderrResult.text,
+        stderr: stderrText,
         ...(stdoutResult.omittedBytes > 0 ? { stdoutOmittedBytes: stdoutResult.omittedBytes } : {}),
         ...(stderrResult.omittedBytes > 0 ? { stderrOmittedBytes: stderrResult.omittedBytes } : {}),
       };
@@ -301,6 +325,7 @@ export async function runHyperframesRender(input: RunHyperframesRenderInput): Pr
         args: ["--yes", "--package", "hyperframes", "hyperframes", "lint"],
         cwd: input.hyperframesDir,
         timeoutMs: effectiveTimeout(input.lintTimeoutMs, DEFAULT_LINT_TIMEOUT_MS),
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
         ...timeoutOptions,
       },
       lintLogPath,
@@ -314,6 +339,7 @@ export async function runHyperframesRender(input: RunHyperframesRenderInput): Pr
         args: ["--yes", "--package", "hyperframes", "hyperframes", "render", "--output", input.outputVideoPath],
         cwd: input.hyperframesDir,
         timeoutMs: effectiveTimeout(input.renderTimeoutMs, DEFAULT_RENDER_TIMEOUT_MS),
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
         ...timeoutOptions,
       },
       renderLogPath,

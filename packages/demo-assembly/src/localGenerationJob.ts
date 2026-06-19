@@ -28,6 +28,7 @@ export type RunLocalGenerationJobOptions = {
   now?: () => string;
   onProgress?: (event: GenerationProgressEvent) => void;
   runAiUrlDemo?: AiUrlDemoRunner;
+  signal?: AbortSignal;
 };
 
 const repoRoot = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
@@ -87,6 +88,10 @@ function createFailure(jobId: string | undefined, stage: GenerationFailureStage,
 }
 
 function statusForPhase(phase: GenerationFailureStage): GenerationStatus {
+  if (phase === "cancelled") {
+    return "failed";
+  }
+
   if (phase === "capture") {
     return "capturing";
   }
@@ -129,6 +134,12 @@ export async function runLocalGenerationJob(
   const initialTime = now();
   const jobId = extractJobId(rawRequest, initialTime);
 
+  function throwIfAborted() {
+    if (options.signal?.aborted) {
+      throw new DOMException("Generation cancelled.", "AbortError");
+    }
+  }
+
   let job: GenerationJob | undefined;
 
   function emit(status: GenerationStatus, message: string, artifactPath?: string, error?: GenerationError) {
@@ -150,6 +161,7 @@ export async function runLocalGenerationJob(
   }
 
   const parsedRequest = CreateDemoRequestSchema.safeParse(rawRequest);
+  throwIfAborted();
 
   if (!parsedRequest.success) {
     const failure = createFailure(jobId, "validation", formatValidationError(parsedRequest.error));
@@ -189,6 +201,7 @@ export async function runLocalGenerationJob(
   let activeStage: GenerationFailureStage = "unknown";
 
   try {
+    throwIfAborted();
     const demoResult: LocalDemoResult = await aiUrlRunner({
       outputRoot: outputDirectory,
       projectId: jobId,
@@ -201,7 +214,9 @@ export async function runLocalGenerationJob(
       ...(request.systemPrompt === undefined ? {} : { systemPrompt: request.systemPrompt }),
       durationCapSeconds: request.durationCapSeconds,
       aspectRatio: request.aspectRatio,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
       onPhase: (phase: AiUrlDemoPhase) => {
+        throwIfAborted();
         activeStage = toFailureStage(phase);
         emit(statusForPhase(activeStage), `AI URL ${phase} started`);
       },

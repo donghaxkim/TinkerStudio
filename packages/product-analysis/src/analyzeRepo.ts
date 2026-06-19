@@ -155,7 +155,7 @@ function normalizeRepoUrl(repoUrl: string) {
   return repoUrl;
 }
 
-async function defaultFetchRepo(repoUrl: string, checkoutDirectory: string) {
+async function defaultFetchRepo(repoUrl: string, checkoutDirectory: string, options: { signal?: AbortSignal } = {}) {
   await mkdir(dirname(checkoutDirectory), { recursive: true });
   const gitHomeDirectory = await mkdtemp(join(dirname(checkoutDirectory), "git-home-"));
   const gitConfigDirectory = join(gitHomeDirectory, ".config");
@@ -167,11 +167,13 @@ async function defaultFetchRepo(repoUrl: string, checkoutDirectory: string) {
   try {
     await execFile("git", [...isolatedGitArgs, "clone", "--depth", "1", "--no-tags", "--no-recurse-submodules", repoUrl, checkoutDirectory], {
       env: gitEnv,
+      signal: options.signal,
     });
 
     try {
       const { stdout } = await execFile("git", [...isolatedGitArgs, "-C", checkoutDirectory, "rev-parse", "--short", "HEAD"], {
         env: gitEnv,
+        signal: options.signal,
       });
       return { commit: stdout.trim() || undefined };
     } catch {
@@ -293,7 +295,7 @@ async function writeLocalOpencodeConfig(cwd: string, contents: string) {
   await writeFile(target, contents, { flag: "wx" });
 }
 
-export async function defaultRunOpencode(prompt: string, options: { cwd: string }) {
+export async function defaultRunOpencode(prompt: string, options: { cwd: string; signal?: AbortSignal }) {
   const timeoutMs = Number(process.env.TINKER_REPO_ANALYSIS_OPENCODE_TIMEOUT_MS ?? DEFAULT_OPENCODE_TIMEOUT_MS);
   const effectiveTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_OPENCODE_TIMEOUT_MS;
   const stdoutPath = join(options.cwd, ".tinker-opencode-output.jsonl");
@@ -306,6 +308,7 @@ export async function defaultRunOpencode(prompt: string, options: { cwd: string 
   result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
     const detached = process.platform !== "win32";
     let timedOut = false;
+    let aborted = options.signal?.aborted ?? false;
     let settled = false;
     let killTimeout: ReturnType<typeof setTimeout> | undefined;
     let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -315,6 +318,24 @@ export async function defaultRunOpencode(prompt: string, options: { cwd: string 
       env: sanitizedOpencodeEnv(),
       stdio: ["ignore", "pipe", "pipe"],
     });
+
+    if (aborted) {
+      killChild("SIGTERM");
+    }
+
+    const onAbort = () => {
+      aborted = true;
+      killChild("SIGTERM");
+      killTimeout = setTimeout(() => {
+        killChild("SIGKILL");
+        closeFallbackTimeout = setTimeout(() => {
+          destroyStreams();
+          rejectOnce(new DOMException("OpenCode repo analysis cancelled.", "AbortError"));
+        }, TIMEOUT_CLOSE_FALLBACK_MS);
+      }, TIMEOUT_KILL_GRACE_MS);
+    };
+
+    options.signal?.addEventListener("abort", onAbort, { once: true });
 
     const timeout = setTimeout(() => {
       timedOut = true;
@@ -360,6 +381,7 @@ export async function defaultRunOpencode(prompt: string, options: { cwd: string 
       child.stderr.removeAllListeners("data");
       child.removeAllListeners("close");
       child.removeAllListeners("error");
+      options.signal?.removeEventListener("abort", onAbort);
     }
 
     function destroyStreams() {
@@ -399,6 +421,10 @@ export async function defaultRunOpencode(prompt: string, options: { cwd: string 
       rejectOnce(error);
     });
     child.on("close", (code, signal) => {
+      if (aborted) {
+        rejectOnce(new DOMException("OpenCode repo analysis cancelled.", "AbortError"));
+        return;
+      }
       resolveOnce({ code, signal, timedOut });
     });
   });
@@ -752,16 +778,28 @@ export async function analyzeRepo(repoUrl: string, options: AnalyzeRepoOptions):
   const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
   const fetchRepo = options.fetchRepo ?? defaultFetchRepo;
 
-  const fetchResult = await fetchRepo(normalizedRepoUrl, options.checkoutDirectory);
+  function throwIfAborted() {
+    if (options.signal?.aborted) {
+      throw new DOMException("Repo analysis cancelled.", "AbortError");
+    }
+  }
+
+  throwIfAborted();
+  const fetchResult = await fetchRepo(normalizedRepoUrl, options.checkoutDirectory, { signal: options.signal });
+  throwIfAborted();
   assertSupportedRepoShape(options.checkoutDirectory);
+  throwIfAborted();
 
   // Use the agentic OpenCode analysis when a runner is injected (tests) or explicitly opted in via
   // env. Otherwise default to the deterministic analysis so generation works without `opencode`.
   const useOpencode = options.runOpencode !== undefined || process.env.TINKER_REPO_ANALYSIS_AGENT === "opencode";
   if (useOpencode) {
     const runOpencode = options.runOpencode ?? defaultRunOpencode;
-    return analyzeRepoWithOpencode(normalizedRepoUrl, fetchResult.commit, options.checkoutDirectory, runOpencode);
+    return analyzeRepoWithOpencode(normalizedRepoUrl, fetchResult.commit, options.checkoutDirectory, (prompt, runOptions) =>
+      runOpencode(prompt, { ...runOptions, signal: options.signal }),
+    );
   }
 
+  throwIfAborted();
   return analyzeRepoDeterministic(normalizedRepoUrl, fetchResult.commit, options.checkoutDirectory);
 }

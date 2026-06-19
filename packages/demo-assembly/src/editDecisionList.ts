@@ -45,6 +45,8 @@ export type BuildEditDecisionListOptions = {
   /** Lower/upper bounds for the compressed beat length (seconds). */
   minCompressedSeconds?: number;
   maxCompressedSeconds?: number;
+  /** Optional requested output duration. Compression should not go materially below it. */
+  targetDurationSeconds?: number;
 };
 
 const DEFAULT_GAP_THRESHOLD_SECONDS = 0.8;
@@ -80,6 +82,52 @@ function traceDurationSeconds(trace: ActionTrace): number {
 /** How long the compressed beat for a given dead gap should be. */
 function compressedGapFor(gap: number, min: number, max: number): number {
   return round(clamp(gap * 0.4, min, max));
+}
+
+function restoreCutTime(cuts: EditDecision[], targetDurationSeconds: number | undefined, sourceDurationSeconds: number) {
+  if (targetDurationSeconds === undefined || !Number.isFinite(targetDurationSeconds) || targetDurationSeconds <= 0) {
+    return cuts;
+  }
+  if (targetDurationSeconds >= sourceDurationSeconds) {
+    return cuts;
+  }
+
+  const desiredRemovedSeconds = Math.max(0, round(sourceDurationSeconds - Math.min(targetDurationSeconds, sourceDurationSeconds)));
+  const currentRemovedSeconds = round(cuts.reduce((sum, cut) => sum + cut.removedSeconds, 0));
+  let restoreSeconds = round(currentRemovedSeconds - desiredRemovedSeconds);
+  if (restoreSeconds <= 0) {
+    return cuts;
+  }
+
+  const adjusted = cuts.map((cut) => ({ ...cut }));
+  const restoreByKind: EditDecision["kind"][] = ["compress-gap", "trim-tail", "trim-lead"];
+
+  for (const kind of restoreByKind) {
+    const indexes = adjusted
+      .map((cut, index) => ({ cut, index, capacity: round(cut.originalGapSeconds - cut.compressedGapSeconds) }))
+      .filter((entry) => entry.cut.kind === kind && entry.capacity > 0);
+    const totalCapacity = round(indexes.reduce((sum, entry) => sum + entry.capacity, 0));
+    if (totalCapacity <= 0) {
+      continue;
+    }
+
+    const targetTierRestore = Math.min(restoreSeconds, totalCapacity);
+    let tierRestore = targetTierRestore;
+    indexes.forEach((entry, entryIndex) => {
+      const isLast = entryIndex === indexes.length - 1;
+      const amount = isLast ? tierRestore : round(Math.min(entry.capacity, (targetTierRestore * entry.capacity) / totalCapacity));
+      entry.cut.compressedGapSeconds = round(entry.cut.compressedGapSeconds + amount);
+      entry.cut.removedSeconds = round(entry.cut.originalGapSeconds - entry.cut.compressedGapSeconds);
+      tierRestore = round(tierRestore - amount);
+    });
+
+    restoreSeconds = round(currentRemovedSeconds - desiredRemovedSeconds - adjusted.reduce((sum, cut, index) => sum + (cuts[index]!.removedSeconds - cut.removedSeconds), 0));
+    if (restoreSeconds <= 0) {
+      break;
+    }
+  }
+
+  return adjusted;
 }
 
 export function buildEditDecisionList(trace: ActionTrace, options: BuildEditDecisionListOptions = {}): EditDecisionList {
@@ -153,7 +201,15 @@ export function buildEditDecisionList(trace: ActionTrace, options: BuildEditDeci
     });
   }
 
-  const removedSeconds = round(cuts.reduce((sum, cut) => sum + cut.removedSeconds, 0));
+  const balancedCuts = restoreCutTime(cuts, options.targetDurationSeconds, sourceDurationSeconds);
+  const removedSeconds = round(balancedCuts.reduce((sum, cut) => sum + cut.removedSeconds, 0));
+  const notes = [
+    `Gaps longer than ${gapThresholdSeconds}s are compressed to ${minCompressed}-${maxCompressed}s.`,
+    "First pass: a downstream compose/editor step applies these cuts to the DemoProject timeline.",
+  ];
+  if (options.targetDurationSeconds !== undefined) {
+    notes.push(`Compression was balanced against a ${options.targetDurationSeconds}s target duration.`);
+  }
 
   return EditDecisionListSchema.parse({
     version: 1,
@@ -161,10 +217,7 @@ export function buildEditDecisionList(trace: ActionTrace, options: BuildEditDeci
     sourceDurationSeconds,
     compressedDurationSeconds: round(Math.max(0, sourceDurationSeconds - removedSeconds)),
     removedSeconds,
-    cuts,
-    notes: [
-      `Gaps longer than ${gapThresholdSeconds}s are compressed to ${minCompressed}-${maxCompressed}s.`,
-      "First pass: a downstream compose/editor step applies these cuts to the DemoProject timeline.",
-    ],
+    cuts: balancedCuts,
+    notes,
   });
 }

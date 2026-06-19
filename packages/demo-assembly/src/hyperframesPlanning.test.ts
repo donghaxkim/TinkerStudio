@@ -9,6 +9,7 @@ import {
   DEFAULT_OPENCODE_TIMEOUT_MS,
   createOpencodeHyperframesGenerator,
   createOpencodeHyperframesRepairer,
+  defaultRunOpencode,
 } from "./hyperframesPlanning.js";
 
 assert.equal(typeof demoAssembly.createOpencodeHyperframesGenerator, "function");
@@ -616,5 +617,58 @@ await access(join(failureHyperframesDir, ".tinker-opencode-hyperframes-output.js
 await access(join(failureHyperframesDir, ".tinker-opencode-hyperframes-error.log"));
 assert.match(await readFile(join(failureHyperframesDir, ".tinker-opencode-hyperframes-error.log"), "utf8"), /SECRET_FAILURE_STDERR/);
 await assert.rejects(() => access(join(failureHyperframesDir, ".tinker-opencode-workspace")));
+
+const abortRaceTempDir = await mkdtemp(join(tmpdir(), "tinker-hyperframes-planning-abort-race-"));
+const abortRaceFakeBinDir = join(abortRaceTempDir, "bin");
+const abortRaceRepoCheckoutDirectory = join(abortRaceTempDir, "repo");
+const abortRaceHyperframesDir = join(abortRaceTempDir, "hyperframes");
+const abortRaceStartedMarker = join(abortRaceTempDir, "started.txt");
+await mkdir(abortRaceFakeBinDir);
+await mkdir(abortRaceRepoCheckoutDirectory);
+await writeFile(join(abortRaceRepoCheckoutDirectory, "package.json"), JSON.stringify({ name: "fixture-product" }));
+const abortRaceFakeOpencodePath = join(abortRaceFakeBinDir, "opencode");
+await writeFile(
+  abortRaceFakeOpencodePath,
+  [
+    "#!/usr/bin/env node",
+    "const { writeFileSync } = require('node:fs');",
+    "process.on('SIGTERM', () => {});",
+    `writeFileSync(${JSON.stringify(abortRaceStartedMarker)}, 'started');`,
+    "setTimeout(() => process.exit(0), 1500);",
+    "setInterval(() => {}, 1000);",
+  ].join("\n"),
+);
+await chmod(abortRaceFakeOpencodePath, 0o755);
+
+const abortRaceController = new AbortController();
+const abortRaceOriginalTimeout = process.env.TINKER_HYPERFRAMES_OPENCODE_TIMEOUT_MS;
+try {
+  process.env.PATH = `${abortRaceFakeBinDir}${delimiter}${originalPath ?? ""}`;
+  process.env.TINKER_HYPERFRAMES_OPENCODE_TIMEOUT_MS = "1000";
+  const abortedRun = defaultRunOpencode("Create a workflow demo.", {
+    cwd: abortRaceHyperframesDir,
+    logDir: abortRaceHyperframesDir,
+    repoCheckoutDirectory: abortRaceRepoCheckoutDirectory,
+    hyperframesAgent: "opencode",
+    signal: abortRaceController.signal,
+  });
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try {
+      await readFile(abortRaceStartedMarker, "utf8");
+      break;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  abortRaceController.abort();
+  await assert.rejects(abortedRun, { name: "AbortError" });
+} finally {
+  process.env.PATH = originalPath;
+  if (abortRaceOriginalTimeout === undefined) {
+    delete process.env.TINKER_HYPERFRAMES_OPENCODE_TIMEOUT_MS;
+  } else {
+    process.env.TINKER_HYPERFRAMES_OPENCODE_TIMEOUT_MS = abortRaceOriginalTimeout;
+  }
+}
 
 console.log("hyperframes planning tests passed");

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { CapturePlan, CaptureResult } from "@tinker/browser-capture";
 import { DemoProjectSchema } from "@tinker/project-schema";
@@ -99,6 +99,32 @@ const captureResult: CaptureResult = {
   },
 };
 
+const captureResultWithRenderPlanAction: CaptureResult = {
+  ...captureResult,
+  events: [{ type: "click", time: 1.5, x: 420, y: 260, label: "Start demo" }],
+  actionTrace: {
+    version: 1,
+    targetUrl: canonicalProductUrl,
+    viewport: { width: 1280, height: 720 },
+    fps: 25,
+    startedAt: "2026-06-09T00:00:00.000Z",
+    completedAt: "2026-06-09T00:00:10.000Z",
+    actions: [
+      {
+        id: "click-1",
+        type: "click",
+        description: "Start demo",
+        selector: "[data-testid='start-demo']",
+        startTime: 1.5,
+        endTime: 1.55,
+        clickPoint: { x: 420, y: 260 },
+        targetBox: { x: 360, y: 230, width: 120, height: 60 },
+        status: "success",
+      },
+    ],
+  },
+};
+
 async function writeValidHyperframesArtifacts(hyperframesDir: string) {
   await mkdir(hyperframesDir, { recursive: true });
   await writeFile(join(hyperframesDir, "index.html"), "<html><body>Fixture Product</body></html>\n");
@@ -119,6 +145,16 @@ async function writeValidHyperframesArtifacts(hyperframesDir: string) {
       2,
     )}\n`,
   );
+}
+
+async function waitForPath(path: string) {
+  const startedAt = Date.now();
+  while (!existsSync(path)) {
+    if (Date.now() - startedAt > 5_000) {
+      throw new Error(`Timed out waiting for ${path}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 }
 
 const invalidRendererOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-invalid-renderer-"));
@@ -161,6 +197,7 @@ assert.equal(invalidRendererRepoAnalyzeCalled, false);
 
 const defaultRendererOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-default-renderer-"));
 const defaultRendererCalls: string[] = [];
+const defaultRendererController = new AbortController();
 const defaultRendererResult = await runAiUrlDemo({
   outputRoot: defaultRendererOutputRoot,
   projectId: "ai-url-demo-default-renderer-test",
@@ -170,12 +207,15 @@ const defaultRendererResult = await runAiUrlDemo({
   prompt,
   durationCapSeconds: 10,
   aspectRatio: "16:9",
-  analyzeWebsite: async (url) => {
+  signal: defaultRendererController.signal,
+  analyzeWebsite: async (url, options) => {
     assert.equal(url, productUrl);
+    assert.equal(options.signal, defaultRendererController.signal);
     return { ...productAnalysis, screenshotPath: undefined };
   },
   analyzeRepo: async (url, options) => {
     assert.equal(url, repoUrl);
+    assert.equal(options.signal, defaultRendererController.signal);
     assert.ok(options.checkoutDirectory.endsWith(".repo-scratch/checkout"));
     await mkdir(options.checkoutDirectory, { recursive: true });
     return repoAnalysis;
@@ -191,6 +231,7 @@ const defaultRendererResult = await runAiUrlDemo({
     defaultRendererCalls.push("render");
     assert.equal(input.hyperframesDir, join(defaultRendererOutputRoot, "hyperframes"));
     assert.equal(input.outputVideoPath, join(defaultRendererOutputRoot, "hyperframes", "output.mp4"));
+    assert.equal(input.signal, defaultRendererController.signal);
     await writeFile(input.outputVideoPath, "fake mp4\n");
     return {
       lintLogPath: join(input.hyperframesDir, "lint.log"),
@@ -215,6 +256,211 @@ assert.equal(
 assert.ok(defaultRendererResult.artifactPaths.includes(join(defaultRendererOutputRoot, "hyperframes", "index.html")));
 assert.ok(defaultRendererResult.artifactPaths.includes(join(defaultRendererOutputRoot, "hyperframes", "output.mp4")));
 assert.equal(existsSync(join(defaultRendererOutputRoot, ".repo-scratch")), false);
+
+const agentSignalOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-agent-signal-"));
+const agentSignalController = new AbortController();
+const agentSignalUnderstanding = deriveProductUnderstanding({ productUrl, repoUrl, websiteAnalysis: productAnalysis, repoAnalysis });
+await runAiUrlDemo({
+  outputRoot: agentSignalOutputRoot,
+  projectId: "ai-url-demo-agent-signal-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "playwright",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  signal: agentSignalController.signal,
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  understandProduct: async (input) => {
+    assert.equal(input.signal, agentSignalController.signal);
+    return agentSignalUnderstanding;
+  },
+  strategize: async (input) => {
+    assert.equal(input.signal, agentSignalController.signal);
+    return {
+      strategy: {
+        version: 1,
+        selectedAngle: { title: "Signal", whyThisAngle: "because", targetAudience: "teams", primaryProof: "proof" },
+        selectedFlow: { sourceFlowId: agentSignalUnderstanding.demoableFlows[0]!.id, name: "Flow", reason: "reason" },
+        messageHierarchy: ["Show the signal-safe flow."],
+        successCriteria: [],
+        risks: [],
+        warnings: [],
+      },
+      storyboard: {
+        version: 1,
+        title: "Signal Demo",
+        durationTargetSeconds: 10,
+        aspectRatio: "16:9",
+        beats: [
+          {
+            id: "beat-1",
+            goal: "Introduce product.",
+            visual: "Hero",
+            narrative: "Narrative",
+            strategyMessageId: "message-1",
+            proofPointId: agentSignalUnderstanding.capabilities[0]?.id ?? "capability-1",
+            expectedUserAction: null,
+            importance: "high",
+          },
+        ],
+      },
+    };
+  },
+  planner: async (input) => {
+    assert.equal(input.signal, agentSignalController.signal);
+    return {
+      storyboard: {
+        title: "Signal Planner Demo",
+        durationCapSeconds: 10,
+        aspectRatio: "16:9",
+        beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
+      },
+      capturePlan,
+    };
+  },
+  runCapture: async (plan, options) => {
+    assert.equal(options.signal, agentSignalController.signal);
+    assert.equal(plan.targetUrl, canonicalProductUrl);
+    return captureResultWithRenderPlanAction;
+  },
+});
+
+const analysisAbortOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-analysis-abort-"));
+const analysisAbortController = new AbortController();
+let analysisAbortRepoCalled = false;
+const analysisAbortRun = runAiUrlDemo({
+  outputRoot: analysisAbortOutputRoot,
+  projectId: "ai-url-demo-analysis-abort-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "playwright",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  signal: analysisAbortController.signal,
+  analyzeWebsite: async (_url, options) => {
+    assert.equal(options.signal, analysisAbortController.signal);
+    return new Promise<ProductAnalysis>((_resolve, reject) => {
+      options.signal?.addEventListener("abort", () => reject(new DOMException("Analysis cancelled.", "AbortError")), { once: true });
+    });
+  },
+  analyzeRepo: async () => {
+    analysisAbortRepoCalled = true;
+    return repoAnalysis;
+  },
+  planner: async () => {
+    throw new Error("planner should not run after analysis abort");
+  },
+  runCapture: async () => captureResult,
+});
+analysisAbortController.abort();
+await assert.rejects(analysisAbortRun, (error) => error instanceof DOMException && error.name === "AbortError");
+assert.equal(analysisAbortRepoCalled, false);
+
+const repoAbortOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-repo-abort-"));
+const repoAbortController = new AbortController();
+let repoAbortPlannerCalled = false;
+const repoAbortRun = runAiUrlDemo({
+  outputRoot: repoAbortOutputRoot,
+  projectId: "ai-url-demo-repo-abort-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "playwright",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  signal: repoAbortController.signal,
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    assert.equal(options.signal, repoAbortController.signal);
+    return new Promise<RepoAnalysis>((_resolve, reject) => {
+      options.signal?.addEventListener("abort", () => reject(new DOMException("Repo analysis cancelled.", "AbortError")), { once: true });
+    });
+  },
+  planner: async () => {
+    repoAbortPlannerCalled = true;
+    throw new Error("planner should not run after repo abort");
+  },
+  runCapture: async () => captureResult,
+});
+repoAbortController.abort();
+await assert.rejects(repoAbortRun, (error) => error instanceof DOMException && error.name === "AbortError");
+assert.equal(repoAbortPlannerCalled, false);
+
+if (process.platform !== "win32") {
+  const finalVideoAbortOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-final-video-abort-"));
+  const finalVideoAbortToolRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-final-video-abort-tools-"));
+  const fakeBinDirectory = join(finalVideoAbortToolRoot, "fake-bin");
+  const ffmpegStartedPath = join(finalVideoAbortToolRoot, "ffmpeg-started.txt");
+  const ffmpegSigtermPath = join(finalVideoAbortToolRoot, "ffmpeg-sigterm.txt");
+  await mkdir(fakeBinDirectory, { recursive: true });
+  const fakeFfmpegPath = join(fakeBinDirectory, "ffmpeg");
+  await writeFile(
+    fakeFfmpegPath,
+    [
+      "#!/usr/bin/env node",
+      "const { writeFileSync } = require('node:fs');",
+      `writeFileSync(${JSON.stringify(ffmpegStartedPath)}, 'started');`,
+      `process.on('SIGTERM', () => { writeFileSync(${JSON.stringify(ffmpegSigtermPath)}, 'SIGTERM'); process.exit(0); });`,
+      "setInterval(() => {}, 1000);",
+    ].join("\n"),
+  );
+  await chmod(fakeFfmpegPath, 0o755);
+
+  const finalVideoAbortController = new AbortController();
+  const originalPath = process.env.PATH;
+  try {
+    process.env.PATH = `${fakeBinDirectory}${delimiter}${originalPath ?? ""}`;
+    const runPromise = runAiUrlDemo({
+      outputRoot: finalVideoAbortOutputRoot,
+      projectId: "ai-url-demo-final-video-abort-test",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      productUrl,
+      repoUrl,
+      renderer: "playwright",
+      prompt,
+      durationCapSeconds: 10,
+      aspectRatio: "16:9",
+      signal: finalVideoAbortController.signal,
+      analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+      analyzeRepo: async (_url, options) => {
+        await mkdir(options.checkoutDirectory, { recursive: true });
+        return repoAnalysis;
+      },
+      planner: async () => ({
+        storyboard: {
+          title: "Final Video Abort Demo",
+          durationCapSeconds: 10,
+          aspectRatio: "16:9",
+          beats: [{ id: "hook", type: "hook", goal: "Introduce product." }],
+        },
+        capturePlan,
+      }),
+      runCapture: async (_plan, options) => {
+        const videoPath = join(options.outputDir, "videos", "main.webm");
+        await mkdir(join(options.outputDir, "videos"), { recursive: true });
+        await writeFile(videoPath, "fake webm bytes");
+        return captureResult;
+      },
+    });
+
+    await waitForPath(ffmpegStartedPath);
+    finalVideoAbortController.abort();
+    await assert.rejects(runPromise, (error) => error instanceof DOMException && error.name === "AbortError");
+    await waitForPath(ffmpegSigtermPath);
+  } finally {
+    process.env.PATH = originalPath;
+    await rm(finalVideoAbortToolRoot, { recursive: true, force: true });
+  }
+}
 
 const hyperframesScreenshotOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-hyperframes-screenshot-"));
 let hyperframesScreenshotGeneratorCalled = false;
@@ -303,6 +549,7 @@ await assert.rejects(
 
 const narrativeSuccessOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-narrative-success-"));
 let narrativePlannerSawArtifact = false;
+const narrativeSuccessController = new AbortController();
 const narrativeSuccessResult = await runAiUrlDemo({
   outputRoot: narrativeSuccessOutputRoot,
   projectId: "ai-url-demo-narrative-success-test",
@@ -314,6 +561,7 @@ const narrativeSuccessResult = await runAiUrlDemo({
   durationCapSeconds: 10,
   aspectRatio: "16:9",
   enableNarrativeExploration: true,
+  signal: narrativeSuccessController.signal,
   analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
   analyzeRepo: async (_url, options) => {
     await mkdir(options.checkoutDirectory, { recursive: true });
@@ -323,6 +571,7 @@ const narrativeSuccessResult = await runAiUrlDemo({
     assert.equal(url, canonicalProductUrl);
     assert.equal(options.enabled, true);
     assert.equal(options.prompt, prompt);
+    assert.equal(options.signal, narrativeSuccessController.signal);
     assert.deepEqual(options.productAnalysis, { ...productAnalysis, screenshotPath: undefined });
     assert.deepEqual(options.repoAnalysis, repoAnalysis);
     return narrativeExploration;
@@ -385,6 +634,45 @@ await runAiUrlDemo({
 });
 assert.equal(existsSync(join(narrativeFailureOutputRoot, "narrative-exploration.json")), false);
 assert.ok(narrativeWarnings.some((message) => message.includes("Narrative exploration failed: Stagehand unavailable")));
+
+const narrativeAbortOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-narrative-abort-"));
+const narrativeAbortController = new AbortController();
+const narrativeAbortWarnings: string[] = [];
+let narrativeAbortPlannerCalled = false;
+const narrativeAbortRun = runAiUrlDemo({
+  outputRoot: narrativeAbortOutputRoot,
+  projectId: "ai-url-demo-narrative-abort-test",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  productUrl,
+  repoUrl,
+  renderer: "playwright",
+  prompt,
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  enableNarrativeExploration: true,
+  signal: narrativeAbortController.signal,
+  onWarning: (message) => narrativeAbortWarnings.push(message),
+  analyzeWebsite: async () => ({ ...productAnalysis, screenshotPath: undefined }),
+  analyzeRepo: async (_url, options) => {
+    await mkdir(options.checkoutDirectory, { recursive: true });
+    return repoAnalysis;
+  },
+  exploreNarrativeWebsite: async (_url, options) => {
+    assert.equal(options.signal, narrativeAbortController.signal);
+    return new Promise<NarrativeExploration>((_resolve, reject) => {
+      options.signal?.addEventListener("abort", () => reject(new DOMException("Narrative cancelled.", "AbortError")), { once: true });
+    });
+  },
+  planner: async () => {
+    narrativeAbortPlannerCalled = true;
+    throw new Error("planner should not run after narrative abort");
+  },
+  runCapture: async () => captureResult,
+});
+narrativeAbortController.abort();
+await assert.rejects(narrativeAbortRun, (error) => error instanceof DOMException && error.name === "AbortError");
+assert.equal(narrativeAbortPlannerCalled, false);
+assert.deepEqual(narrativeAbortWarnings, []);
 
 const bothOutputRoot = await mkdtemp(join(tmpdir(), "tinker-ai-url-demo-both-renderers-"));
 const bothCalls: string[] = [];
@@ -933,7 +1221,7 @@ const result = await runAiUrlDemo({
     assert.deepEqual(plan, capturePlan);
     assert.deepEqual(options, { outputDir: join(outputRoot, "playwright", "capture"), headless: true, smooth: true });
 
-    return captureResult;
+    return captureResultWithRenderPlanAction;
   },
 });
 
@@ -992,9 +1280,9 @@ assert.ok(runSummaryJson.execution, "run-summary has an execution block");
 // backend is OFF in tests (no TINKER_AGENT_BACKEND) → deterministic modes.
 assert.equal(runSummaryJson.execution.understandingMode, "deterministic");
 assert.equal(runSummaryJson.execution.strategyMode, "deterministic");
-// director/render plans are NOT applied in this build.
+// render-plan zooms are materialized into demo-project.json before EDL trimming.
 assert.equal(runSummaryJson.execution.directorPlanApplied, "none");
-assert.equal(runSummaryJson.execution.renderPlanApplied, "none");
+assert.equal(runSummaryJson.execution.renderPlanApplied, "full");
 assert.ok(runSummaryJson.execution.cameraSource.length > 0);
 // coreCoverage exists with the stricter selected-flow item.
 assert.ok(Array.isArray(runSummaryJson.coreCoverage) && runSummaryJson.coreCoverage.length >= 1);
@@ -1032,6 +1320,10 @@ assert.ok(
 const projectJson = JSON.parse(await readFile(join(playwrightOutputRoot, "demo-project.json"), "utf8"));
 assert.equal(projectJson.metadata.productUrl, productUrl);
 assert.equal(projectJson.metadata.prompt, prompt);
+assert.ok(
+  projectJson.zooms.some((zoom: { id: string }) => zoom.id.startsWith("render-plan-")),
+  "demo-project.json should include materialized render-plan zooms",
+);
 const parsedProject = DemoProjectSchema.parse(projectJson);
 assert.equal(result.renderer, "playwright");
 assert.equal(result.rendererResults.playwright?.projectPath, join(playwrightOutputRoot, "demo-project.json"));

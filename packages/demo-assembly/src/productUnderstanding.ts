@@ -95,6 +95,7 @@ export type DeriveProductUnderstandingInput = {
   websiteAnalysis: ProductAnalysis;
   repoAnalysis?: RepoAnalysis;
   repoCheckoutDirectory?: string;
+  signal?: AbortSignal;
 };
 
 /** Seam for a future LLM-backed understander; the default is deterministic. */

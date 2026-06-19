@@ -1,5 +1,48 @@
+import { existsSync, readFileSync } from "node:fs";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { probeMp4Artifact } from "./probeMp4Artifact.js";
+import { probeMp4Artifact, runSpawnedFfprobeCommand } from "./probeMp4Artifact.js";
+
+async function waitForPath(path: string) {
+  const startedAt = Date.now();
+  while (!existsSync(path)) {
+    if (Date.now() - startedAt > 2_000) {
+      throw new Error(`Timed out waiting for ${path}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+async function expectWithin<T>(promise: Promise<T>, ms: number) {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+    }),
+  ]);
+}
+
+function killProcessFromPidFile(pidPath: string) {
+  if (!existsSync(pidPath)) return;
+  const pid = Number.parseInt(readFileSync(pidPath, "utf8"), 10);
+  if (!Number.isFinite(pid)) return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already exited.
+    }
+  }
+}
+
+function expectProcessExited(pidPath: string) {
+  const pid = Number.parseInt(readFileSync(pidPath, "utf8"), 10);
+  expect(() => process.kill(pid, 0)).toThrow();
+}
 
 describe("probeMp4Artifact", () => {
   it("refuses non-MP4 paths", async () => {
@@ -64,5 +107,42 @@ describe("probeMp4Artifact", () => {
         runCommand: async () => "null",
       }),
     ).rejects.toThrow(/valid ffprobe JSON/);
+  });
+
+  it("settles as AbortError and kills spawned ffprobe when SIGTERM is ignored", async () => {
+    if (process.platform === "win32") return;
+
+    const root = await mkdtemp(join(tmpdir(), "tinker-ffprobe-abort-"));
+    const fakeFfprobePath = join(root, "ffprobe");
+    const pidPath = join(root, "pid.txt");
+    const sigtermPath = join(root, "sigterm.txt");
+    const controller = new AbortController();
+    let runPromise: Promise<string> | undefined;
+
+    try {
+      await writeFile(
+        fakeFfprobePath,
+        [
+          "#!/usr/bin/env node",
+          "const { writeFileSync } = require('node:fs');",
+          `writeFileSync(${JSON.stringify(pidPath)}, String(process.pid));`,
+          `process.on('SIGTERM', () => { writeFileSync(${JSON.stringify(sigtermPath)}, 'SIGTERM'); });`,
+          "setInterval(() => {}, 1000);",
+        ].join("\n"),
+      );
+      await chmod(fakeFfprobePath, 0o755);
+
+      runPromise = runSpawnedFfprobeCommand(fakeFfprobePath, [], { signal: controller.signal });
+      await waitForPath(pidPath);
+      controller.abort();
+
+      await expect(expectWithin(runPromise, 2_000)).rejects.toMatchObject({ name: "AbortError" });
+      expect(existsSync(sigtermPath)).toBe(true);
+      expectProcessExited(pidPath);
+    } finally {
+      killProcessFromPidFile(pidPath);
+      await runPromise?.catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

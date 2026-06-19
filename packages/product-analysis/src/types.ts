@@ -30,6 +30,7 @@ export type AnalyzeWebsiteOptions = {
   timeoutMs?: number;
   headless?: boolean;
   waitForNetworkIdle?: boolean;
+  signal?: AbortSignal;
 };
 
 export type RepoAnalysisSourceHint = {
@@ -54,12 +55,17 @@ export type AnalyzeRepoFetchResult = {
   commit?: string;
 };
 
-export type AnalyzeRepoFetch = (repoUrl: string, checkoutDirectory: string) => Promise<AnalyzeRepoFetchResult>;
+export type AnalyzeRepoFetch = (
+  repoUrl: string,
+  checkoutDirectory: string,
+  options: { signal?: AbortSignal },
+) => Promise<AnalyzeRepoFetchResult>;
 
-export type AnalyzeRepoOpencodeRun = (prompt: string, options: { cwd: string }) => Promise<string>;
+export type AnalyzeRepoOpencodeRun = (prompt: string, options: { cwd: string; signal?: AbortSignal }) => Promise<string>;
 
 export type AnalyzeRepoOptions = {
   checkoutDirectory: string;
+  signal?: AbortSignal;
   fetchRepo?: AnalyzeRepoFetch;
   runOpencode?: AnalyzeRepoOpencodeRun;
 };
@@ -121,5 +127,6 @@ export type ExploreNarrativeWebsiteOptions = {
   productAnalysis?: ProductAnalysis;
   repoAnalysis?: RepoAnalysis;
   timeoutMs?: number;
+  signal?: AbortSignal;
   createStagehand?: CreateNarrativeStagehand;
 };

@@ -8,6 +8,16 @@ import { analyzeRepo as exportedAnalyzeRepo, parseRepoAnalysis as exportedParseR
 
 const repoUrl = "https://github.com/example/product";
 
+async function waitForPath(path: string) {
+  const startedAt = Date.now();
+  while (!existsSync(path)) {
+    if (Date.now() - startedAt > 5_000) {
+      throw new Error(`Timed out waiting for ${path}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
 const validAnalysis = {
   repoUrl,
   commit: "abcdef1",
@@ -92,9 +102,12 @@ await writeFile(outsideFile, "SHOULD_NOT_APPEAR");
 try {
   const checkoutDirectory = join(fixtureRoot, "checkout");
   const commandsRun: string[] = [];
+  const analysisController = new AbortController();
   const analysis = await analyzeRepo(repoUrl, {
     checkoutDirectory,
-    fetchRepo: async (_repoUrl, checkout) => {
+    signal: analysisController.signal,
+    fetchRepo: async (_repoUrl, checkout, options) => {
+      assert.equal(options.signal, analysisController.signal);
       commandsRun.push("fetch-only");
       await mkdir(join(checkout, "app", "pricing"), { recursive: true });
       await mkdir(join(checkout, "config"), { recursive: true });
@@ -117,6 +130,7 @@ try {
       return { commit: "abcdef123456" };
     },
     runOpencode: async (prompt, options) => {
+      assert.equal(options.signal, analysisController.signal);
       commandsRun.push("opencode");
       assert.match(prompt, /read-only repository research/);
       assert.match(prompt, /Do not edit files/);
@@ -363,6 +377,49 @@ try {
     }
 
     assert.equal(await readFile(join(timeoutCheckoutDirectory, "grandchild-sigterm.txt"), "utf8"), "SIGTERM");
+
+    const abortBinDirectory = join(fixtureRoot, "abort-bin");
+    const abortCheckoutDirectory = join(fixtureRoot, "abort-checkout");
+    await mkdir(abortBinDirectory);
+    await mkdir(abortCheckoutDirectory);
+    const abortOpencodePath = join(abortBinDirectory, "opencode");
+    const abortReadyPath = join(abortCheckoutDirectory, "opencode-ready.txt");
+    await writeFile(
+      abortOpencodePath,
+      [
+        "#!/usr/bin/env node",
+        "const { spawn } = require('node:child_process');",
+        "const { writeFileSync } = require('node:fs');",
+        "const { join } = require('node:path');",
+        "const signalPath = join(process.cwd(), 'grandchild-abort-sigterm.txt');",
+        `const readyPath = ${JSON.stringify(abortReadyPath)};`,
+        "const grandchild = spawn(process.execPath, ['-e', `const { writeFileSync } = require('node:fs'); writeFileSync(process.env.TINKER_READY_PATH, 'ready'); process.on('SIGTERM', () => { writeFileSync(process.env.TINKER_SIGNAL_PATH, 'SIGTERM'); process.exit(0); }); setTimeout(() => process.exit(0), 5000);`], { env: { ...process.env, TINKER_SIGNAL_PATH: signalPath, TINKER_READY_PATH: readyPath }, stdio: ['ignore', 1, 2] });",
+        "grandchild.unref();",
+        "process.on('SIGTERM', () => process.exit(0));",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    await chmod(abortOpencodePath, 0o755);
+
+    const abortOriginalPath = process.env.PATH;
+    const abortController = new AbortController();
+    try {
+      process.env.PATH = `${abortBinDirectory}${delimiter}${abortOriginalPath ?? ""}`;
+      const opencodePromise = defaultRunOpencode("abort repo prompt", { cwd: abortCheckoutDirectory, signal: abortController.signal });
+      await waitForPath(abortReadyPath);
+      abortController.abort();
+
+      await assert.rejects(
+        opencodePromise,
+        (error) => error instanceof DOMException && error.name === "AbortError",
+      );
+    } finally {
+      process.env.PATH = abortOriginalPath;
+    }
+
+    const abortGrandchildSignalPath = join(abortCheckoutDirectory, "grandchild-abort-sigterm.txt");
+    await waitForPath(abortGrandchildSignalPath);
+    assert.equal(await readFile(abortGrandchildSignalPath, "utf8"), "SIGTERM");
   }
 
 } finally {

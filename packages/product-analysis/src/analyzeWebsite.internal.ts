@@ -140,24 +140,47 @@ export async function analyzeWebsiteWithBrowserLauncher(
 ): Promise<ProductAnalysis> {
   assertHttpUrl(url);
 
+  function throwIfAborted() {
+    if (options.signal?.aborted) {
+      throw new DOMException("Website analysis cancelled.", "AbortError");
+    }
+  }
+
+  throwIfAborted();
+
   const browser = await launchBrowser({ headless: options.headless ?? true });
   let page: Page | undefined;
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
+  let primaryError: unknown;
+
+  const closeActiveBrowser = () => {
+    void page?.close().catch(() => undefined);
+    void browser.close().catch(() => undefined);
+  };
+
+  options.signal?.addEventListener("abort", closeActiveBrowser, { once: true });
 
   try {
+    throwIfAborted();
     page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    throwIfAborted();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    throwIfAborted();
     if (options.waitForNetworkIdle) {
       await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 5000) }).catch(() => undefined);
+      throwIfAborted();
     }
 
     const data = await page.evaluate(collectPageAnalysis, maxItems);
+    throwIfAborted();
 
     let screenshotPath: string | undefined;
     if (options.outputDirectory) {
       await mkdir(options.outputDirectory, { recursive: true });
+      throwIfAborted();
       screenshotPath = join(options.outputDirectory, options.screenshotFileName ?? "product-analysis.png");
       await page.screenshot({ path: screenshotPath, fullPage: true });
+      throwIfAborted();
     }
 
     const links = uniqueBy(
@@ -189,8 +212,19 @@ export async function analyzeWebsiteWithBrowserLauncher(
       },
       ...(screenshotPath ? { screenshotPath } : {}),
     };
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
+    options.signal?.removeEventListener("abort", closeActiveBrowser);
     await page?.close().catch(() => undefined);
-    await browser.close();
+    try {
+      await browser.close();
+    } catch (cleanupError) {
+      if (primaryError === undefined && !options.signal?.aborted) {
+        throw cleanupError;
+      }
+    }
+    throwIfAborted();
   }
 }

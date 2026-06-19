@@ -64,6 +64,36 @@ try {
   );
   assert.equal(nonHttpLaunchCount, 0);
 
+  const abortController = new AbortController();
+  let abortBrowserClosed = false;
+  let enteredGoto!: () => void;
+  const enteredGotoPromise = new Promise<void>((resolve) => {
+    enteredGoto = resolve;
+  });
+  await assert.rejects(
+    async () => {
+      const analysisPromise = analyzeWebsiteWithBrowserLauncher("https://example.test", { signal: abortController.signal }, async () => ({
+        newPage: async () => ({
+          goto: async () => {
+            enteredGoto();
+            return new Promise((_resolve, reject) => {
+              abortController.signal.addEventListener("abort", () => reject(new Error("browser closed by abort")), { once: true });
+            });
+          },
+          close: async () => undefined,
+        } as never),
+        close: async () => {
+          abortBrowserClosed = true;
+        },
+      }));
+      await enteredGotoPromise;
+      abortController.abort();
+      await analysisPromise;
+    },
+    (error) => error instanceof DOMException && error.name === "AbortError",
+  );
+  assert.equal(abortBrowserClosed, true);
+
   const analysis = await analyzeWebsite(server.url, {
     outputDirectory,
     screenshotFileName: "analysis.png",

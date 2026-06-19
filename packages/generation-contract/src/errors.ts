@@ -23,6 +23,7 @@ export const GenerationFailureStageSchema = z.enum([
   "verification",
   "capture",
   "assembly",
+  "cancelled",
   "unknown",
 ]);
 

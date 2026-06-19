@@ -119,6 +119,25 @@ function createFakeStagehandClient(extracted: unknown, calls: string[]): Narrati
   } as unknown as NarrativeStagehandClient;
 }
 
+async function waitForCall(calls: string[], value: string) {
+  const startedAt = Date.now();
+  while (!calls.includes(value)) {
+    if (Date.now() - startedAt > 2_000) {
+      throw new Error(`Timed out waiting for ${value}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+async function expectWithin<T>(promise: Promise<T>, ms: number) {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+    }),
+  ]);
+}
+
 const disabledCalls: string[] = [];
 const disabledResult = await exploreNarrativeWebsite(productUrl, {
   enabled: false,
@@ -225,6 +244,39 @@ await assert.rejects(
   /Narrative exploration timed out after 1ms/,
 );
 assert.equal(timeoutCalls.at(-1), "close");
+
+const abortCalls: string[] = [];
+const abortController = new AbortController();
+const abortPromise = exploreNarrativeWebsite(productUrl, {
+  enabled: true,
+  signal: abortController.signal,
+  createStagehand: () =>
+    ({
+      async init() {
+        abortCalls.push("init");
+      },
+      async close() {
+        abortCalls.push("close");
+      },
+      page: {
+        async goto(url: string) {
+          abortCalls.push(`goto:${url}`);
+        },
+      },
+      async observe() {
+        abortCalls.push("observe");
+        return new Promise<never>(() => {});
+      },
+      async extract<T>() {
+        abortCalls.push("extract");
+        return validExploration as T;
+      },
+    }) as unknown as NarrativeStagehandClient,
+});
+await waitForCall(abortCalls, "observe");
+abortController.abort();
+await assert.rejects(expectWithin(abortPromise, 1_000), (error) => error instanceof DOMException && error.name === "AbortError");
+assert.equal(abortCalls.at(-1), "close");
 
 assert.deepEqual(
   resolveNarrativeStagehandModel({

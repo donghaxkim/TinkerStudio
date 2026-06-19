@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +8,7 @@ import { DemoProjectSchema } from "@tinker/project-schema";
 import { describe, expect, it } from "vitest";
 import sampleProjectInput from "../../../project-schema/fixtures/demo-project.sample.json";
 import { AssetResolutionError } from "./assetResolution.js";
-import { renderFinalToMp4 } from "./renderFinalToMp4.js";
+import { renderFinalToMp4, runSpawnedFfmpegCommand } from "./renderFinalToMp4.js";
 
 const sampleProject = DemoProjectSchema.parse(sampleProjectInput);
 const fixtureProjectRoot = fileURLToPath(new URL("../../../project-schema/fixtures/", import.meta.url));
@@ -22,6 +23,45 @@ async function withProjectRoot<T>(run: (projectRoot: string) => Promise<T>) {
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }
+}
+
+async function waitForPath(path: string) {
+  const startedAt = Date.now();
+  while (!existsSync(path)) {
+    if (Date.now() - startedAt > 2_000) {
+      throw new Error(`Timed out waiting for ${path}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+async function expectWithin<T>(promise: Promise<T>, ms: number) {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+    }),
+  ]);
+}
+
+function killProcessFromPidFile(pidPath: string) {
+  if (!existsSync(pidPath)) return;
+  const pid = Number.parseInt(readFileSync(pidPath, "utf8"), 10);
+  if (!Number.isFinite(pid)) return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already exited.
+    }
+  }
+}
+
+function expectProcessExited(pidPath: string) {
+  const pid = Number.parseInt(readFileSync(pidPath, "utf8"), 10);
+  expect(() => process.kill(pid, 0)).toThrow();
 }
 
 function shortProject() {
@@ -385,6 +425,64 @@ describe("renderFinalToMp4", () => {
     });
 
     expect(calls).toEqual([]);
+  });
+
+  it("passes the abort signal to the ffmpeg command runner", async () => {
+    const controller = new AbortController();
+
+    await withProjectRoot(async (projectRoot) => {
+      await expect(
+        renderFinalToMp4(shortProject(), {
+          projectRoot,
+          allowedOutputRoots: [projectRoot],
+          outputPath: join(projectRoot, "aborted.mp4"),
+          signal: controller.signal,
+          runCommand: async (_command, _args, options) => {
+            expect(options.signal).toBe(controller.signal);
+            controller.abort();
+            throw new DOMException("Render cancelled.", "AbortError");
+          },
+          runProbe: async () => JSON.stringify(probeSummary),
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+  });
+
+  it("settles as AbortError and kills spawned ffmpeg when SIGTERM is ignored", async () => {
+    if (process.platform === "win32") return;
+
+    const root = await mkdtemp(join(tmpdir(), "tinker-render-ffmpeg-abort-"));
+    const fakeFfmpegPath = join(root, "ffmpeg");
+    const pidPath = join(root, "pid.txt");
+    const sigtermPath = join(root, "sigterm.txt");
+    const controller = new AbortController();
+    let runPromise: Promise<void> | undefined;
+
+    try {
+      await writeFile(
+        fakeFfmpegPath,
+        [
+          "#!/usr/bin/env node",
+          "const { writeFileSync } = require('node:fs');",
+          `writeFileSync(${JSON.stringify(pidPath)}, String(process.pid));`,
+          `process.on('SIGTERM', () => { writeFileSync(${JSON.stringify(sigtermPath)}, 'SIGTERM'); });`,
+          "setInterval(() => {}, 1000);",
+        ].join("\n"),
+      );
+      await chmod(fakeFfmpegPath, 0o755);
+
+      runPromise = runSpawnedFfmpegCommand(fakeFfmpegPath, [], { signal: controller.signal });
+      await waitForPath(pidPath);
+      controller.abort();
+
+      await expect(expectWithin(runPromise, 2_000)).rejects.toMatchObject({ name: "AbortError" });
+      expect(existsSync(sigtermPath)).toBe(true);
+      expectProcessExited(pidPath);
+    } finally {
+      killProcessFromPidFile(pidPath);
+      await runPromise?.catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("invokes ffmpeg with a deterministic MP4 command", async () => {

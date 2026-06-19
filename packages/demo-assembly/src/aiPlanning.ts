@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { lstat, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   MAX_CAPTURE_CHECKPOINTS,
@@ -28,6 +29,9 @@ const DEFAULT_OPENCODE_TIMEOUT_MS = 600_000;
 const TIMEOUT_KILL_GRACE_MS = 5_000;
 const TIMEOUT_CLOSE_FALLBACK_MS = 5_000;
 const LOG_STREAM_RETAIN_BYTES = 64 * 1024;
+const ACTIVE_CAPTURE_STEP_TYPES = new Set(["click", "type", "press"]);
+const UNSAFE_VISIBLE_CONTROL_LABEL_PATTERN =
+  /\b(auth|login|log in|sign in|sign up|logout|log out|payment|pay|checkout|purchase|buy|delete|remove|destroy|download|external|account|profile|settings|billing|subscribe|cancel)\b/i;
 
 export type AiUrlPlannerInput = {
   productUrl: string;
@@ -37,6 +41,7 @@ export type AiUrlPlannerInput = {
   analysis: ProductAnalysis;
   repoAnalysis?: RepoAnalysis;
   repoCheckoutDirectory?: string;
+  signal?: AbortSignal;
   /** Optional strategy context: when present, the capture plan should realize this flow. */
   demoStrategy?: DemoStrategy;
   /** Optional storyboard whose beats the capture plan should follow in order. */
@@ -51,7 +56,13 @@ export type AiUrlPlannerResult = {
 
 export type AiUrlPlanner = (input: AiUrlPlannerInput) => Promise<AiUrlPlannerResult>;
 
-export type AiUrlPlannerOpencodeRun = (prompt: string, options: { cwd: string }) => Promise<string>;
+export type AiUrlPlannerOpencodeRunOptions = {
+  cwd: string;
+  logDir?: string;
+  signal?: AbortSignal;
+};
+
+export type AiUrlPlannerOpencodeRun = (prompt: string, options: AiUrlPlannerOpencodeRunOptions) => Promise<string>;
 
 type OpencodeAiUrlPlannerOptions = {
   runOpencode?: AiUrlPlannerOpencodeRun;
@@ -72,6 +83,7 @@ type EnvironmentAiUrlPlannerOptions = {
   model?: string;
   fetchImpl?: PlannerFetch;
 };
+type OpencodeTerminationReason = "timeout" | "abort";
 
 const nonEmptyString = z.string().trim().min(1);
 const optionalNonEmptyString = nonEmptyString.optional();
@@ -275,8 +287,9 @@ function extractStringPayloads(value: unknown): string[] {
   return [...directPayloads, ...nestedPayloads];
 }
 
-function collectOpencodeText(output: string) {
+export function collectOpencodeText(output: string) {
   const payloads: string[] = [];
+  const finalPayloads: string[] = [];
 
   for (const line of output.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -285,18 +298,24 @@ function collectOpencodeText(output: string) {
     }
 
     try {
-      payloads.push(...extractStringPayloads(JSON.parse(trimmed)));
+      const parsed = JSON.parse(trimmed) as unknown;
+      payloads.push(...extractStringPayloads(parsed));
+      if (isRecord(parsed) && parsed.type === "text" && isRecord(parsed.part) && parsed.part.type === "text" && typeof parsed.part.text === "string") {
+        const metadata = parsed.part.metadata;
+        if (isRecord(metadata) && isRecord(metadata.openai) && metadata.openai.phase === "final_answer") {
+          finalPayloads.push(parsed.part.text);
+        }
+      }
     } catch {
       payloads.push(trimmed);
     }
   }
 
-  return payloads.join("");
+  return (finalPayloads.length > 0 ? finalPayloads : payloads).join("");
 }
 
-function findLastPlannerJsonObject(text: string) {
-  let lastObject: unknown;
-  let lastPlannerObject: unknown;
+export function parseJsonObjectsFromText(text: string): unknown[] {
+  const objects: unknown[] = [];
 
   for (let start = 0; start < text.length; start += 1) {
     if (text[start] !== "{") {
@@ -330,10 +349,7 @@ function findLastPlannerJsonObject(text: string) {
 
         if (depth === 0) {
           try {
-            lastObject = JSON.parse(text.slice(start, index + 1));
-            if (isRecord(lastObject) && lastObject.storyboard !== undefined && lastObject.capturePlan !== undefined) {
-              lastPlannerObject = lastObject;
-            }
+            objects.push(JSON.parse(text.slice(start, index + 1)));
           } catch {
             // Continue scanning; earlier text may contain non-JSON braces.
           }
@@ -343,9 +359,25 @@ function findLastPlannerJsonObject(text: string) {
     }
   }
 
+  return objects;
+}
+
+function findLastPlannerJsonObject(text: string) {
+  const objects = parseJsonObjectsFromText(text);
+  let lastPlannerObject: unknown;
+  for (let index = objects.length - 1; index >= 0; index -= 1) {
+    const object = objects[index];
+    if (isRecord(object) && object.storyboard !== undefined && object.capturePlan !== undefined) {
+      lastPlannerObject = object;
+      break;
+    }
+  }
+
   if (isRecord(lastPlannerObject)) {
     return lastPlannerObject;
   }
+
+  const lastObject = objects[objects.length - 1];
 
   if (!isRecord(lastObject)) {
     throw new Error("OpenCode demo planner did not return a JSON object");
@@ -471,6 +503,29 @@ function assertCapturePlanMatchesProductUrl(capturePlan: CapturePlan, productUrl
       throw new Error(`Capture plan is invalid: steps.${index}.url must match productUrl`);
     }
   });
+}
+
+function isSafeVisibleControlLabel(label: string | undefined) {
+  return label !== undefined && label.trim() !== "" && !UNSAFE_VISIBLE_CONTROL_LABEL_PATTERN.test(label);
+}
+
+function hasSafeVisibleWorkflowControls(analysis: ProductAnalysis) {
+  return (
+    analysis.buttons.some(isSafeVisibleControlLabel) ||
+    analysis.inputs.some((input) => isSafeVisibleControlLabel(input.label ?? input.selectorHint))
+  );
+}
+
+function assertOpencodeCapturePlanIsNotPassive(capturePlan: CapturePlan, analysis: ProductAnalysis) {
+  if (!hasSafeVisibleWorkflowControls(analysis)) {
+    return;
+  }
+
+  if (capturePlan.steps.some((step) => ACTIVE_CAPTURE_STEP_TYPES.has(step.type))) {
+    return;
+  }
+
+  throw new Error("OpenCode demo planner returned a passive capture plan despite safe visible workflow controls");
 }
 
 function assertStoryboardMatchesInput(storyboard: ManualStoryboard, input: AiUrlPlannerInput) {
@@ -644,6 +699,8 @@ function buildOpencodePlannerPrompt(input: AiUrlPlannerInput) {
         strategyDrivenInstruction,
         "You may use available web research tools to choose safe public sample inputs when the product workflow requires external content, such as a public YouTube URL.",
         "Prefer a real product workflow over a homepage-only scroll. Website analysis is initial visible-state evidence, not a veto when repository context shows a deeper workflow.",
+        "When visible safe workflow controls exist, include at least one safe click, type, or press step that demonstrates the selected flow; do not rely only on hover, scroll, wait, and pause.",
+        "Prefer click over hover for tab-like controls, code tabs, mode switches, and same-origin demo controls when the visible label is safe and not auth, payment, destructive, external, download, or account-related.",
         "If repo context implies the product needs sample data, choose safe public sample inputs and include them in capturePlan type steps rather than asking the user for them.",
         "Prefer built-in sample, demo, cached, or 'Feeling Lucky' flows discovered in source or visible UI when they produce a more deterministic short demo than fresh live generation.",
         "Do not click generated-result controls such as highlight playback buttons unless source or visible analysis shows they are stable and likely to exist within the capture duration.",
@@ -720,40 +777,58 @@ function buildOpencodePlannerPrompt(input: AiUrlPlannerInput) {
   );
 }
 
-export async function defaultRunAiPlannerOpencode(prompt: string, options: { cwd: string }) {
+export async function defaultRunAiPlannerOpencode(prompt: string, options: AiUrlPlannerOpencodeRunOptions) {
   const timeoutMs = Number(process.env.TINKER_AI_URL_PLANNER_OPENCODE_TIMEOUT_MS ?? DEFAULT_OPENCODE_TIMEOUT_MS);
   const effectiveTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_OPENCODE_TIMEOUT_MS;
-  const stdoutPath = join(options.cwd, ".tinker-opencode-demo-planner-output.jsonl");
-  const stderrPath = join(options.cwd, ".tinker-opencode-demo-planner-error.log");
-  await writeOpencodePlannerConfig(options.cwd);
+  const logDir = options.logDir ?? (await mkdtemp(join(tmpdir(), "tinker-opencode-demo-planner-")));
+  const stdoutPath = join(logDir, ".tinker-opencode-demo-planner-output.jsonl");
+  const stderrPath = join(logDir, ".tinker-opencode-demo-planner-error.log");
+  await mkdir(logDir, { recursive: true });
+  await writeOpencodePlannerConfig(logDir);
 
-  let result: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean };
+  let result: { code: number | null; signal: NodeJS.Signals | null; terminationReason?: OpencodeTerminationReason };
   const stdout = createRetainedOutput();
   const stderr = createRetainedOutput();
-  result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
+  result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; terminationReason?: OpencodeTerminationReason }>((resolve, reject) => {
     const detached = process.platform !== "win32";
-    let timedOut = false;
+    let terminationReason: OpencodeTerminationReason | undefined;
     let settled = false;
     let killTimeout: ReturnType<typeof setTimeout> | undefined;
     let closeFallbackTimeout: ReturnType<typeof setTimeout> | undefined;
     const child = spawn("opencode", ["run", "--pure", "--format", "json", "--dir", options.cwd, prompt], {
-      cwd: options.cwd,
+      cwd: logDir,
       detached,
       env: sanitizedOpencodeEnv(),
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    const timeout = setTimeout(() => {
-      timedOut = true;
+    function terminateChild(reason: OpencodeTerminationReason) {
+      if (terminationReason !== undefined) {
+        return;
+      }
+      terminationReason = reason;
+      if (reason === "abort") {
+        clearTimeout(timeout);
+      }
       killChild("SIGTERM");
       killTimeout = setTimeout(() => {
         killChild("SIGKILL");
         closeFallbackTimeout = setTimeout(() => {
           destroyStreams();
-          resolveOnce({ code: null, signal: null, timedOut });
+          resolveOnce({ code: null, signal: null, terminationReason });
         }, TIMEOUT_CLOSE_FALLBACK_MS);
       }, TIMEOUT_KILL_GRACE_MS);
+    }
+
+    const timeout = setTimeout(() => {
+      terminateChild("timeout");
     }, effectiveTimeoutMs);
+
+    const abortChild = () => terminateChild("abort");
+    if (options.signal?.aborted) {
+      abortChild();
+    }
+    options.signal?.addEventListener("abort", abortChild, { once: true });
 
     function killChild(signal: NodeJS.Signals) {
       if (detached && child.pid !== undefined) {
@@ -787,6 +862,7 @@ export async function defaultRunAiPlannerOpencode(prompt: string, options: { cwd
       child.stderr.removeAllListeners("data");
       child.removeAllListeners("close");
       child.removeAllListeners("error");
+      options.signal?.removeEventListener("abort", abortChild);
     }
 
     function destroyStreams() {
@@ -794,7 +870,7 @@ export async function defaultRunAiPlannerOpencode(prompt: string, options: { cwd
       child.stderr.destroy();
     }
 
-    function resolveOnce(finalResult: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }) {
+    function resolveOnce(finalResult: { code: number | null; signal: NodeJS.Signals | null; terminationReason?: OpencodeTerminationReason }) {
       if (settled) {
         return;
       }
@@ -826,7 +902,7 @@ export async function defaultRunAiPlannerOpencode(prompt: string, options: { cwd
       rejectOnce(error);
     });
     child.on("close", (code, signal) => {
-      resolveOnce({ code, signal, timedOut });
+      resolveOnce({ code, signal, terminationReason });
     });
   });
 
@@ -834,7 +910,11 @@ export async function defaultRunAiPlannerOpencode(prompt: string, options: { cwd
   const stderrText = retainedOutputToLog("stderr", stderr);
   await Promise.all([writeFile(stdoutPath, stdoutText), writeFile(stderrPath, stderrText)]);
 
-  if (result.timedOut) {
+  if (result.terminationReason === "abort") {
+    throw new DOMException("OpenCode demo planning aborted.", "AbortError");
+  }
+
+  if (result.terminationReason === "timeout") {
     throw new Error(`OpenCode demo planning timed out after ${effectiveTimeoutMs}ms`);
   }
 
@@ -914,9 +994,15 @@ export function createOpencodeAiUrlPlanner(options: OpencodeAiUrlPlannerOptions 
       throw new Error("repoCheckoutDirectory is required for OpenCode demo planning");
     }
 
-    const result = parseOpencodePlannerResult(await runOpencode(buildOpencodePlannerPrompt(input), { cwd: input.repoCheckoutDirectory }));
+    const result = parseOpencodePlannerResult(
+      await runOpencode(buildOpencodePlannerPrompt(input), {
+        cwd: input.repoCheckoutDirectory,
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+      }),
+    );
     assertStoryboardMatchesInput(result.storyboard, input);
     assertCapturePlanMatchesProductUrl(result.capturePlan, input.productUrl);
+    assertOpencodeCapturePlanIsNotPassive(result.capturePlan, input.analysis);
 
     return result;
   };
