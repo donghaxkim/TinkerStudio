@@ -415,7 +415,7 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByRole("heading", { name: /Tinker Studio/i })).toBeInTheDocument();
     expect(screen.getByLabelText("Product URL")).toBeInTheDocument();
     expect(screen.getByLabelText("GitHub repo URL")).toBeInTheDocument();
-    expect(screen.getByLabelText("Planning agent")).toHaveValue("opencode");
+    expect(screen.getByLabelText("Planning agent")).toHaveValue("claude");
     expect(screen.queryByLabelText("Demo description")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Demo prompt")).not.toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: /Playwright/i })).not.toBeInTheDocument();
@@ -429,7 +429,7 @@ describe("CompositionDemoScreen", () => {
         expect.objectContaining({
           productUrl: "https://driftboard.example.com",
           repoUrl: "https://github.com/acme/driftboard",
-          agent: "opencode",
+          agent: "claude",
         }),
       ),
     );
@@ -480,6 +480,7 @@ describe("CompositionDemoScreen", () => {
     await waitFor(() => expect(client.createJob).toHaveBeenCalled());
     expect(capturedRequest).toBeDefined();
     expect("prompt" in (capturedRequest as CreateCompositionJobRequest)).toBe(false);
+    expect("approvedOutline" in (capturedRequest as CreateCompositionJobRequest)).toBe(false);
   });
 
   it("system prompt is hidden by default; when edited it is sent with Generate now", async () => {
@@ -607,7 +608,7 @@ describe("CompositionDemoScreen", () => {
     expect(await screen.findByText("Updated the outline.")).toBeInTheDocument();
   });
 
-  it("generates Hyperframes with OpenCode by default from the approved outline", async () => {
+  it("generates Hyperframes with Claude Code by default from the approved outline", async () => {
     const client = {
       createJob: vi.fn(async (_request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => ({
         id: "job-1",
@@ -692,7 +693,7 @@ describe("CompositionDemoScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plan" }));
     await screen.findByRole("heading", { name: "Driftboard launch demo" });
     expect(screen.getByLabelText("Renderer")).toHaveValue("hyperframes");
-    expect(screen.getByLabelText("Hyperframes agent")).toHaveValue("opencode");
+    expect(screen.getByLabelText("Hyperframes agent")).toHaveValue("claude");
     fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
 
     await waitFor(() =>
@@ -703,8 +704,9 @@ describe("CompositionDemoScreen", () => {
         durationCapSeconds: 60,
         aspectRatio: "16:9",
         prompt: expect.stringContaining("Use this approved video outline as the product demo brief:"),
+        approvedOutline: planningSession().outline,
         renderer: "hyperframes",
-        hyperframesAgent: "opencode",
+        hyperframesAgent: "claude",
       })),
     );
     expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("Driftboard launch demo") }));
@@ -754,6 +756,7 @@ describe("CompositionDemoScreen", () => {
     await waitFor(() =>
       expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({
         renderer: "playwright",
+        approvedOutline: planningSession().outline,
       })),
     );
     expect(client.createJob).toHaveBeenCalledWith(expect.not.objectContaining({ hyperframesAgent: expect.any(String) }));

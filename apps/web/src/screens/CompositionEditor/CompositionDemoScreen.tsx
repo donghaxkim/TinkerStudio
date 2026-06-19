@@ -367,6 +367,7 @@ export function CompositionDemoScreen({
       durationCapSeconds: session.outline.durationCapSeconds,
       aspectRatio: session.outline.aspectRatio,
       prompt: outlinePrompt(session.outline),
+      approvedOutline: session.outline,
       renderer,
       ...(renderer === "hyperframes" ? { hyperframesAgent } : {}),
     } as const;

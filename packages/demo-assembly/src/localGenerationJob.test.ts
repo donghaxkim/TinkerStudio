@@ -35,6 +35,18 @@ const repoAnalysis: RepoAnalysis = {
   sourceHints: [{ path: "README.md", reason: "Product summary." }],
 };
 
+const approvedOutline = {
+  title: "Fixture approved outline",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  summary: "Use the approved scene order.",
+  scenes: [
+    { id: "scene-1", goal: "Open with the product promise", visual: "Show the hero.", evidence: ["website"] },
+    { id: "scene-2", goal: "Show the repo-backed workflow", visual: "Walk through the main UI.", evidence: ["repo", "website"] },
+  ],
+  generationNotes: ["Keep the approved IDs."],
+} as const;
+
 const times = [
   "2026-06-09T00:00:00.000Z",
   "2026-06-09T00:00:01.000Z",
@@ -56,6 +68,7 @@ const successfulAiUrlRunner: AiUrlDemoRunner = async (input) => {
   assert.equal(input.renderer, "hyperframes");
   assert.equal(input.hyperframesAgent, "claude");
   assert.equal(input.prompt, "Show the AI URL path.");
+  assert.deepEqual(input.approvedOutline, approvedOutline);
 
   const phases = ["analysis", "planning", "validation", "capture", "assembly"] as const;
   for (const phase of phases) {
@@ -187,6 +200,7 @@ const aiUrlResult = await runLocalGenerationJob(
     repoUrl: "https://github.com/example/product",
     hyperframesAgent: "claude",
     prompt: "Show the AI URL path.",
+    approvedOutline,
     outputDirectory: "generated/local-job/ai-url-job",
   },
   {

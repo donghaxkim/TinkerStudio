@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PublicGithubRepoUrlSchema, PublicUrlSchema } from "./createDemoRequest.js";
+import { PublicGithubRepoUrlSchema, PublicUrlSchema } from "./urlSchemas.js";
 
 const nonEmptyString = z.string().trim().min(1);
 const finiteNumber = z.number().finite();

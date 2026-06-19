@@ -190,6 +190,27 @@ assert.equal(
   0,
 );
 
+const aiUrlRequestWithApprovedOutline = parseCreateDemoRequest({
+  ...aiUrlBaseRequest,
+  approvedOutline: validDemoOutline,
+});
+assert.equal("mode" in aiUrlRequestWithApprovedOutline ? aiUrlRequestWithApprovedOutline.mode : undefined, "ai-url-planning");
+if (!("mode" in aiUrlRequestWithApprovedOutline) || aiUrlRequestWithApprovedOutline.mode !== "ai-url-planning") {
+  throw new Error("expected ai-url-planning request");
+}
+assert.deepEqual(aiUrlRequestWithApprovedOutline.approvedOutline, validDemoOutline);
+
+assert.equal(
+  safeParseCreateDemoRequest({
+    ...aiUrlBaseRequest,
+    approvedOutline: {
+      ...validDemoOutline,
+      scenes: [],
+    },
+  }).success,
+  false,
+);
+
 const planningResponse = PlanningSessionResponseSchema.parse({
   id: "plan-test",
   productUrl: "https://example.com",

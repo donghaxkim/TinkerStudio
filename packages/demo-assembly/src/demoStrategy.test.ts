@@ -6,6 +6,7 @@ import {
   selectFlow,
 } from "./demoStrategy.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
+import type { DemoOutline } from "@tinker/generation-contract";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 
 const websiteAnalysis: ProductAnalysis = {
@@ -38,6 +39,19 @@ const understanding = deriveProductUnderstanding({
   websiteAnalysis,
   repoAnalysis,
 });
+
+const approvedOutline: DemoOutline = {
+  title: "LongCut approved demo",
+  durationCapSeconds: 45,
+  aspectRatio: "16:9",
+  summary: "Follow the reviewed LongCut story.",
+  scenes: [
+    { id: "scene-1", goal: "Open with the editing problem", visual: "Show the hero headline.", startHint: 0, endHint: 6, evidence: ["website"] },
+    { id: "scene-2", goal: "Show the YouTube URL workflow", visual: "Paste a safe URL and generate highlights.", startHint: 6, endHint: 32, evidence: ["repo", "website"] },
+    { id: "scene-3", goal: "Close on exported highlights", visual: "Show the output and CTA.", startHint: 32, endHint: 45, evidence: ["repo"] },
+  ],
+  generationNotes: ["Keep the user-approved order."],
+};
 
 // ---- selectFlow honours the prompt over document order ----
 // "Open the transcript chat" comes first in demoIdeas, but the prompt is about the
@@ -88,6 +102,66 @@ for (let index = 1; index < storyboard.beats.length; index += 1) {
   const previous = storyboard.beats[index - 1];
   const current = storyboard.beats[index];
   assert.ok((current.startHint ?? 0) >= (previous.startHint ?? 0), "beats must be ordered by start time");
+}
+
+const approved = deriveDemoStrategy({
+  understanding,
+  prompt: "Show how a user pastes a YouTube URL and generates highlights.",
+  approvedOutline,
+  durationCapSeconds: 45,
+  aspectRatio: "16:9",
+});
+DemoStrategySchema.parse(approved.strategy);
+StoryboardSchema.parse(approved.storyboard);
+assert.equal(approved.storyboard.title, "LongCut approved demo");
+assert.deepEqual(approved.storyboard.beats.map((beat) => beat.id), ["scene-1", "scene-2", "scene-3"]);
+assert.deepEqual(approved.storyboard.beats.map((beat) => beat.type), ["hook", "screen_capture", "cta"]);
+assert.equal(approved.storyboard.beats[0]?.startHint, 0);
+assert.equal(approved.storyboard.beats[0]?.endHint, 6);
+assert.ok(approved.strategy.warnings.every((warning) => warning.length > 0));
+
+const unsupportedApprovedOutline: DemoOutline = {
+  ...approvedOutline,
+  scenes: [
+    approvedOutline.scenes[0]!,
+    {
+      id: "scene-unsupported",
+      goal: "Approve invoices and collect payments",
+      visual: "Open the billing dashboard, send an invoice, and confirm payment.",
+      startHint: 6,
+      endHint: 30,
+      evidence: ["repo", "website"],
+    },
+    approvedOutline.scenes[2]!,
+  ],
+};
+const unsupportedApproved = deriveDemoStrategy({
+  understanding,
+  prompt: "Show how a user pastes a YouTube URL and generates highlights.",
+  approvedOutline: unsupportedApprovedOutline,
+  durationCapSeconds: 45,
+  aspectRatio: "16:9",
+});
+assert.deepEqual(unsupportedApproved.storyboard.beats.map((beat) => beat.id), ["scene-1", "scene-unsupported", "scene-3"]);
+assert.ok(
+  unsupportedApproved.strategy.warnings.some(
+    (warning) => warning.includes("scene-unsupported") && /unsupported|cannot match|no matching/i.test(warning),
+  ),
+  "approved scenes unsupported by product understanding should emit an adaptation warning",
+);
+
+const cappedApproved = deriveDemoStrategy({
+  understanding,
+  prompt: "Show how a user pastes a YouTube URL and generates highlights.",
+  approvedOutline,
+  durationCapSeconds: 30,
+  aspectRatio: "16:9",
+});
+assert.equal(cappedApproved.storyboard.durationTargetSeconds, 30);
+assert.deepEqual(cappedApproved.storyboard.beats.map((beat) => beat.id), ["scene-1", "scene-2", "scene-3"]);
+assert.equal(cappedApproved.storyboard.beats[0]?.endHint, 6, "valid in-range timing hints should be preserved");
+for (const beat of cappedApproved.storyboard.beats) {
+  assert.ok(beat.endHint !== undefined && beat.endHint <= 30, `beat ${beat.id} must end within the request duration cap`);
 }
 
 console.log("demoStrategy.test PASS");

@@ -225,6 +225,18 @@ describe("job routes", () => {
     aspectRatio: "16:9",
   } as const;
 
+  const approvedOutline = {
+    title: "Example product launch demo",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    summary: "Show the approved plan through live product evidence.",
+    scenes: [
+      { id: "scene-1", goal: "Open with the problem", visual: "Show the homepage hero.", evidence: ["website"] },
+      { id: "scene-2", goal: "Show the core workflow", visual: "Use repository-backed UI details.", evidence: ["repo", "website"] },
+    ],
+    generationNotes: ["Prefer the approved order."],
+  } as const;
+
   it("accepts explicit Hyperframes jobs, preserves the selected agent, injects the server id, and exposes completed snapshots", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-${randomUUID()}-`));
     const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
@@ -235,6 +247,7 @@ describe("job routes", () => {
       runner: async (rawRequest, options): Promise<ManualFixtureGenerationResult> => {
         expect(rawRequest).toEqual({
           ...validBody,
+          approvedOutline,
           id: "job-test",
           renderer: "hyperframes",
           hyperframesAgent: "claude",
@@ -272,14 +285,14 @@ describe("job routes", () => {
       const postResponse = await server.inject({
         method: "POST",
         url: "/api/jobs",
-        payload: { ...validBody, id: "client-id", renderer: "hyperframes", hyperframesAgent: "claude" },
+        payload: { ...validBody, approvedOutline, id: "client-id", renderer: "hyperframes", hyperframesAgent: "claude" },
       });
 
       expect(postResponse.statusCode).toBe(202);
       expect(JSON.parse(postResponse.body)).toMatchObject({
         id: "job-test",
         status: "queued",
-        request: { id: "job-test", renderer: "hyperframes", hyperframesAgent: "claude" },
+        request: { id: "job-test", renderer: "hyperframes", hyperframesAgent: "claude", approvedOutline },
       });
 
       await completed.promise;
@@ -298,6 +311,36 @@ describe("job routes", () => {
           ],
         },
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects malformed approved outlines before enqueueing", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-invalid-approved-outline-${randomUUID()}-`));
+    let runnerCalled = false;
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        runnerCalled = true;
+        throw new Error("runner should not be called for invalid approvedOutline");
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: {
+          ...validBody,
+          approvedOutline: { ...approvedOutline, scenes: [] },
+        },
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body).message).toMatch(/approvedOutline\.scenes/i);
+      expect(runnerCalled).toBe(false);
     } finally {
       await server.close();
     }

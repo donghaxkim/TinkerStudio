@@ -12,6 +12,8 @@ import type { AiUrlRenderer } from "./aiUrlRenderer.js";
 import type { Storyboard } from "./demoStrategy.js";
 import type { AspectRatio } from "./types.js";
 import { CoreCoverageItemSchema, type CoreCoverageItem } from "./coreCoverage.js";
+import { ApprovedOutlineCoverageSchema, type ApprovedOutlineCoverage } from "./approvedOutlineLineage.js";
+import { DemoOutlineSchema, type DemoOutline } from "@tinker/generation-contract";
 
 const RendererSchema = z.enum(["hyperframes", "playwright", "both"]);
 
@@ -47,6 +49,7 @@ export const RunInputSchema = z
     productUrl: z.string().trim().min(1),
     repoUrl: z.string().trim().min(1).optional(),
     prompt: z.string(),
+    approvedOutline: DemoOutlineSchema.optional(),
     durationCapSeconds: z.number().finite().positive(),
     aspectRatio: z.enum(["16:9", "9:16", "1:1"]),
     renderer: RendererSchema,
@@ -68,6 +71,7 @@ export const RunSummarySchema = z
     renderer: RendererSchema,
     execution: RunExecutionSchema,
     coreCoverage: z.array(CoreCoverageItemSchema),
+    approvedOutlineCoverage: ApprovedOutlineCoverageSchema.optional(),
     generatedArtifacts: z.array(z.string()),
     storyboardCoverage: z.array(StoryboardCoverageSchema),
     warnings: z.array(z.string()),
@@ -85,6 +89,7 @@ export type BuildRunInputArgs = {
   productUrl: string;
   repoUrl?: string;
   prompt: string;
+  approvedOutline?: DemoOutline;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
   renderer: AiUrlRenderer;
@@ -98,6 +103,7 @@ export function buildRunInput(args: BuildRunInputArgs): RunInput {
     productUrl: args.productUrl,
     ...(args.repoUrl ? { repoUrl: args.repoUrl } : {}),
     prompt: args.prompt,
+    ...(args.approvedOutline === undefined ? {} : { approvedOutline: args.approvedOutline }),
     durationCapSeconds: args.durationCapSeconds,
     aspectRatio: args.aspectRatio,
     renderer: args.renderer,
@@ -114,6 +120,7 @@ export type BuildRunSummaryArgs = {
   warnings: string[];
   execution: RunExecution;
   coreCoverage: CoreCoverageItem[];
+  approvedOutlineCoverage?: ApprovedOutlineCoverage;
 };
 
 /** Make artifact paths run-relative (readable) while leaving outside paths absolute. */
@@ -169,6 +176,7 @@ export function buildRunSummary(args: BuildRunSummaryArgs): RunSummary {
     renderer: args.renderer,
     execution: args.execution,
     coreCoverage: args.coreCoverage,
+    ...(args.approvedOutlineCoverage === undefined ? {} : { approvedOutlineCoverage: args.approvedOutlineCoverage }),
     generatedArtifacts,
     storyboardCoverage,
     warnings: args.warnings,
