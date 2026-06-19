@@ -12,6 +12,7 @@ import type { AiUrlRenderer } from "./aiUrlRenderer.js";
 import type { Storyboard } from "./demoStrategy.js";
 import type { AspectRatio } from "./types.js";
 import { CoreCoverageItemSchema, type CoreCoverageItem } from "./coreCoverage.js";
+import { ApprovedOutlineCoverageSchema, type ApprovedOutlineCoverage } from "./approvedOutlineLineage.js";
 import { DemoOutlineSchema, type DemoOutline } from "@tinker/generation-contract";
 
 const RendererSchema = z.enum(["hyperframes", "playwright", "both"]);
@@ -70,6 +71,7 @@ export const RunSummarySchema = z
     renderer: RendererSchema,
     execution: RunExecutionSchema,
     coreCoverage: z.array(CoreCoverageItemSchema),
+    approvedOutlineCoverage: ApprovedOutlineCoverageSchema.optional(),
     generatedArtifacts: z.array(z.string()),
     storyboardCoverage: z.array(StoryboardCoverageSchema),
     warnings: z.array(z.string()),
@@ -118,6 +120,7 @@ export type BuildRunSummaryArgs = {
   warnings: string[];
   execution: RunExecution;
   coreCoverage: CoreCoverageItem[];
+  approvedOutlineCoverage?: ApprovedOutlineCoverage;
 };
 
 /** Make artifact paths run-relative (readable) while leaving outside paths absolute. */
@@ -173,6 +176,7 @@ export function buildRunSummary(args: BuildRunSummaryArgs): RunSummary {
     renderer: args.renderer,
     execution: args.execution,
     coreCoverage: args.coreCoverage,
+    ...(args.approvedOutlineCoverage === undefined ? {} : { approvedOutlineCoverage: args.approvedOutlineCoverage }),
     generatedArtifacts,
     storyboardCoverage,
     warnings: args.warnings,

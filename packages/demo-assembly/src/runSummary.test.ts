@@ -9,6 +9,7 @@ import {
   type RunExecution,
 } from "./runSummary.js";
 import type { CoreCoverageItem } from "./coreCoverage.js";
+import type { ApprovedOutlineCoverage } from "./approvedOutlineLineage.js";
 import { deriveDemoStrategy } from "./demoStrategy.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
 import type { DemoOutline } from "@tinker/generation-contract";
@@ -99,6 +100,20 @@ const artifactPaths = [
   join(outputRoot, "playwright", "final.mp4"),
 ];
 
+const approvedOutlineCoverage: ApprovedOutlineCoverage = {
+  items: [
+    {
+      sceneId: "scene-1",
+      goal: "Open with the problem",
+      status: "planned",
+      storyboardBeatIds: [storyboard.beats[0]?.id ?? "beat-1"],
+      captureStepIndexes: [0],
+      warnings: ["Approved scene scene-1 was planned but no meaningful captured action mapped to it."],
+    },
+  ],
+  warnings: ["Approved scene scene-1 was planned but no meaningful captured action mapped to it."],
+};
+
 const summary = buildRunSummary({
   renderer: "playwright",
   outputRoot,
@@ -109,8 +124,10 @@ const summary = buildRunSummary({
   warnings: ["a warning"],
   execution,
   coreCoverage: [],
+  approvedOutlineCoverage,
 });
 RunSummarySchema.parse(summary);
+assert.deepEqual(summary.approvedOutlineCoverage, approvedOutlineCoverage);
 assert.equal(summary.status, "success");
 assert.equal(summary.nextRecommendedAction, "review final.mp4");
 // Paths are made run-relative.

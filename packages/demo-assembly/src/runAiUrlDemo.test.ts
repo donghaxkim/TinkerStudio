@@ -4,6 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { CapturePlan, CaptureResult } from "@tinker/browser-capture";
+import type { DemoOutline } from "@tinker/generation-contract";
 import { DemoProjectSchema } from "@tinker/project-schema";
 import type { NarrativeExploration, ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { runAiUrlDemo, type AiUrlDemoPhase } from "./runAiUrlDemo.js";
@@ -62,6 +63,18 @@ const narrativeExploration: NarrativeExploration = {
   strongestCopy: ["Build demos faster"],
   avoidNarratives: ["Avoid generic homepage tour."],
   explorationNotes: ["Only same-origin UI was observed."],
+};
+
+const approvedOutline: DemoOutline = {
+  title: "Fixture approved demo",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  summary: "Use the approved outline as strong guidance.",
+  scenes: [
+    { id: "scene-1", goal: "Open with the product promise", visual: "Show the hero.", evidence: ["website"] },
+    { id: "scene-2", goal: "Show the workflow", visual: "Click through the main product flow.", evidence: ["repo", "website"] },
+  ],
+  generationNotes: ["Report gaps rather than failing."],
 };
 
 const capturePlan: CapturePlan = {
@@ -205,6 +218,7 @@ const defaultRendererResult = await runAiUrlDemo({
   productUrl,
   repoUrl,
   prompt,
+  approvedOutline,
   durationCapSeconds: 10,
   aspectRatio: "16:9",
   signal: defaultRendererController.signal,
@@ -1166,6 +1180,7 @@ const result = await runAiUrlDemo({
   repoUrl,
   renderer: "playwright",
   prompt,
+  approvedOutline,
   durationCapSeconds: 10,
   aspectRatio: "16:9",
   onPhase: (phase) => phases.push(phase),
@@ -1188,6 +1203,7 @@ const result = await runAiUrlDemo({
   planner: async (input) => {
     assert.equal(input.productUrl, canonicalProductUrl);
     assert.equal(input.prompt, prompt);
+    assert.deepEqual(input.approvedOutline, approvedOutline);
     assert.equal(input.durationCapSeconds, 10);
     assert.equal(input.aspectRatio, "16:9");
     assert.deepEqual(input.analysis, productAnalysis);
@@ -1275,6 +1291,21 @@ const storyboardJson = JSON.parse(await readFile(join(outputRoot, "storyboard.js
 const runSummaryJson = JSON.parse(await readFile(join(outputRoot, "run-summary.json"), "utf8"));
 assert.equal(runSummaryJson.version, 1);
 assert.equal(runSummaryJson.storyboardCoverage.length, storyboardJson.beats.length);
+
+const runInputJson = JSON.parse(await readFile(join(outputRoot, "input.json"), "utf8"));
+assert.deepEqual(runInputJson.approvedOutline, approvedOutline);
+
+const approvedLineageJson = JSON.parse(await readFile(join(playwrightOutputRoot, "approved-outline-lineage.json"), "utf8"));
+assert.equal(approvedLineageJson.approvedOutlinePresent, true);
+assert.deepEqual(
+  approvedLineageJson.items.map((item: { sceneId: string }) => item.sceneId),
+  ["scene-1", "scene-2"],
+);
+assert.deepEqual(runSummaryJson.approvedOutlineCoverage.items, approvedLineageJson.items);
+assert.ok(runSummaryJson.generatedArtifacts.includes("playwright/approved-outline-lineage.json"));
+for (const warning of approvedLineageJson.warnings) {
+  assert.ok(runSummaryJson.warnings.includes(warning), `run-summary warnings should include ${warning}`);
+}
 
 assert.ok(runSummaryJson.execution, "run-summary has an execution block");
 // backend is OFF in tests (no TINKER_AGENT_BACKEND) → deterministic modes.

@@ -37,6 +37,7 @@ import { deriveDemoStrategy, type Storyboard, type Strategize } from "./demoStra
 import { createClaudeUnderstandingAgent, createOpencodeUnderstandingAgent, UNDERSTANDING_FALLBACK_WARNINGS } from "./understandingAgent.js";
 import { createClaudeStrategyAgent, createOpencodeStrategyAgent, STRATEGY_FALLBACK_WARNING } from "./demoStrategyAgent.js";
 import { buildCoreCoverage } from "./coreCoverage.js";
+import { buildApprovedOutlineLineage, type ApprovedOutlineLineage } from "./approvedOutlineLineage.js";
 import type { CaptureLineage } from "./captureLineage.js";
 import type { RunExecution } from "./runSummary.js";
 import { beatIndexForPosition, buildCaptureLineage } from "./captureLineage.js";
@@ -171,6 +172,7 @@ type InternalRendererResult = Omit<RunAiUrlDemoResult, "renderer" | "pipeline"> 
   renderPlanApplied?: boolean;
   coverageActionTrace?: ActionTrace;
   coverageCaptureLineage?: CaptureLineage;
+  approvedOutlineLineage?: ApprovedOutlineLineage;
 };
 
 function toPrettyJson(value: unknown) {
@@ -893,6 +895,19 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       finalVideoMode === "rendered" ? "demo-project" : finalVideoMode === "transcoded" ? "raw-playwright-recording" : "none";
     const editDecisionListApplied = editDecisionList.removedSeconds > 0;
 
+    let approvedOutlineLineage: ApprovedOutlineLineage | undefined;
+    let approvedOutlineLineagePath: string | undefined;
+    if (input.approvedOutline !== undefined) {
+      approvedOutlineLineage = buildApprovedOutlineLineage({
+        approvedOutline: input.approvedOutline,
+        storyboard: strategyStoryboard,
+        capturePlan,
+        finalVideoProduced,
+      });
+      approvedOutlineLineagePath = join(playwrightOutputRoot, "approved-outline-lineage.json");
+      await writeFile(approvedOutlineLineagePath, toPrettyJson(approvedOutlineLineage));
+    }
+
     const artifactPaths = [
       productAnalysisPath,
       ...(repoAnalysisPath ? [repoAnalysisPath] : []),
@@ -906,6 +921,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       renderPlanPath,
       editDecisionListPath,
       directorPlanPath,
+      ...(approvedOutlineLineagePath === undefined ? [] : [approvedOutlineLineagePath]),
       ...(finalVideoProduced ? [finalVideoPath] : []),
       projectPath,
       ...captureResult.clips.map((asset) => toCaptureAssetPath(captureOutputDir, asset)),
@@ -935,6 +951,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       renderPlanApplied: renderPlanAppliedToProject.applied,
       coverageActionTrace: actionTrace,
       coverageCaptureLineage: captureLineage,
+      ...(approvedOutlineLineage === undefined ? {} : { approvedOutlineLineage }),
     };
   }
 
@@ -967,6 +984,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
         renderPlanApplied: playwrightResult.renderPlanApplied,
         coverageActionTrace: playwrightResult.coverageActionTrace,
         coverageCaptureLineage: playwrightResult.coverageCaptureLineage,
+        approvedOutlineLineage: playwrightResult.approvedOutlineLineage,
       };
     }
 
@@ -987,6 +1005,14 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       ...(internal.coverageCaptureLineage ? { captureLineage: internal.coverageCaptureLineage } : {}),
       finalVideoProduced,
     });
+
+    const approvedOutlineCoverage =
+      internal.approvedOutlineLineage === undefined
+        ? undefined
+        : {
+            items: internal.approvedOutlineLineage.items,
+            warnings: internal.approvedOutlineLineage.warnings,
+          };
 
     const execution: RunExecution = {
       understandingMode: phaseMode(understanding.warnings, UNDERSTANDING_FALLBACK_WARNINGS),
@@ -1013,9 +1039,10 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
       artifactPaths,
       captureSucceeded: true,
       finalVideoProduced,
-      warnings: dedupeStrings([...pipelineWarnings, ...coverage.warnings]),
+      warnings: dedupeStrings([...pipelineWarnings, ...coverage.warnings, ...(approvedOutlineCoverage?.warnings ?? [])]),
       execution,
       coreCoverage: coverage.items,
+      ...(approvedOutlineCoverage === undefined ? {} : { approvedOutlineCoverage }),
     });
     await writeFile(runSummaryPath, toPrettyJson(runSummary));
 
