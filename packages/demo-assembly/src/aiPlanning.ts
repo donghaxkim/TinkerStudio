@@ -10,6 +10,7 @@ import {
   assertValidCapturePlan,
   type CapturePlan,
 } from "@tinker/browser-capture";
+import type { DemoOutline } from "@tinker/generation-contract";
 import {
   parseNarrativeExploration,
   parseRepoAnalysis,
@@ -36,6 +37,7 @@ const UNSAFE_VISIBLE_CONTROL_LABEL_PATTERN =
 export type AiUrlPlannerInput = {
   productUrl: string;
   prompt: string;
+  approvedOutline?: DemoOutline;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
   analysis: ProductAnalysis;
@@ -597,6 +599,36 @@ const defaultStoryboardNarrativeInstructions = [
   "The capture plan should prioritize product actions that support the use case and reveal the end result, rather than producing a generic homepage tour.",
 ];
 
+function buildApprovedOutlineContext(approvedOutline: DemoOutline | undefined) {
+  if (approvedOutline === undefined) return undefined;
+  return {
+    title: approvedOutline.title,
+    durationCapSeconds: approvedOutline.durationCapSeconds,
+    aspectRatio: approvedOutline.aspectRatio,
+    summary: approvedOutline.summary,
+    scenes: approvedOutline.scenes.map((scene) => ({
+      id: scene.id,
+      goal: scene.goal,
+      visual: scene.visual,
+      narration: scene.narration,
+      startHint: scene.startHint,
+      endHint: scene.endHint,
+      evidence: scene.evidence,
+    })),
+    generationNotes: approvedOutline.generationNotes,
+  };
+}
+
+function approvedOutlinePlannerInstructions(input: AiUrlPlannerInput): string[] {
+  if (input.approvedOutline === undefined) return [];
+  return [
+    "Treat approvedOutline as the primary narrative guide.",
+    "Build the capture plan to support the approved scenes in order where the live product allows it.",
+    "If an approved scene is unsupported, choose the closest safe same-origin action and reflect the gap in the returned storyboard goal rather than inventing unsupported product behavior.",
+    "Never let approvedOutline override safety rules: no auth, payments, destructive actions, external navigation, or unsafe input.",
+  ];
+}
+
 function buildPlannerPrompt(input: AiUrlPlannerInput) {
   const repoAnalysis = parsePlannerRepoAnalysis(input.repoAnalysis);
   const narrativeExploration = parsePlannerNarrativeExploration(input.narrativeExploration, input.productUrl);
@@ -609,6 +641,7 @@ function buildPlannerPrompt(input: AiUrlPlannerInput) {
         "Use exactly the top-level keys storyboard and capturePlan.",
         "Do not include schema, scenes, captions, audio, style, metadata, or editableTextFields.",
         strategyDrivenInstruction,
+        ...approvedOutlinePlannerInstructions(input),
         "Prefer simple visible UI actions and avoid auth, payments, destructive actions, or external navigation.",
         "Do not type into inputs unless the user prompt provides a safe value; for external websites prefer goto, wait, hover, scroll, and pause.",
         ...defaultStoryboardNarrativeInstructions,
@@ -634,6 +667,7 @@ function buildPlannerPrompt(input: AiUrlPlannerInput) {
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
       strategy: buildStrategyContext(input),
+      approvedOutline: buildApprovedOutlineContext(input.approvedOutline),
       analysis: input.analysis,
       repositoryContext: repoAnalysis
         ? {
@@ -697,6 +731,7 @@ function buildOpencodePlannerPrompt(input: AiUrlPlannerInput) {
         "Return one JSON object only with top-level keys storyboard and capturePlan.",
         "You may inspect the checked-out repository in your working directory as read-only evidence.",
         strategyDrivenInstruction,
+        ...approvedOutlinePlannerInstructions(input),
         "You may use available web research tools to choose safe public sample inputs when the product workflow requires external content, such as a public YouTube URL.",
         "Prefer a real product workflow over a homepage-only scroll. Website analysis is initial visible-state evidence, not a veto when repository context shows a deeper workflow.",
         "When visible safe workflow controls exist, include at least one safe click, type, or press step that demonstrates the selected flow; do not rely only on hover, scroll, wait, and pause.",
@@ -724,6 +759,7 @@ function buildOpencodePlannerPrompt(input: AiUrlPlannerInput) {
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
       strategy: buildStrategyContext(input),
+      approvedOutline: buildApprovedOutlineContext(input.approvedOutline),
       websiteAnalysis: input.analysis,
       repositoryContext: repoAnalysis
         ? {

@@ -211,6 +211,7 @@ export async function runLocalGenerationJob(
       renderer: request.renderer,
       hyperframesAgent: request.hyperframesAgent,
       prompt: request.prompt ?? "Make a short demo of the main value prop.",
+      ...(request.approvedOutline === undefined ? {} : { approvedOutline: request.approvedOutline }),
       ...(request.systemPrompt === undefined ? {} : { systemPrompt: request.systemPrompt }),
       durationCapSeconds: request.durationCapSeconds,
       aspectRatio: request.aspectRatio,

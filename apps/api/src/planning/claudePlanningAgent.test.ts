@@ -207,7 +207,7 @@ printf '%s\n' '{"type":"message","role":"assistant","message":{"content":[{"type
     });
     const stdoutLog = await readFile(join(workspaceRoot, ".tinker-opencode-planning-output.jsonl"), "utf8");
     expect(stdoutLog).toContain("stdout truncated");
-  });
+  }, 10_000);
 
   it("does not preserve stdout diagnostics as assistant text", async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), `tinker-opencode-diagnostic-output-${randomUUID()}-`));

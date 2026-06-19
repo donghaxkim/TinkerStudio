@@ -496,6 +496,7 @@ describe("CompositionDemoScreen", () => {
     await waitFor(() => expect(client.createJob).toHaveBeenCalled());
     expect(capturedRequest).toBeDefined();
     expect("prompt" in (capturedRequest as CreateCompositionJobRequest)).toBe(false);
+    expect("approvedOutline" in (capturedRequest as CreateCompositionJobRequest)).toBe(false);
   });
 
   it("system prompt is hidden by default; when edited it is sent with Generate now", async () => {
@@ -719,6 +720,7 @@ describe("CompositionDemoScreen", () => {
         durationCapSeconds: 60,
         aspectRatio: "16:9",
         prompt: expect.stringContaining("Use this approved video outline as the product demo brief:"),
+        approvedOutline: planningSession().outline,
         renderer: "hyperframes",
         hyperframesAgent: "opencode",
       })),
@@ -770,6 +772,7 @@ describe("CompositionDemoScreen", () => {
     await waitFor(() =>
       expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({
         renderer: "playwright",
+        approvedOutline: planningSession().outline,
       })),
     );
     expect(client.createJob).toHaveBeenCalledWith(expect.not.objectContaining({ hyperframesAgent: expect.any(String) }));
