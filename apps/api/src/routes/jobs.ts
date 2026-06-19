@@ -343,6 +343,7 @@ export function registerJobsRoutes(server: FastifyInstance, options: JobsRoutesO
       renderer,
       hyperframesAgent: parsed.data.hyperframesAgent,
       ...(parsed.data.prompt === undefined ? {} : { prompt: parsed.data.prompt }),
+      ...(parsed.data.approvedOutline === undefined ? {} : { approvedOutline: parsed.data.approvedOutline }),
     });
     if (!acceptedRequestResult.success) {
       return reply.status(422).send(validationError(formatZodIssues(acceptedRequestResult.error.issues)));
