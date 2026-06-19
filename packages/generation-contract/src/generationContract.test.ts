@@ -441,33 +441,57 @@ const progress = GenerationProgressEventSchema.parse({
 
 assert.equal("status" in progress ? progress.status : undefined, "capturing");
 
-const playwrightRendererResult = {
-  projectPath: "generated/local-job/ai-url-job/playwright/demo-project.json",
-  captureResultPath: "generated/local-job/ai-url-job/playwright/capture-result.json",
+const testreelRendererResult = {
+  recordingPlanPath: "generated/local-job/ai-url-job/testreel/recording-plan.json",
+  recordingPath: "generated/local-job/ai-url-job/testreel/recording.json",
+  outputDirectory: "generated/local-job/ai-url-job/testreel/output",
+  finalVideoPath: "generated/local-job/ai-url-job/testreel/final.mp4",
+  manifestPath: "generated/local-job/ai-url-job/testreel/output/output.json",
+  screenshotPaths: ["generated/local-job/ai-url-job/testreel/output/final.png"],
 };
 
 const result = GenerationResultSchema.parse({
   jobId: "ai-url-job",
   status: "completed",
-  projectPath: playwrightRendererResult.projectPath,
-  captureResultPath: playwrightRendererResult.captureResultPath,
+  publishedVideoPath: testreelRendererResult.finalVideoPath,
   outputDirectory: "generated/local-job/ai-url-job",
-  artifactPaths: ["generated/local-job/ai-url-job/playwright/final.mp4"],
-  renderer: "playwright",
-  rendererResults: { playwright: playwrightRendererResult },
+  artifactPaths: [testreelRendererResult.finalVideoPath],
+  renderer: "testreel",
+  rendererResults: { testreel: testreelRendererResult },
 });
 
 assert.equal("status" in result ? result.status : undefined, "completed");
+assert.equal("projectPath" in result, false);
+assert.equal("captureResultPath" in result, false);
+
 assert.equal(
   GenerationResultSchema.safeParse({
     jobId: "ai-url-job",
     status: "completed",
-    projectPath: playwrightRendererResult.projectPath,
-    captureResultPath: playwrightRendererResult.captureResultPath,
+    projectPath: "generated/local-job/ai-url-job/playwright/demo-project.json",
+    captureResultPath: "generated/local-job/ai-url-job/playwright/capture-result.json",
     outputDirectory: "generated/local-job/ai-url-job",
     artifactPaths: ["generated/local-job/ai-url-job/playwright/final.mp4"],
     renderer: "playwright",
-    rendererResults: { playwright: playwrightRendererResult },
+    rendererResults: {
+      playwright: {
+        projectPath: "generated/local-job/ai-url-job/playwright/demo-project.json",
+        captureResultPath: "generated/local-job/ai-url-job/playwright/capture-result.json",
+      },
+    },
+  }).success,
+  false,
+);
+
+assert.equal(
+  GenerationResultSchema.safeParse({
+    jobId: "ai-url-job",
+    status: "completed",
+    publishedVideoPath: testreelRendererResult.finalVideoPath,
+    outputDirectory: "generated/local-job/ai-url-job",
+    artifactPaths: [testreelRendererResult.finalVideoPath],
+    renderer: "testreel",
+    rendererResults: { testreel: testreelRendererResult },
     unexpected: "field",
   }).success,
   false,
@@ -497,16 +521,15 @@ assert.equal(
 const aiUrlGenerationResult = {
   jobId: "ai-url-job",
   status: "completed",
-  projectPath: playwrightRendererResult.projectPath,
-  captureResultPath: playwrightRendererResult.captureResultPath,
+  publishedVideoPath: testreelRendererResult.finalVideoPath,
   outputDirectory: "generated/local-job/ai-url-job",
-  artifactPaths: ["generated/local-job/ai-url-job/playwright/final.mp4"],
+  artifactPaths: [testreelRendererResult.finalVideoPath],
 };
 
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    rendererResults: { playwright: playwrightRendererResult },
+    rendererResults: { testreel: testreelRendererResult },
   }).success,
   false,
 );
@@ -514,7 +537,7 @@ assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
     renderer: removedCompositionRenderer,
-    rendererResults: { playwright: playwrightRendererResult },
+    rendererResults: { testreel: testreelRendererResult },
   }).success,
   false,
 );
@@ -522,49 +545,40 @@ assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
     renderer: removedCombinedRenderer,
-    rendererResults: { playwright: playwrightRendererResult },
+    rendererResults: { testreel: testreelRendererResult },
   }).success,
   false,
 );
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    renderer: "playwright",
-    rendererResults: { playwright: { ...playwrightRendererResult, extra: "not allowed" } },
+    renderer: "testreel",
+    rendererResults: { testreel: { ...testreelRendererResult, extra: "not allowed" } },
   }).success,
   false,
 );
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    renderer: "playwright",
-    rendererResults: { playwright: playwrightRendererResult, [removedCompositionRenderer]: {} },
+    renderer: "testreel",
+    rendererResults: { testreel: testreelRendererResult, [removedCompositionRenderer]: {} },
   }).success,
   false,
 );
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    projectPath: "generated/local-job/ai-url-job/playwright/other-project.json",
-    renderer: "playwright",
-    rendererResults: { playwright: playwrightRendererResult },
+    publishedVideoPath: "generated/local-job/ai-url-job/testreel/other-final.mp4",
+    renderer: "testreel",
+    rendererResults: { testreel: testreelRendererResult },
   }).success,
   false,
 );
 assert.equal(
   GenerationResultSchema.safeParse({
     ...aiUrlGenerationResult,
-    captureResultPath: "generated/local-job/ai-url-job/playwright/other-capture-result.json",
-    renderer: "playwright",
-    rendererResults: { playwright: playwrightRendererResult },
-  }).success,
-  false,
-);
-assert.equal(
-  GenerationResultSchema.safeParse({
-    ...aiUrlGenerationResult,
-    renderer: "playwright",
-    rendererResults: { playwright: playwrightRendererResult },
+    renderer: "testreel",
+    rendererResults: { testreel: testreelRendererResult },
   }).success,
   true,
 );

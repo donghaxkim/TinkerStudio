@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { DemoProjectSchema } from "@tinker/project-schema";
 import { AiUrlPlanningCreateDemoRequestSchema } from "./createDemoRequest.js";
 import { GenerationErrorSchema } from "./errors.js";
 import { ManualFixtureProgressEventSchema } from "./progress.js";
 
-export const ApiGenerationMethodSchema = z.literal("playwright");
+export const ApiGenerationMethodSchema = z.literal("testreel");
 
 const ApiCreateDemoRequestSchema = AiUrlPlanningCreateDemoRequestSchema.omit({
   outputDirectory: true,
@@ -18,13 +17,11 @@ export const ApiArtifactKindSchema = z.enum([
   "product-analysis",
   "product-analysis-screenshot",
   "repo-analysis",
-  "playwright-demo-project",
-  "playwright-storyboard",
-  "playwright-capture-plan",
-  "playwright-capture-result",
-  "playwright-video",
-  "playwright-screenshot",
-  "playwright-trace",
+  "published-video",
+  "testreel-recording-plan",
+  "testreel-recording-definition",
+  "testreel-manifest",
+  "testreel-screenshot",
   "other",
 ]);
 
@@ -39,12 +36,20 @@ export const ApiArtifactSchema = z
 
 export const ApiGenerationResultSchema = z
   .object({
-    method: z.literal("playwright"),
-    project: DemoProjectSchema,
+    method: z.literal("testreel"),
     artifacts: z.array(ApiArtifactSchema),
     warnings: z.array(z.string()),
   })
-  .strict();
+  .strict()
+  .superRefine((result, ctx) => {
+    if (!result.artifacts.some((artifact) => artifact.kind === "published-video")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["artifacts"],
+        message: "completed Testreel jobs require a published-video artifact",
+      });
+    }
+  });
 
 export const ApiGenerationJobStatusSchema = z.enum([
   "queued",

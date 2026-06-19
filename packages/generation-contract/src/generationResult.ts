@@ -1,16 +1,20 @@
 import { z } from "zod";
 import { DemoProjectSchema } from "@tinker/project-schema";
 
-const PlaywrightRendererResultSchema = z
+const TestreelRendererResultSchema = z
   .object({
-    projectPath: z.string().min(1),
-    captureResultPath: z.string().min(1),
+    recordingPlanPath: z.string().min(1),
+    recordingPath: z.string().min(1),
+    outputDirectory: z.string().min(1),
+    finalVideoPath: z.string().min(1),
+    manifestPath: z.string().min(1).optional(),
+    screenshotPaths: z.array(z.string().min(1)).default([]),
   })
   .strict();
 
 const RendererResultsSchema = z
   .object({
-    playwright: PlaywrightRendererResultSchema,
+    testreel: TestreelRendererResultSchema,
   })
   .strict();
 
@@ -18,28 +22,19 @@ export const ManualFixtureGenerationResultSchema = z
   .object({
     jobId: z.string().min(1),
     status: z.literal("completed"),
-    projectPath: z.string().min(1),
-    captureResultPath: z.string().min(1),
+    publishedVideoPath: z.string().min(1),
     outputDirectory: z.string().min(1),
     artifactPaths: z.array(z.string().min(1)),
-    renderer: z.literal("playwright"),
+    renderer: z.literal("testreel"),
     rendererResults: RendererResultsSchema,
   })
   .strict()
   .superRefine((result, ctx) => {
-    if (result.projectPath !== result.rendererResults.playwright.projectPath) {
+    if (result.publishedVideoPath !== result.rendererResults.testreel.finalVideoPath) {
       ctx.addIssue({
         code: "custom",
-        path: ["projectPath"],
-        message: "projectPath must match the Playwright renderer result",
-      });
-    }
-
-    if (result.captureResultPath !== result.rendererResults.playwright.captureResultPath) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["captureResultPath"],
-        message: "captureResultPath must match the Playwright renderer result",
+        path: ["publishedVideoPath"],
+        message: "publishedVideoPath must match the Testreel final video path",
       });
     }
   });

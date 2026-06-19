@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { DemoProjectSchema } from "@tinker/project-schema";
-import goldenProjectInput from "../../project-schema/fixtures/person-a-generated-project.sample.json" with { type: "json" };
 import {
   ApiArtifactKindSchema,
   ApiArtifactSchema,
@@ -28,20 +26,18 @@ const progressEvent = {
   time: "2026-06-11T00:00:01.000Z",
 } as const;
 
-const goldenProject = DemoProjectSchema.parse(goldenProjectInput);
-
-const playwrightProjectArtifact = {
-  kind: "playwright-demo-project",
-  relativePath: "playwright/demo-project.json",
-  url: "/api/jobs/job-test/artifacts/playwright/demo-project.json",
-  mediaType: "application/json; charset=utf-8",
+const publishedVideoArtifact = {
+  kind: "published-video",
+  relativePath: "testreel/final.mp4",
+  url: "/api/jobs/job-test/artifacts/testreel/final.mp4",
+  mediaType: "video/mp4",
 } as const;
 
-const playwrightVideoArtifact = {
-  kind: "playwright-video",
-  relativePath: "playwright/final.mp4",
-  url: "/api/jobs/job-test/artifacts/playwright/final.mp4",
-  mediaType: "video/mp4",
+const recordingPlanArtifact = {
+  kind: "testreel-recording-plan",
+  relativePath: "testreel/recording-plan.json",
+  url: "/api/jobs/job-test/artifacts/testreel/recording-plan.json",
+  mediaType: "application/json; charset=utf-8",
 } as const;
 
 describe("API generation job contract", () => {
@@ -61,13 +57,11 @@ describe("API generation job contract", () => {
       "product-analysis",
       "product-analysis-screenshot",
       "repo-analysis",
-      "playwright-demo-project",
-      "playwright-storyboard",
-      "playwright-capture-plan",
-      "playwright-capture-result",
-      "playwright-video",
-      "playwright-screenshot",
-      "playwright-trace",
+      "published-video",
+      "testreel-recording-plan",
+      "testreel-recording-definition",
+      "testreel-manifest",
+      "testreel-screenshot",
       "other",
     ]);
   });
@@ -94,30 +88,36 @@ describe("API generation job contract", () => {
       updatedAt: "2026-06-11T00:00:02.000Z",
       progressEvents: [progressEvent],
       result: {
-        method: "playwright",
-        project: goldenProject,
-        artifacts: [playwrightProjectArtifact, playwrightVideoArtifact],
+        method: "testreel",
+        artifacts: [recordingPlanArtifact, publishedVideoArtifact],
         warnings: [],
       },
     });
 
-    expect(completed.result?.method).toBe("playwright");
+    expect(completed.result?.method).toBe("testreel");
     expect(completed.result?.artifacts.map((artifact) => artifact.kind)).toEqual([
-      "playwright-demo-project",
-      "playwright-video",
+      "testreel-recording-plan",
+      "published-video",
     ]);
+    expect("project" in completed.result!).toBe(false);
   });
 
-  it("accepts Playwright API results with a valid DemoProject", () => {
-    const result = ApiGenerationResultSchema.parse({
-      method: "playwright",
-      project: goldenProject,
-      artifacts: [playwrightProjectArtifact],
-      warnings: [],
-    });
+  it("requires Testreel API results with a published video artifact", () => {
+    expect(
+      ApiGenerationResultSchema.safeParse({
+        method: "testreel",
+        artifacts: [recordingPlanArtifact],
+        warnings: [],
+      }).success,
+    ).toBe(false);
 
-    expect(result.method).toBe("playwright");
-    expect(result.project.id).toBe(goldenProject.id);
+    expect(
+      ApiGenerationResultSchema.safeParse({
+        method: "playwright",
+        artifacts: [publishedVideoArtifact],
+        warnings: [],
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects stale composition request/result fields", () => {
@@ -146,26 +146,24 @@ describe("API generation job contract", () => {
   it("rejects missing native outputs and extra result fields", () => {
     expect(
       ApiGenerationResultSchema.safeParse({
-        method: "playwright",
-        artifacts: [playwrightProjectArtifact],
+        method: "testreel",
+        artifacts: [recordingPlanArtifact],
         warnings: [],
       }).success,
     ).toBe(false);
 
     expect(
       ApiGenerationResultSchema.safeParse({
-        method: "playwright",
-        project: goldenProject,
-        artifacts: [playwrightProjectArtifact],
+        method: "testreel",
+        artifacts: [publishedVideoArtifact],
       }).success,
     ).toBe(false);
 
     expect(
       ApiGenerationResultSchema.safeParse({
-        method: "playwright",
-        project: goldenProject,
+        method: "testreel",
         composition: {},
-        artifacts: [playwrightProjectArtifact],
+        artifacts: [publishedVideoArtifact],
         warnings: [],
       }).success,
     ).toBe(false);
@@ -274,9 +272,8 @@ describe("API generation job contract", () => {
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [progressEvent],
         result: {
-          method: "playwright",
-          project: goldenProject,
-          artifacts: [playwrightProjectArtifact],
+          method: "testreel",
+          artifacts: [publishedVideoArtifact],
           warnings: [],
         },
       }).success,
@@ -323,9 +320,8 @@ describe("API generation job contract", () => {
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [progressEvent],
         result: {
-          method: "playwright",
-          project: goldenProject,
-          artifacts: [playwrightProjectArtifact],
+          method: "testreel",
+          artifacts: [publishedVideoArtifact],
           warnings: [],
         },
         error: {
@@ -345,9 +341,8 @@ describe("API generation job contract", () => {
         updatedAt: "2026-06-11T00:00:00.000Z",
         progressEvents: [progressEvent],
         result: {
-          method: "playwright",
-          project: goldenProject,
-          artifacts: [playwrightProjectArtifact],
+          method: "testreel",
+          artifacts: [publishedVideoArtifact],
           warnings: [],
         },
         error: {
