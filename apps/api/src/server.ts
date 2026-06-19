@@ -77,6 +77,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     now,
     idGenerator,
     productUrlResolver: options.productUrlResolver,
+    cancelJob: generationWorker.cancel,
   });
   registerPlanningSessionsRoutes(server, {
     store: planningStore,

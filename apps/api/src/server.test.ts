@@ -225,6 +225,97 @@ describe("job routes", () => {
     aspectRatio: "16:9",
   } as const;
 
+  it("cancels a running generation job and aborts the runner", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-cancel-${randomUUID()}-`));
+    const runnerStarted = deferred<AbortSignal | undefined>();
+    const runnerAborted = deferred<void>();
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => "job-cancel",
+      runner: async (_rawRequest, options): Promise<ManualFixtureGenerationResult> => {
+        runnerStarted.resolve(options?.signal);
+        options?.signal?.addEventListener("abort", () => runnerAborted.resolve(), { once: true });
+        await runnerAborted.promise;
+        throw new Error("runner should stop after cancellation");
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(postResponse.statusCode).toBe(202);
+
+      await expect(runnerStarted.promise).resolves.toBeInstanceOf(AbortSignal);
+
+      const cancelResponse = await server.inject({ method: "POST", url: "/api/jobs/job-cancel/cancel" });
+      expect(cancelResponse.statusCode).toBe(200);
+      expect(JSON.parse(cancelResponse.body)).toMatchObject({
+        id: "job-cancel",
+        status: "failed",
+        error: { stage: "cancelled", message: "Generation cancelled." },
+      });
+      await runnerAborted.promise;
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("cancels a queued generation job and frees queue capacity", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-cancel-queued-${randomUUID()}-`));
+    const firstRunnerRelease = deferred<void>();
+    const ids = ["job-running", "job-queued", "job-replacement"];
+    const started: string[] = [];
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      idGenerator: () => ids.shift() ?? "job-extra",
+      maxPendingJobs: 1,
+      runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
+        const jobId = (rawRequest as { id: string }).id;
+        started.push(jobId);
+        if (jobId === "job-running") {
+          await firstRunnerRelease.promise;
+        }
+        return {
+          jobId,
+          status: "completed",
+          projectPath: join(repoRoot, "generated", "local-job", jobId, "hyperframes", "output.mp4"),
+          captureResultPath: join(repoRoot, "generated", "local-job", jobId, "hyperframes", "generation-manifest.json"),
+          outputDirectory: join(repoRoot, "generated", "local-job", jobId),
+          artifactPaths: [],
+          renderer: "hyperframes",
+          rendererResults: {
+            hyperframes: {
+              outputVideoPath: join(repoRoot, "generated", "local-job", jobId, "hyperframes", "output.mp4"),
+              generationManifestPath: join(repoRoot, "generated", "local-job", jobId, "hyperframes", "generation-manifest.json"),
+              assetManifestPath: join(repoRoot, "generated", "local-job", jobId, "hyperframes", "asset-manifest.json"),
+            },
+          },
+        };
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      expect((await server.inject({ method: "POST", url: "/api/jobs", payload: validBody })).statusCode).toBe(202);
+      await Promise.resolve();
+      expect((await server.inject({ method: "POST", url: "/api/jobs", payload: validBody })).statusCode).toBe(202);
+
+      const cancelResponse = await server.inject({ method: "POST", url: "/api/jobs/job-queued/cancel" });
+      expect(cancelResponse.statusCode).toBe(200);
+      expect(JSON.parse(cancelResponse.body)).toMatchObject({ status: "failed", error: { stage: "cancelled" } });
+
+      const replacementResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: validBody });
+      expect(replacementResponse.statusCode).toBe(202);
+
+      firstRunnerRelease.resolve();
+      await waitForJobStatus(server, "job-replacement", "failed");
+      expect(started).toEqual(["job-running", "job-replacement"]);
+    } finally {
+      firstRunnerRelease.resolve();
+      await server.close();
+    }
+  });
+
   it("accepts explicit Hyperframes jobs, preserves the selected agent, injects the server id, and exposes completed snapshots", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-${randomUUID()}-`));
     const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
@@ -1640,6 +1731,36 @@ describe("job queue", () => {
     expect(started).toEqual(["job-1", "job-2"]);
     expect(queue.pendingCount()).toBe(0);
     expect(queue.isRunning()).toBe(false);
+  });
+
+  it("removes cancelled pending jobs so capacity is released", async () => {
+    const first = deferred<void>();
+    const started: string[] = [];
+    const queue = createJobQueue({
+      maxPendingJobs: 1,
+      runJob: async (id) => {
+        started.push(id);
+        if (id === "job-1") {
+          await first.promise;
+        }
+      },
+    });
+
+    expect(queue.enqueue("job-1")).toBe(true);
+    expect(queue.enqueue("job-2")).toBe(true);
+    expect(queue.hasCapacity()).toBe(false);
+
+    expect(queue.cancel("job-2")).toBe(true);
+    expect(queue.pendingCount()).toBe(0);
+    expect(queue.hasCapacity()).toBe(true);
+    expect(queue.enqueue("job-3")).toBe(true);
+
+    first.resolve();
+    await first.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(started).toEqual(["job-1", "job-3"]);
   });
 });
 

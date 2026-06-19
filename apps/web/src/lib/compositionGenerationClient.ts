@@ -32,6 +32,7 @@ export type WaitForJobOptions = {
 export interface CompositionGenerationClient {
   createJob(request: CreateCompositionJobRequest): Promise<ApiGenerationJob>;
   getJob(jobId: string): Promise<ApiGenerationJob>;
+  cancelJob?(jobId: string): Promise<ApiGenerationJob>;
   waitForJob(jobId: string, options?: WaitForJobOptions): Promise<ApiGenerationJob>;
 }
 

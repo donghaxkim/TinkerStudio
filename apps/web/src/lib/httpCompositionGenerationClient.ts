@@ -54,6 +54,9 @@ export function createHttpCompositionGenerationClient(
       );
     },
     getJob,
+    async cancelJob(jobId: string): Promise<ApiGenerationJob> {
+      return readJob(await fetchFn(`${baseUrl}/api/jobs/${jobId}/cancel`, { method: "POST" }));
+    },
     async waitForJob(jobId: string, waitOptions: WaitForJobOptions = {}): Promise<ApiGenerationJob> {
       const intervalMs = waitOptions.intervalMs ?? DEFAULT_POLL_INTERVAL_MS;
       for (;;) {

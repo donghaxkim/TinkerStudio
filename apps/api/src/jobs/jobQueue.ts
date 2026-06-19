@@ -35,6 +35,16 @@ export function createJobQueue(options: JobQueueOptions) {
       return true;
     },
 
+    cancel(id: string) {
+      const index = pending.indexOf(id);
+      if (index === -1) {
+        return false;
+      }
+
+      pending.splice(index, 1);
+      return true;
+    },
+
     pendingCount() {
       return pending.length;
     },

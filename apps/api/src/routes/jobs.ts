@@ -26,7 +26,12 @@ export type JobsRoutesOptions = {
   now: () => string;
   idGenerator: () => string;
   productUrlResolver?: ProductUrlResolver;
+  cancelJob?: (id: string) => boolean;
 };
+
+function cancellationError(jobId: string) {
+  return GenerationErrorSchema.parse({ jobId, status: "failed", stage: "cancelled", message: "Generation cancelled." });
+}
 
 function validationError(message: string) {
   return GenerationErrorSchema.parse({ status: "failed", stage: "validation", message });
@@ -360,6 +365,25 @@ export function registerJobsRoutes(server: FastifyInstance, options: JobsRoutesO
     }
 
     return snapshot;
+  });
+
+  server.post<{ Params: { id: string } }>("/api/jobs/:id/cancel", async (request, reply) => {
+    const record = options.store.getRecord(request.params.id);
+    if (record === undefined) {
+      return reply.status(404).send({ message: "Job not found" });
+    }
+
+    if (record.status === "completed" || record.status === "failed") {
+      return options.store.getSnapshot(request.params.id);
+    }
+
+    const aborted = options.cancelJob?.(request.params.id) ?? false;
+    if (!aborted) {
+      options.queue.cancel(request.params.id);
+      options.store.fail(request.params.id, cancellationError(request.params.id), options.now());
+    }
+
+    return options.store.getSnapshot(request.params.id);
   });
 
   server.post<{ Params: { id: string } }>("/api/jobs/:id/edits", async (request, reply) => {

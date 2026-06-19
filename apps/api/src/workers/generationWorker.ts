@@ -19,6 +19,8 @@ export type GenerationWorkerOptions = {
   now?: () => string;
 };
 
+export type GenerationWorker = ReturnType<typeof createGenerationWorker>;
+
 function unknownError(error: unknown): GenerationError {
   const message = error instanceof Error ? error.message : String(error);
 
@@ -29,16 +31,34 @@ function unknownError(error: unknown): GenerationError {
   });
 }
 
+function isTerminalStatus(status: string) {
+  return status === "completed" || status === "failed";
+}
+
+function cancelledError(id: string) {
+  return GenerationErrorSchema.parse({
+    jobId: id,
+    status: "failed",
+    stage: "cancelled",
+    message: "Generation cancelled.",
+  });
+}
+
 export function createGenerationWorker(options: GenerationWorkerOptions) {
   const runner = options.runner ?? runLocalGenerationJob;
   const now = options.now ?? (() => new Date().toISOString());
+  const controllers = new Map<string, AbortController>();
 
-  return async function runQueuedJob(id: string) {
+  async function runQueuedJob(id: string) {
     const record = options.store.getRecord(id);
     if (record === undefined) return;
+    if (isTerminalStatus(record.status)) return;
+    const controller = new AbortController();
+    controllers.set(id, controller);
 
     try {
       const result = await runner(record.request, {
+        signal: controller.signal,
         onProgress: (event) => {
           const parsed = ManualFixtureProgressEventSchema.safeParse(event);
           if (parsed.success && parsed.data.jobId === id) {
@@ -46,21 +66,50 @@ export function createGenerationWorker(options: GenerationWorkerOptions) {
           }
         },
       });
+      if (controller.signal.aborted) {
+        options.store.fail(id, cancelledError(id), now());
+        return;
+      }
 
       const outputRoot = result.outputDirectory;
       record.outputRoot = outputRoot;
+      const apiResult = await buildApiGenerationResult({
+        jobId: id,
+        outputRoot,
+        generationResult: result,
+      });
+      const currentRecord = options.store.getRecord(id);
+      if (currentRecord === undefined || isTerminalStatus(currentRecord.status)) {
+        return;
+      }
+      if (controller.signal.aborted) {
+        options.store.fail(id, cancelledError(id), now());
+        return;
+      }
       options.store.complete(
         id,
-        await buildApiGenerationResult({
-          jobId: id,
-          outputRoot,
-          generationResult: result,
-        }),
+        apiResult,
         now(),
       );
     } catch (error) {
+      if (controller.signal.aborted) {
+        options.store.fail(id, cancelledError(id), now());
+        return;
+      }
       const generationError = error instanceof LocalGenerationJobError ? error.generationError : unknownError(error);
       options.store.fail(id, generationError, now());
+    } finally {
+      controllers.delete(id);
     }
-  };
+  }
+
+  return Object.assign(runQueuedJob, {
+    cancel(id: string) {
+      const controller = controllers.get(id);
+      if (controller === undefined) return false;
+      controller.abort();
+      options.store.fail(id, cancelledError(id), now());
+      return true;
+    },
+  });
 }

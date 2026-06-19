@@ -62,6 +62,14 @@ describe("HttpCompositionGenerationClient", () => {
     expect(fetchFn.mock.calls[0]![0]).toBe("/api/jobs/job-1");
   });
 
+  it("POSTs job cancellation to the API", async () => {
+    const fetchFn = vi.fn(async (..._args: Parameters<typeof fetch>) => jsonResponse(200, job({ status: "failed", error: { status: "failed", stage: "cancelled", message: "Generation cancelled." } })));
+    const client = createHttpCompositionGenerationClient({ fetchFn });
+    expect(client.cancelJob).toBeDefined();
+    await client.cancelJob!("job-1");
+    expect(fetchFn).toHaveBeenCalledWith("/api/jobs/job-1/cancel", { method: "POST" });
+  });
+
   it("waitForJob polls until terminal and reports each update", async () => {
     const outputVideoArtifact = {
       kind: "output-video",
