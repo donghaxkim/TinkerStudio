@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ApiGenerationJob } from "@tinker/generation-contract";
+import type { ApiGenerationJob, DemoOutline } from "@tinker/generation-contract";
 import { createHttpCompositionGenerationClient } from "./httpCompositionGenerationClient.js";
 
 function jsonResponse(status: number, data: unknown): Response {
@@ -33,7 +33,7 @@ const validRequest = {
   aspectRatio: "16:9",
 } as const;
 
-const approvedOutline = {
+const approvedOutline: DemoOutline = {
   title: "Driftboard launch demo",
   durationCapSeconds: 60,
   aspectRatio: "16:9",
@@ -43,7 +43,7 @@ const approvedOutline = {
     { id: "scene-2", goal: "Show repo-backed details", visual: "Use real component names from the repo.", evidence: ["repo", "website"] },
   ],
   generationNotes: ["Keep pacing concise."],
-} as const;
+};
 
 describe("HttpCompositionGenerationClient", () => {
   it("POSTs repo-only ai-url-planning to /api/jobs and forces renderer=hyperframes", async () => {

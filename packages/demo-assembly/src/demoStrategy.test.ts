@@ -6,6 +6,7 @@ import {
   selectFlow,
 } from "./demoStrategy.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
+import type { DemoOutline } from "@tinker/generation-contract";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 
 const websiteAnalysis: ProductAnalysis = {
@@ -39,7 +40,7 @@ const understanding = deriveProductUnderstanding({
   repoAnalysis,
 });
 
-const approvedOutline = {
+const approvedOutline: DemoOutline = {
   title: "LongCut approved demo",
   durationCapSeconds: 45,
   aspectRatio: "16:9",
@@ -50,7 +51,7 @@ const approvedOutline = {
     { id: "scene-3", goal: "Close on exported highlights", visual: "Show the output and CTA.", startHint: 32, endHint: 45, evidence: ["repo"] },
   ],
   generationNotes: ["Keep the user-approved order."],
-} as const;
+};
 
 // ---- selectFlow honours the prompt over document order ----
 // "Open the transcript chat" comes first in demoIdeas, but the prompt is about the

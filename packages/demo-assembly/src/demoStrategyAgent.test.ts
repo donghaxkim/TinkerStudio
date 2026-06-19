@@ -2,20 +2,21 @@ import assert from "node:assert/strict";
 import { buildStrategyPrompt, createClaudeStrategyAgent } from "./demoStrategyAgent.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
 import { DemoStrategySchema, StoryboardSchema } from "./demoStrategy.js";
+import type { DemoOutline } from "@tinker/generation-contract";
 import type { ProductAnalysis } from "@tinker/product-analysis";
 
 const websiteAnalysis: ProductAnalysis = { url: "https://x.dev/", title: "X", headings: ["H"], bodySnippets: ["b"], links: [], buttons: ["Go"], inputs: [], brandHints: { colors: [], fontFamilies: [] } };
 const understanding = deriveProductUnderstanding({ productUrl: "https://x.dev/", websiteAnalysis });
 const baseInput = { understanding, durationCapSeconds: 40, aspectRatio: "16:9" as const };
 
-const approvedOutline = {
+const approvedOutline: DemoOutline = {
   title: "Approved X demo",
   durationCapSeconds: 40,
   aspectRatio: "16:9",
   summary: "Use the approved story.",
   scenes: [{ id: "scene-1", goal: "Open with X", visual: "Show the hero.", evidence: ["website"] }],
   generationNotes: ["Keep scene IDs."],
-} as const;
+};
 
 const strategyPrompt = JSON.parse(buildStrategyPrompt({ ...baseInput, approvedOutline }));
 assert.equal(strategyPrompt.approvedOutline.title, "Approved X demo");
