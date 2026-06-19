@@ -139,10 +139,14 @@ RunSummarySchema.parse(rendered);
 assert.equal(rendered.status, "success", "testreel + all captured -> success");
 assert.deepEqual(rendered.execution, execution);
 
-// A planned item OR no final video -> partial.
+// Testreel success is defined by the published final MP4, not Playwright-style
+// selected-flow capture lineage. A planned core item should keep its warning but
+// must not downgrade a successful Testreel run to partial.
 const plannedItem: CoreCoverageItem[] = [{ ...allCaptured[0], status: "planned" }];
-const partial1 = buildRunSummary({ renderer: "testreel", outputRoot, storyboard, artifactPaths, captureSucceeded: true, finalVideoProduced: true, warnings: [], execution, coreCoverage: plannedItem });
-assert.equal(partial1.status, "partial", "planned coverage -> partial");
+const testreelSuccessWithoutCaptureLineage = buildRunSummary({ renderer: "testreel", outputRoot, storyboard, artifactPaths, captureSucceeded: true, finalVideoProduced: true, warnings: [], execution, coreCoverage: plannedItem });
+assert.equal(testreelSuccessWithoutCaptureLineage.status, "success", "testreel final video -> success without capture lineage");
+
+// No final video -> partial.
 const partial2 = buildRunSummary({ renderer: "testreel", outputRoot, storyboard, artifactPaths, captureSucceeded: true, finalVideoProduced: false, warnings: [], execution: { ...execution, finalVideoMode: "none", finalVideoSource: "none" }, coreCoverage: [...allCaptured] });
 assert.equal(partial2.status, "partial", "no final video -> partial");
 console.log("runSummary execution+coverage PASS");

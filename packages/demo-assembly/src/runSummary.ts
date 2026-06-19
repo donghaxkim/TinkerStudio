@@ -145,10 +145,9 @@ export function buildRunSummary(args: BuildRunSummaryArgs): RunSummary {
     evidence: beatEvidence,
   }));
 
-  const allCaptured = args.coreCoverage.every((item) => item.status === "captured");
   const status: RunSummary["status"] = !args.captureSucceeded
     ? "failed"
-    : args.execution.finalVideoMode === "testreel" && args.finalVideoProduced && allCaptured
+    : args.execution.finalVideoMode === "testreel" && args.finalVideoProduced
       ? "success"
       : "partial";
 

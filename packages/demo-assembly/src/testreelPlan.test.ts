@@ -62,10 +62,8 @@ const fixture = createFixtureTestreelGenerationPlan({
   aspectRatio: "9:16",
   title: "Fixture Product",
 });
-assert.equal(fixture.definition.viewport.width, 720);
-assert.equal(fixture.definition.viewport.height, 1280);
-assert.equal(fixture.definition.outputSize?.width, 1080);
-assert.equal(fixture.definition.outputSize?.height, 1920);
+assert.deepEqual(fixture.definition.viewport, { width: 720, height: 1280 });
+assert.deepEqual(fixture.definition.outputSize, { width: 1080, height: 1920 });
 assert.equal(fixture.definition.outputFormat, "mp4");
 
 console.log("testreel plan tests passed");

@@ -1,22 +1,21 @@
-// End-to-end pipeline smoke test (first pass)
+// End-to-end pipeline smoke test (Testreel path)
 //
-// Runs the FULL multi-phase pipeline (`runAiUrlDemo`, playwright renderer) against a
+// Runs the FULL multi-phase pipeline (`runAiUrlDemo`, Testreel renderer) against a
 // local fixture product page with a fixture website/repo analysis and a fixture planner,
-// but a REAL smooth Playwright capture. It verifies the entire artifact chain exists:
+// but a REAL Testreel recording. It verifies the entire artifact chain exists:
 //
 //   input.json
 //   product-understanding.json
 //   demo-strategy.json
 //   storyboard.json
-//   playwright/capture-plan.json
-//   playwright/capture-result.json
-//   playwright/action-trace.json
-//   playwright/render-plan.json
-//   playwright/final.mp4         (only when ffmpeg is available; probed for duration)
+//   testreel/recording-plan.json
+//   testreel/recording.json
+//   testreel/output/output.json
+//   testreel/final.mp4
 //   run-summary.json
 //
-// Deterministic + offline (no opencode, no live network). Requires Playwright's Chromium
-// (and ffmpeg/ffprobe for final.mp4). Run via:
+// Deterministic + offline (no opencode, no live network). Requires Testreel's browser
+// runtime (and ffprobe for duration probing). Run via:
 //   pnpm --filter @tinker/demo-assembly smoke:pipeline
 
 import assert from "node:assert/strict";
@@ -27,9 +26,9 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CapturePlan } from "@tinker/browser-capture";
 import type { ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { runAiUrlDemo } from "./runAiUrlDemo.js";
+import type { TestreelGenerationPlan } from "./testreelPlan.js";
 
 const FIXTURE_HTML = `<!doctype html>
 <html>
@@ -114,7 +113,7 @@ try {
     repoUrl,
     productName: "Tinker",
     summary: "Tinker turns a product URL plus a repo into a smooth, editable demo video.",
-    features: ["Smooth Playwright capture", "Synthetic cursor and click ripple"],
+    features: ["Smooth Testreel recording", "Synthetic cursor and click ripple"],
     likelyRoutes: ["/"],
     demoIdeas: ["Click Get started and enter an email to begin the flow"],
     importantTerms: ["demo"],
@@ -122,21 +121,29 @@ try {
     sourceHints: [{ path: "README.md", reason: "Product summary." }],
   };
 
-  const capturePlan: CapturePlan = {
-    targetUrl: server.url,
-    viewport: { width: 1280, height: 720 },
-    steps: [
-      { type: "goto", url: server.url },
-      { type: "waitForSelector", selector: "[data-testid='cta']" },
-      { type: "scroll", y: 400 },
-      { type: "click", selector: "[data-testid='cta']", label: "Get started" },
-      { type: "type", selector: "[data-testid='email']", text: "demo@tinker.dev" },
-      { type: "pause", ms: 200 },
-    ],
+  const recordingPlan: TestreelGenerationPlan = {
+    engine: "testreel",
+    definition: {
+      url: server.url,
+      viewport: { width: 1280, height: 720 },
+      outputSize: { width: 1920, height: 1080 },
+      outputFormat: "mp4",
+      cursor: { enabled: true },
+      chrome: { enabled: true, url: true },
+      background: { enabled: true, gradient: { from: "#0b1220", to: "#eef" } },
+      steps: [
+        { action: "wait", ms: 500 },
+        { action: "scroll", y: 400 },
+        { action: "click", selector: "[data-testid='cta']", label: "Get started" },
+        { action: "type", selector: "[data-testid='email']", text: "demo@tinker.dev" },
+        { action: "wait", ms: 200 },
+        { action: "screenshot", name: "final" },
+      ],
+    },
     expectedCheckpoints: [{ id: "started", label: "Started", text: "Started" }],
   };
 
-  console.log("[smoke] running full pipeline (understanding -> strategy -> smooth capture)...");
+  console.log("[smoke] running full pipeline (understanding -> strategy -> Testreel recording)...");
   const result = await runAiUrlDemo({
     outputRoot,
     projectId: "smoke-pipeline",
@@ -162,7 +169,7 @@ try {
           { id: "cta", type: "cta", goal: "Invite the viewer to try Tinker.", startHint: 10, endHint: 12 },
         ],
       },
-      capturePlan,
+      recordingPlan,
     }),
   });
 
@@ -172,38 +179,30 @@ try {
   await nonEmpty(join(outputRoot, "demo-strategy.json"));
   await nonEmpty(join(outputRoot, "storyboard.json"));
   await nonEmpty(join(outputRoot, "run-summary.json"));
-  await nonEmpty(join(outputRoot, "playwright", "capture-plan.json"));
-  await nonEmpty(join(outputRoot, "playwright", "capture-result.json"));
-  await nonEmpty(join(outputRoot, "playwright", "action-trace.json"));
-  await nonEmpty(join(outputRoot, "playwright", "render-plan.json"));
-  await nonEmpty(join(outputRoot, "playwright", "director-plan.json"));
-  await nonEmpty(join(outputRoot, "playwright", "edit-decision-list.json"));
-  await nonEmpty(join(outputRoot, "playwright", "capture", "videos", "main.webm"));
+  await nonEmpty(join(outputRoot, "testreel", "recording-plan.json"));
+  await nonEmpty(join(outputRoot, "testreel", "recording.json"));
+  await nonEmpty(join(outputRoot, "testreel", "output", "output.json"));
 
-  assert.equal(result.renderer, "playwright");
-  assert.ok(result.rendererResults.playwright);
+  assert.equal(result.renderer, "testreel");
+  assert.equal(result.publishedVideoPath, join(outputRoot, "testreel", "final.mp4"));
+  assert.equal(result.rendererResults.testreel.finalVideoPath, join(outputRoot, "testreel", "final.mp4"));
   assert.equal(result.pipeline.runSummaryPath, join(outputRoot, "run-summary.json"));
 
-  // ---- final.mp4: required only when ffmpeg is available ----
-  const finalPath = join(outputRoot, "playwright", "final.mp4");
-  let finalVideoLine: string;
-  if (existsSync(finalPath)) {
-    await nonEmpty(finalPath);
-    const duration = await ffprobeDuration(finalPath);
-    assert.ok(Number.isFinite(duration) && duration > 0, `final.mp4 should have a positive duration, got ${duration}`);
-    finalVideoLine = `final.mp4         (${duration.toFixed(2)}s)`;
-  } else {
-    finalVideoLine = "final.mp4         (skipped — ffmpeg unavailable)";
-  }
+  // ---- final.mp4 ----
+  const finalPath = join(outputRoot, "testreel", "final.mp4");
+  await nonEmpty(finalPath);
+  const duration = await ffprobeDuration(finalPath);
+  assert.ok(Number.isFinite(duration) && duration > 0, `final.mp4 should have a positive duration, got ${duration}`);
+  const finalVideoLine = `final.mp4         (${duration.toFixed(2)}s)`;
 
   console.log("\n[smoke] PASS");
   console.log(`  run folder            : ${outputRoot}`);
   console.log(`  product-understanding : ${join(outputRoot, "product-understanding.json")}`);
   console.log(`  demo-strategy         : ${join(outputRoot, "demo-strategy.json")}`);
   console.log(`  storyboard            : ${join(outputRoot, "storyboard.json")}`);
-  console.log(`  capture-plan          : ${join(outputRoot, "playwright", "capture-plan.json")}`);
-  console.log(`  action-trace          : ${join(outputRoot, "playwright", "action-trace.json")}`);
-  console.log(`  render-plan           : ${join(outputRoot, "playwright", "render-plan.json")}`);
+  console.log(`  recording-plan        : ${join(outputRoot, "testreel", "recording-plan.json")}`);
+  console.log(`  recording             : ${join(outputRoot, "testreel", "recording.json")}`);
+  console.log(`  testreel manifest     : ${join(outputRoot, "testreel", "output", "output.json")}`);
   console.log(`  run-summary           : ${join(outputRoot, "run-summary.json")}`);
   console.log(`  ${finalVideoLine}`);
 } finally {
