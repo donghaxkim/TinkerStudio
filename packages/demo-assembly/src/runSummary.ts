@@ -8,12 +8,12 @@
 
 import { relative } from "node:path";
 import { z } from "zod";
-import type { AiUrlRenderer } from "./aiUrlRenderer.js";
 import type { Storyboard } from "./demoStrategy.js";
 import type { AspectRatio } from "./types.js";
 import { CoreCoverageItemSchema, type CoreCoverageItem } from "./coreCoverage.js";
 
-const RendererSchema = z.enum(["hyperframes", "playwright", "both"]);
+const RendererSchema = z.literal("playwright");
+type RunRenderer = z.infer<typeof RendererSchema>;
 
 const ExecutionModeSchema = z.enum(["claude-code", "opencode", "deterministic-fallback", "deterministic"]);
 const PlannerModeSchema = z.enum(["claude-code", "opencode"]);
@@ -87,7 +87,7 @@ export type BuildRunInputArgs = {
   prompt: string;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
-  renderer: AiUrlRenderer;
+  renderer: RunRenderer;
 };
 
 export function buildRunInput(args: BuildRunInputArgs): RunInput {
@@ -105,7 +105,7 @@ export function buildRunInput(args: BuildRunInputArgs): RunInput {
 }
 
 export type BuildRunSummaryArgs = {
-  renderer: AiUrlRenderer;
+  renderer: RunRenderer;
   outputRoot: string;
   storyboard: Storyboard;
   artifactPaths: string[];
@@ -122,19 +122,13 @@ function toRunRelative(outputRoot: string, path: string): string {
   return rel === "" || rel.startsWith("..") ? path : rel;
 }
 
-function nextRecommendedAction(renderer: AiUrlRenderer, finalVideoProduced: boolean, captureSucceeded: boolean): string {
+function nextRecommendedAction(finalVideoProduced: boolean, captureSucceeded: boolean): string {
   if (!captureSucceeded) {
     return "re-run generation; capture did not complete";
   }
-  if (renderer === "playwright") {
-    return finalVideoProduced
-      ? "review final.mp4"
-      : "install ffmpeg and re-run to produce final.mp4, then review the smooth recording";
-  }
-  if (renderer === "hyperframes") {
-    return "review the rendered Hyperframes demo video";
-  }
-  return finalVideoProduced ? "review final.mp4" : "open demo-project.json in the editor";
+  return finalVideoProduced
+    ? "review final.mp4"
+    : "install ffmpeg and re-run to produce final.mp4, then review the smooth recording";
 }
 
 export function buildRunSummary(args: BuildRunSummaryArgs): RunSummary {
@@ -172,6 +166,6 @@ export function buildRunSummary(args: BuildRunSummaryArgs): RunSummary {
     generatedArtifacts,
     storyboardCoverage,
     warnings: args.warnings,
-    nextRecommendedAction: nextRecommendedAction(args.renderer, args.finalVideoProduced, args.captureSucceeded),
+    nextRecommendedAction: nextRecommendedAction(args.finalVideoProduced, args.captureSucceeded),
   });
 }

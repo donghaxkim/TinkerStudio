@@ -143,7 +143,6 @@ try {
     createdAt: "2026-06-17T00:00:00.000Z",
     productUrl: server.url,
     repoUrl,
-    renderer: "playwright",
     prompt: "Show how a user clicks Get started and enters an email.",
     durationCapSeconds: 12,
     aspectRatio: "16:9",
@@ -182,6 +181,7 @@ try {
   await nonEmpty(join(outputRoot, "playwright", "capture", "videos", "main.webm"));
 
   assert.equal(result.renderer, "playwright");
+  assert.ok(result.rendererResults.playwright);
   assert.equal(result.pipeline.runSummaryPath, join(outputRoot, "run-summary.json"));
 
   // ---- final.mp4: required only when ffmpeg is available ----

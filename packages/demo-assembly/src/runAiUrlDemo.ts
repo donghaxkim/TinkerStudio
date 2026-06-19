@@ -1,4 +1,4 @@
-import { access, cp, mkdir, open, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   buildRenderPlan,
@@ -24,7 +24,6 @@ import {
   type ProductAnalysis,
   type RepoAnalysis,
 } from "@tinker/product-analysis";
-import type { AiUrlRenderer } from "./aiUrlRenderer.js";
 import { compileProject } from "./compileProject.js";
 import {
   createClaudeCodeAiUrlPlanner,
@@ -47,15 +46,6 @@ import { buildRunInput, buildRunSummary } from "./runSummary.js";
 import { renderFinalToMp4 } from "@tinker/rendering/node";
 import { DEFAULT_SYSTEM_PROMPT } from "@tinker/generation-contract";
 import type { DemoProject, ZoomKeyframe } from "@tinker/project-schema";
-import { validateHyperframesArtifacts } from "./hyperframesArtifacts.js";
-import {
-  createOpencodeHyperframesGenerator,
-  createOpencodeHyperframesRepairer,
-  type GenerateHyperframesProject,
-  type HyperframesAgent,
-  type RepairHyperframesProject,
-} from "./hyperframesPlanning.js";
-import { runHyperframesRender, type RunHyperframesRenderInput, type RunHyperframesRenderResult } from "./hyperframesRender.js";
 import type { AspectRatio } from "./types.js";
 
 export type AiUrlDemoPhase =
@@ -68,7 +58,6 @@ export type AiUrlDemoPhase =
   | "capture"
   | "assembly";
 
-const MAX_HYPERFRAMES_REPAIR_LOG_BYTES = 20_000;
 const PRODUCT_ANALYSIS_SCREENSHOT_FILE_NAME = "product-analysis.png";
 
 type AnalyzeWebsiteDependency = (url: string, options: AnalyzeWebsiteOptions) => Promise<ProductAnalysis>;
@@ -81,24 +70,13 @@ type RunCaptureDependency = (
   plan: CapturePlan,
   options: { outputDir: string; headless?: boolean; smooth?: boolean; signal?: AbortSignal },
 ) => Promise<CaptureResult>;
-type GenerateHyperframesProjectDependency = GenerateHyperframesProject;
-type RepairHyperframesProjectDependency = RepairHyperframesProject;
-type RunHyperframesDependency = (input: RunHyperframesRenderInput) => Promise<RunHyperframesRenderResult>;
-
-type HyperframesRendererResult = {
-  outputVideoPath: string;
-  generationManifestPath: string;
-  assetManifestPath: string;
-};
-
 type PlaywrightRendererResult = {
   projectPath: string;
   captureResultPath: string;
 };
 
 type RendererResults = {
-  hyperframes?: HyperframesRendererResult;
-  playwright?: PlaywrightRendererResult;
+  playwright: PlaywrightRendererResult;
 };
 
 export type RunAiUrlDemoInput = {
@@ -112,8 +90,6 @@ export type RunAiUrlDemoInput = {
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
   repoUrl?: string;
-  renderer?: AiUrlRenderer;
-  hyperframesAgent?: HyperframesAgent;
   signal?: AbortSignal;
   onPhase?: (phase: AiUrlDemoPhase) => void;
   analyzeWebsite?: AnalyzeWebsiteDependency;
@@ -123,10 +99,6 @@ export type RunAiUrlDemoInput = {
   onWarning?: (message: string) => void;
   planner?: AiUrlPlanner;
   runCapture?: RunCaptureDependency;
-  generateHyperframes?: GenerateHyperframesProjectDependency;
-  runHyperframes?: RunHyperframesDependency;
-  repairHyperframes?: RepairHyperframesProjectDependency;
-  maxHyperframesRepairAttempts?: number;
   /** Seam: override the (default deterministic) Product Understanding phase. */
   understandProduct?: UnderstandProduct;
   /** Seam: override the (default deterministic) Demo Strategy + Story phase. */
@@ -145,7 +117,7 @@ export type RunAiUrlDemoPipeline = {
 };
 
 export type RunAiUrlDemoResult = {
-  renderer: AiUrlRenderer;
+  renderer: "playwright";
   rendererResults: RendererResults;
   projectPath: string;
   captureResultPath: string;
@@ -283,43 +255,6 @@ function isNarrativeExplorationEnabled(value: boolean | undefined) {
   return value ?? process.env.TINKER_NARRATIVE_EXPLORATION === "1";
 }
 
-function classifyHyperframesRunFailure(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-
-  if (message.startsWith("Hyperframes lint failed")) {
-    return { failureStage: "lint", message };
-  }
-
-  return { failureStage: "render", message };
-}
-
-async function readHyperframesFailureLog(hyperframesDir: string, failureStage: string, fallback: string) {
-  if (failureStage !== "lint" && failureStage !== "render") {
-    return fallback;
-  }
-
-  try {
-    const file = await open(join(hyperframesDir, `${failureStage}.log`), "r");
-    try {
-      const buffer = Buffer.alloc(MAX_HYPERFRAMES_REPAIR_LOG_BYTES);
-      const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
-      return bytesRead > 0 ? buffer.toString("utf8", 0, bytesRead) : fallback;
-    } finally {
-      await file.close();
-    }
-  } catch {
-    return fallback;
-  }
-}
-
-function normalizeRepairAttempts(value: number | undefined) {
-  if (value === undefined) {
-    return 2;
-  }
-
-  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 2;
-}
-
 function mergeArtifactPaths(...artifactPathGroups: string[][]) {
   return [...new Set(artifactPathGroups.flat())];
 }
@@ -452,31 +387,7 @@ function annotateActionTraceWithBeats(actionTrace: ActionTrace, storyboard: Stor
   return { ...actionTrace, actions };
 }
 
-function combineCaptureCounts(...counts: RunAiUrlDemoResult["captureCounts"][]): RunAiUrlDemoResult["captureCounts"] {
-  return counts.reduce(
-    (total, count) => ({
-      clips: total.clips + count.clips,
-      screenshots: total.screenshots + count.screenshots,
-      events: total.events + count.events,
-      checkpoints: total.checkpoints + count.checkpoints,
-    }),
-    { clips: 0, screenshots: 0, events: 0, checkpoints: 0 },
-  );
-}
-
-async function prepareHyperframesWebsiteAnalysis(analysis: ProductAnalysis, hyperframesDir: string) {
-  if (analysis.screenshotPath === undefined) {
-    return analysis;
-  }
-
-  await cp(analysis.screenshotPath, join(hyperframesDir, PRODUCT_ANALYSIS_SCREENSHOT_FILE_NAME));
-
-  return { ...analysis, screenshotPath: PRODUCT_ANALYSIS_SCREENSHOT_FILE_NAME };
-}
-
 export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDemoResult> {
-  const renderer = input.renderer ?? "hyperframes";
-
   function throwIfAborted() {
     if (input.signal?.aborted) {
       throw new DOMException("Generation cancelled.", "AbortError");
@@ -484,10 +395,6 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   }
 
   throwIfAborted();
-
-  if (renderer !== "hyperframes" && renderer !== "playwright" && renderer !== "both") {
-    throw new Error(`Unknown AI URL renderer: ${String(renderer)}`);
-  }
 
   if (input.repoUrl === undefined) {
     throw new Error("repoUrl is required for AI URL demo generation");
@@ -503,10 +410,6 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const systemPrompt = input.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT;
   const planner = input.planner ?? selectDefaultAiUrlPlanner();
   const runCapture = input.runCapture ?? runPlaywrightCapture;
-  const generateHyperframes = input.generateHyperframes ?? createOpencodeHyperframesGenerator();
-  const repairHyperframes = input.repairHyperframes ?? createOpencodeHyperframesRepairer();
-  const runHyperframes = input.runHyperframes ?? runHyperframesRender;
-  const maxHyperframesRepairAttempts = normalizeRepairAttempts(input.maxHyperframesRepairAttempts);
   const understandProduct: UnderstandProduct = input.understandProduct ?? selectDefaultUnderstandProduct();
   const strategize: Strategize = input.strategize ?? selectDefaultStrategize();
 
@@ -523,7 +426,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     prompt: prompt,
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,
-    renderer,
+    renderer: "playwright",
   });
   const runInputPath = join(input.outputRoot, "input.json");
   await writeFile(runInputPath, toPrettyJson(runInput));
@@ -630,131 +533,6 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
 
   const pipelineArtifactPaths = [runInputPath, productUnderstandingPath, demoStrategyPath, storyboardArtifactPath];
   const pipelineWarnings = dedupeStrings([...understanding.warnings, ...strategy.warnings]);
-
-  async function runHyperframesRenderer(): Promise<InternalRendererResult> {
-    if (input.repoUrl === undefined || repoAnalysis === undefined || repoCheckoutDirectory === undefined) {
-      throw new Error("repoUrl is required for Hyperframes AI URL demos");
-    }
-
-    const hyperframesDir = join(input.outputRoot, "hyperframes");
-    await mkdir(hyperframesDir, { recursive: true });
-    const hyperframesWebsiteAnalysis = await prepareHyperframesWebsiteAnalysis(analysis, hyperframesDir);
-    throwIfAborted();
-
-    input.onPhase?.("planning");
-    throwIfAborted();
-    await generateHyperframes({
-      productUrl: analysis.url,
-      repoUrl: input.repoUrl,
-      prompt: prompt,
-      durationCapSeconds: input.durationCapSeconds,
-      aspectRatio: input.aspectRatio,
-      websiteAnalysis: hyperframesWebsiteAnalysis,
-      repoAnalysis,
-      repoCheckoutDirectory,
-      hyperframesDir,
-      hyperframesAgent: input.hyperframesAgent,
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-    });
-    throwIfAborted();
-
-    let validated: Awaited<ReturnType<typeof validateHyperframesArtifacts>> | undefined;
-    let renderResult: RunHyperframesRenderResult | undefined;
-    for (let attempt = 0; attempt <= maxHyperframesRepairAttempts; attempt += 1) {
-      try {
-        input.onPhase?.("validation");
-        throwIfAborted();
-        validated = await validateHyperframesArtifacts({ hyperframesDir, productUrl: analysis.url, repoUrl: input.repoUrl });
-        throwIfAborted();
-      } catch (error) {
-        if (attempt >= maxHyperframesRepairAttempts) {
-          throw error;
-        }
-
-        await repairHyperframes({
-          repoCheckoutDirectory,
-          hyperframesDir,
-          hyperframesAgent: input.hyperframesAgent,
-          failureStage: "validation",
-          logText: formatErrorMessage(error),
-          ...(input.signal === undefined ? {} : { signal: input.signal }),
-        });
-        throwIfAborted();
-        continue;
-      }
-
-      try {
-        input.onPhase?.("capture");
-        throwIfAborted();
-        renderResult = await runHyperframes({
-          hyperframesDir,
-          outputVideoPath: validated.outputVideoPath,
-          ...(input.signal === undefined ? {} : { signal: input.signal }),
-        });
-        throwIfAborted();
-        if (renderResult.outputVideoPath !== validated.outputVideoPath) {
-          throw new Error("Hyperframes render output path must match generated outputVideoPath");
-        }
-        await access(renderResult.outputVideoPath);
-        break;
-      } catch (error) {
-        throwIfAborted();
-        if (attempt >= maxHyperframesRepairAttempts) {
-          throw error;
-        }
-
-        const failure = classifyHyperframesRunFailure(error);
-        await repairHyperframes({
-          repoCheckoutDirectory,
-          hyperframesDir,
-          hyperframesAgent: input.hyperframesAgent,
-          failureStage: failure.failureStage,
-          logText: await readHyperframesFailureLog(hyperframesDir, failure.failureStage, failure.message),
-          ...(input.signal === undefined ? {} : { signal: input.signal }),
-        });
-        throwIfAborted();
-      }
-    }
-
-    if (validated === undefined || renderResult === undefined) {
-      throw new Error("Hyperframes render did not produce a result");
-    }
-
-    input.onPhase?.("assembly");
-    throwIfAborted();
-    const artifactPaths = [
-      productAnalysisPath,
-      ...(repoAnalysisPath ? [repoAnalysisPath] : []),
-      ...(narrativeExplorationPath ? [narrativeExplorationPath] : []),
-      ...(analysis.screenshotPath ? [analysis.screenshotPath] : []),
-      validated.indexPath,
-      validated.assetManifestPath,
-      validated.generationManifestPath,
-      renderResult.lintLogPath,
-      renderResult.renderLogPath,
-      renderResult.outputVideoPath,
-    ];
-
-    return {
-      projectPath: renderResult.outputVideoPath,
-      captureResultPath: validated.generationManifestPath,
-      outputRoot: input.outputRoot,
-      artifactPaths,
-      captureCounts: {
-        clips: 1,
-        screenshots: 0,
-        events: 0,
-        checkpoints: 0,
-      },
-      rendererResults: {
-        hyperframes: {
-          outputVideoPath: renderResult.outputVideoPath,
-          generationManifestPath: validated.generationManifestPath,
-          assetManifestPath: validated.assetManifestPath,
-        },
-      },
-    };
-  }
 
   async function runPlaywrightRenderer(): Promise<InternalRendererResult> {
     await mkdir(captureOutputDir, { recursive: true });
@@ -935,35 +713,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
 
   let renderError: unknown;
   try {
-    let internal: InternalRendererResult;
-
-    if (renderer === "hyperframes") {
-      internal = await runHyperframesRenderer();
-    } else if (renderer === "playwright") {
-      internal = await runPlaywrightRenderer();
-    } else {
-      const playwrightResult = await runPlaywrightRenderer();
-      const hyperframesResult = await runHyperframesRenderer();
-      internal = {
-        projectPath: hyperframesResult.projectPath,
-        captureResultPath: hyperframesResult.captureResultPath,
-        outputRoot: input.outputRoot,
-        artifactPaths: mergeArtifactPaths(hyperframesResult.artifactPaths, playwrightResult.artifactPaths),
-        captureCounts: combineCaptureCounts(hyperframesResult.captureCounts, playwrightResult.captureCounts),
-        rendererResults: {
-          ...hyperframesResult.rendererResults,
-          ...playwrightResult.rendererResults,
-        },
-        finalVideoProduced: playwrightResult.finalVideoProduced ?? false,
-        ...(playwrightResult.finalVideoPath ? { finalVideoPath: playwrightResult.finalVideoPath } : {}),
-        finalVideoMode: playwrightResult.finalVideoMode,
-        finalVideoSource: playwrightResult.finalVideoSource,
-        editDecisionListApplied: playwrightResult.editDecisionListApplied,
-        renderPlanApplied: playwrightResult.renderPlanApplied,
-        coverageActionTrace: playwrightResult.coverageActionTrace,
-        coverageCaptureLineage: playwrightResult.coverageCaptureLineage,
-      };
-    }
+    const internal = await runPlaywrightRenderer();
 
     // run-summary.json: single top-level record of what the pipeline produced.
     const finalVideoProduced = internal.finalVideoProduced ?? false;
@@ -1002,7 +752,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     };
 
     const runSummary = buildRunSummary({
-      renderer,
+      renderer: "playwright",
       outputRoot: input.outputRoot,
       storyboard: strategyStoryboard,
       artifactPaths,
@@ -1025,7 +775,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     };
 
     return {
-      renderer,
+      renderer: "playwright",
       projectPath: internal.projectPath,
       captureResultPath: internal.captureResultPath,
       outputRoot: input.outputRoot,

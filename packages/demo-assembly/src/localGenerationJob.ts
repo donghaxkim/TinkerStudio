@@ -208,8 +208,6 @@ export async function runLocalGenerationJob(
       createdAt: initialTime,
       productUrl: request.productUrl,
       repoUrl: request.repoUrl,
-      renderer: request.renderer,
-      hyperframesAgent: request.hyperframesAgent,
       prompt: request.prompt ?? "Make a short demo of the main value prop.",
       ...(request.systemPrompt === undefined ? {} : { systemPrompt: request.systemPrompt }),
       durationCapSeconds: request.durationCapSeconds,
@@ -229,7 +227,8 @@ export async function runLocalGenerationJob(
       captureResultPath: demoResult.captureResultPath,
       outputDirectory,
       artifactPaths: demoResult.artifactPaths,
-      ...("renderer" in demoResult ? { renderer: demoResult.renderer, rendererResults: demoResult.rendererResults } : {}),
+      renderer: demoResult.renderer,
+      rendererResults: demoResult.rendererResults,
     });
 
     if (!("projectPath" in result)) {
