@@ -769,6 +769,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     const plannerResult: AiUrlPlannerResult = await planner({
       productUrl: analysis.url,
       prompt: prompt,
+      ...(input.approvedOutline === undefined ? {} : { approvedOutline: input.approvedOutline }),
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
       analysis,
