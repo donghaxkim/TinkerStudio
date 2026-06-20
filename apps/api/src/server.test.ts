@@ -3,8 +3,6 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, test, vi } from "vitest";
-import goldenProjectInput from "../../../packages/project-schema/fixtures/person-a-generated-project.sample.json" with { type: "json" };
-import { DemoProjectSchema } from "@tinker/project-schema";
 import type { AiUrlPlanningCreateDemoRequest, GenerationError, ManualFixtureGenerationResult, ManualFixtureProgressEvent } from "@tinker/generation-contract";
 import { readConfig } from "./config.js";
 import { indexArtifacts } from "./jobs/artifactIndex.js";
@@ -31,51 +29,53 @@ const runningEvent: ManualFixtureProgressEvent = {
   time: "2026-06-11T00:00:01.000Z",
 };
 
-const goldenProject = DemoProjectSchema.parse(goldenProjectInput);
-
-async function writePlaywrightArtifacts(outputRoot: string) {
-  const projectPath = join(outputRoot, "playwright", "demo-project.json");
-  const captureResultPath = join(outputRoot, "playwright", "capture-result.json");
-  const finalVideoPath = join(outputRoot, "playwright", "final.mp4");
-  await mkdir(join(outputRoot, "playwright"), { recursive: true });
-  await writeFile(projectPath, `${JSON.stringify(goldenProject, null, 2)}\n`);
-  await writeFile(captureResultPath, "{}");
+async function writeTestreelArtifacts(outputRoot: string) {
+  const testreelRoot = join(outputRoot, "testreel");
+  const outputDirectory = join(testreelRoot, "output");
+  const recordingPlanPath = join(testreelRoot, "recording-plan.json");
+  const recordingPath = join(testreelRoot, "recording.json");
+  const manifestPath = join(outputDirectory, "output.json");
+  const screenshotPath = join(outputDirectory, "final.png");
+  const finalVideoPath = join(testreelRoot, "final.mp4");
+  await mkdir(outputDirectory, { recursive: true });
+  await writeFile(recordingPlanPath, JSON.stringify({ engine: "testreel" }));
+  await writeFile(recordingPath, JSON.stringify({ url: "https://example.com", steps: [{ action: "wait", ms: 1 }] }));
+  await writeFile(manifestPath, "{}\n");
+  await writeFile(screenshotPath, "png");
   await writeFile(finalVideoPath, "video");
-  return { projectPath, captureResultPath, finalVideoPath, artifactPaths: [projectPath, captureResultPath, finalVideoPath] };
+  return { recordingPlanPath, recordingPath, outputDirectory, manifestPath, screenshotPath, finalVideoPath, artifactPaths: [recordingPlanPath, recordingPath, manifestPath, screenshotPath, finalVideoPath] };
 }
 
-function playwrightManualResult(
-  jobId: string,
-  outputRoot: string,
-  paths: Awaited<ReturnType<typeof writePlaywrightArtifacts>>,
-): ManualFixtureGenerationResult {
+function testreelManualResult(jobId: string, outputRoot: string, paths: Awaited<ReturnType<typeof writeTestreelArtifacts>>): ManualFixtureGenerationResult {
   return {
     jobId,
     status: "completed",
-    projectPath: paths.projectPath,
-    captureResultPath: paths.captureResultPath,
+    publishedVideoPath: paths.finalVideoPath,
     outputDirectory: outputRoot,
     artifactPaths: paths.artifactPaths,
-    renderer: "playwright",
+    renderer: "testreel",
     rendererResults: {
-      playwright: {
-        projectPath: paths.projectPath,
-        captureResultPath: paths.captureResultPath,
+      testreel: {
+        recordingPlanPath: paths.recordingPlanPath,
+        recordingPath: paths.recordingPath,
+        outputDirectory: paths.outputDirectory,
+        finalVideoPath: paths.finalVideoPath,
+        manifestPath: paths.manifestPath,
+        screenshotPaths: [paths.screenshotPath],
       },
     },
   };
 }
 
-function playwrightApiResult() {
+function testreelApiResult() {
   return {
-    method: "playwright" as const,
-    project: goldenProject,
+    method: "testreel" as const,
     artifacts: [
       {
-        kind: "playwright-demo-project" as const,
-        relativePath: "playwright/demo-project.json",
-        url: "/api/jobs/job-test/artifacts/playwright/demo-project.json",
-        mediaType: "application/json; charset=utf-8",
+        kind: "published-video" as const,
+        relativePath: "testreel/final.mp4",
+        url: "/api/jobs/job-test/artifacts/testreel/final.mp4",
+        mediaType: "video/mp4",
       },
     ],
     warnings: [],
@@ -223,7 +223,7 @@ describe("job routes", () => {
     }
   });
 
-  it("accepts Playwright-compatible jobs, injects the server id, and exposes completed snapshots", async () => {
+  it("accepts Testreel-compatible jobs, injects the server id, and exposes completed snapshots", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-${randomUUID()}-`));
     const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
     const completed = deferred<void>();
@@ -234,9 +234,9 @@ describe("job routes", () => {
         expect(rawRequest).toEqual({ ...validBody, id: "job-test" });
         expect(rawRequest).not.toMatchObject({ id: "client-id" });
         options?.onProgress?.(runningEvent);
-        const playwright = await writePlaywrightArtifacts(outputRoot);
+        const testreel = await writeTestreelArtifacts(outputRoot);
         completed.resolve();
-        return playwrightManualResult("job-test", outputRoot, playwright);
+        return testreelManualResult("job-test", outputRoot, testreel);
       },
       now: () => "2026-06-11T00:00:00.000Z",
     });
@@ -254,11 +254,13 @@ describe("job routes", () => {
         status: "completed",
         request: { id: "job-test" },
         result: {
-          method: "playwright",
+          method: "testreel",
           artifacts: [
-            { kind: "playwright-demo-project", relativePath: "playwright/demo-project.json" },
-            { kind: "playwright-capture-result", relativePath: "playwright/capture-result.json" },
-            { kind: "playwright-video", relativePath: "playwright/final.mp4" },
+            { kind: "testreel-recording-plan", relativePath: "testreel/recording-plan.json" },
+            { kind: "testreel-recording-definition", relativePath: "testreel/recording.json" },
+            { kind: "testreel-manifest", relativePath: "testreel/output/output.json" },
+            { kind: "testreel-screenshot", relativePath: "testreel/output/final.png" },
+            { kind: "published-video", relativePath: "testreel/final.mp4" },
           ],
         },
       });
@@ -280,9 +282,9 @@ describe("job routes", () => {
       },
       runner: async (rawRequest): Promise<ManualFixtureGenerationResult> => {
         expect(rawRequest).toEqual({ ...validBody, id: "job-test", productUrl: "https://product.example.com" });
-        const playwright = await writePlaywrightArtifacts(outputRoot);
+        const testreel = await writeTestreelArtifacts(outputRoot);
         completed.resolve();
-        return playwrightManualResult("job-test", outputRoot, playwright);
+        return testreelManualResult("job-test", outputRoot, testreel);
       },
       now: () => "2026-06-11T00:00:00.000Z",
     });
@@ -360,8 +362,8 @@ describe("job routes", () => {
         started.push(jobId);
         if (jobId === "job-running") await firstRunnerRelease.promise;
         const outputRoot = join(repoRoot, "generated", "local-job", jobId);
-        const playwright = await writePlaywrightArtifacts(outputRoot);
-        return playwrightManualResult(jobId, outputRoot, playwright);
+        const testreel = await writeTestreelArtifacts(outputRoot);
+        return testreelManualResult(jobId, outputRoot, testreel);
       },
     });
     try {
@@ -408,7 +410,7 @@ describe("job routes", () => {
         await blocker.promise;
         const jobId = (rawRequest as { id: string }).id;
         const outputRoot = join(repoRoot, "generated", "local-job", jobId);
-        return playwrightManualResult(jobId, outputRoot, await writePlaywrightArtifacts(outputRoot));
+        return testreelManualResult(jobId, outputRoot, await writeTestreelArtifacts(outputRoot));
       },
     });
     try {
@@ -430,12 +432,9 @@ describe("job routes", () => {
       config: testConfig(repoRoot),
       idGenerator: () => "job-test",
       runner: async (): Promise<ManualFixtureGenerationResult> => {
-        const playwright = await writePlaywrightArtifacts(outputRoot);
-        await mkdir(join(outputRoot, "playwright", "capture", "videos"), { recursive: true });
-        const clipPath = join(outputRoot, "playwright", "capture", "videos", "clip.webm");
-        await writeFile(clipPath, "webm");
+        const testreel = await writeTestreelArtifacts(outputRoot);
         completed.resolve();
-        return playwrightManualResult("job-test", outputRoot, { ...playwright, artifactPaths: [...playwright.artifactPaths, clipPath] });
+        return testreelManualResult("job-test", outputRoot, testreel);
       },
     });
     try {
@@ -443,20 +442,16 @@ describe("job routes", () => {
       await completed.promise;
       await waitForJobStatus(server, "job-test", "completed");
 
-      const artifactResponse = await server.inject({ method: "GET", url: "/api/jobs/job-test/artifacts/playwright/demo-project.json" });
+      const artifactResponse = await server.inject({ method: "GET", url: "/api/jobs/job-test/artifacts/testreel/final.mp4" });
       expect(artifactResponse.statusCode).toBe(200);
       expect(artifactResponse.headers["x-content-type-options"]).toBe("nosniff");
-      expect(artifactResponse.headers["content-type"]).toContain("application/json");
-
-      const videoResponse = await server.inject({ method: "GET", url: "/api/jobs/job-test/artifacts/playwright/capture/videos/clip.webm" });
-      expect(videoResponse.statusCode).toBe(200);
-      expect(videoResponse.headers["content-type"]).toContain("video/webm");
+      expect(artifactResponse.headers["content-type"]).toContain("video/mp4");
 
       for (const unsafeUrl of [
         "/api/jobs/job-test/artifacts/../package.json",
         "/api/jobs/job-test/artifacts/%2e%2e/package.json",
-        "/api/jobs/job-test/artifacts/playwright%2fdemo-project.json",
-        "/api/jobs/missing/artifacts/playwright/demo-project.json",
+        "/api/jobs/job-test/artifacts/testreel%2ffinal.mp4",
+        "/api/jobs/missing/artifacts/testreel/final.mp4",
       ]) {
         expect((await server.inject({ method: "GET", url: unsafeUrl })).statusCode).toBe(404);
       }
@@ -469,14 +464,14 @@ describe("job routes", () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-artifact-symlink-${randomUUID()}-`));
     const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
     const outsidePath = join(repoRoot, "outside.txt");
-    const symlinkPath = join(outputRoot, "playwright", "outside.txt");
+    const symlinkPath = join(outputRoot, "testreel", "outside.txt");
     let symlinkUnsupported = false;
     const completed = deferred<void>();
     const server = await buildServer({
       config: testConfig(repoRoot),
       idGenerator: () => "job-test",
       runner: async (): Promise<ManualFixtureGenerationResult> => {
-        const playwright = await writePlaywrightArtifacts(outputRoot);
+        const testreel = await writeTestreelArtifacts(outputRoot);
         await writeFile(outsidePath, "outside output root");
         try {
           await symlink(outsidePath, symlinkPath);
@@ -486,7 +481,7 @@ describe("job routes", () => {
           else throw error;
         }
         completed.resolve();
-        return playwrightManualResult("job-test", outputRoot, { ...playwright, artifactPaths: symlinkUnsupported ? playwright.artifactPaths : [...playwright.artifactPaths, symlinkPath] });
+        return testreelManualResult("job-test", outputRoot, { ...testreel, artifactPaths: symlinkUnsupported ? testreel.artifactPaths : [...testreel.artifactPaths, symlinkPath] });
       },
     });
     try {
@@ -494,7 +489,7 @@ describe("job routes", () => {
       await completed.promise;
       await waitForJobStatus(server, "job-test", "completed");
       if (!symlinkUnsupported) {
-        expect((await server.inject({ method: "GET", url: "/api/jobs/job-test/artifacts/playwright/outside.txt" })).statusCode).toBe(404);
+        expect((await server.inject({ method: "GET", url: "/api/jobs/job-test/artifacts/testreel/outside.txt" })).statusCode).toBe(404);
       }
     } finally {
       await server.close();
@@ -509,17 +504,17 @@ describe("job routes", () => {
       config: testConfig(repoRoot),
       idGenerator: () => "job-test",
       runner: async (): Promise<ManualFixtureGenerationResult> => {
-        const playwright = await writePlaywrightArtifacts(outputRoot);
-        await writeFile(join(outputRoot, "playwright", "secret.txt"), "not listed");
+        const testreel = await writeTestreelArtifacts(outputRoot);
+        await writeFile(join(outputRoot, "testreel", "secret.txt"), "not listed");
         completed.resolve();
-        return playwrightManualResult("job-test", outputRoot, playwright);
+        return testreelManualResult("job-test", outputRoot, testreel);
       },
     });
     try {
       expect((await server.inject({ method: "POST", url: "/api/jobs", payload: validBody })).statusCode).toBe(202);
       await completed.promise;
       await waitForJobStatus(server, "job-test", "completed");
-      expect((await server.inject({ method: "GET", url: "/api/jobs/job-test/artifacts/playwright/secret.txt" })).statusCode).toBe(404);
+      expect((await server.inject({ method: "GET", url: "/api/jobs/job-test/artifacts/testreel/secret.txt" })).statusCode).toBe(404);
     } finally {
       await server.close();
     }
@@ -527,34 +522,28 @@ describe("job routes", () => {
 });
 
 describe("artifact indexing", () => {
-  it("classifies Playwright artifacts and treats unrelated paths as other", async () => {
+  it("classifies Testreel artifacts and treats unrelated paths as other", async () => {
     const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-artifacts-"));
     expect(indexArtifacts({ jobId: "j", outputRoot: "/root", artifactPaths: ["/root/legacy-composition/index.html"] })[0]?.kind).toBe("other");
-    expect(indexArtifacts({ jobId: "j", outputRoot: "/root", artifactPaths: ["/root/playwright/final.mp4"] })[0]?.kind).toBe("playwright-video");
+    expect(indexArtifacts({ jobId: "j", outputRoot: "/root", artifactPaths: ["/root/testreel/final.mp4"] })[0]?.kind).toBe("published-video");
     const artifacts = indexArtifacts({
       jobId: "job-test",
       outputRoot,
       artifactPaths: [
-        join(outputRoot, "playwright", "demo-project.json"),
-        join(outputRoot, "playwright", "storyboard.json"),
-        join(outputRoot, "playwright", "capture-plan.json"),
-        join(outputRoot, "playwright", "capture-result.json"),
-        join(outputRoot, "playwright", "final.mp4"),
-        join(outputRoot, "playwright", "capture", "videos", "clip.webm"),
-        join(outputRoot, "playwright", "capture", "screenshots", "frame.png"),
-        join(outputRoot, "playwright", "capture", "trace.zip"),
-        join(outputRoot, "playwright", "notes.txt"),
+        join(outputRoot, "testreel", "recording-plan.json"),
+        join(outputRoot, "testreel", "recording.json"),
+        join(outputRoot, "testreel", "output", "output.json"),
+        join(outputRoot, "testreel", "output", "final.png"),
+        join(outputRoot, "testreel", "final.mp4"),
+        join(outputRoot, "testreel", "notes.txt"),
       ],
     });
     expect(artifacts.map((artifact) => artifact.kind)).toEqual([
-      "playwright-demo-project",
-      "playwright-storyboard",
-      "playwright-capture-plan",
-      "playwright-capture-result",
-      "playwright-video",
-      "playwright-video",
-      "playwright-screenshot",
-      "playwright-trace",
+      "testreel-recording-plan",
+      "testreel-recording-definition",
+      "testreel-manifest",
+      "testreel-screenshot",
+      "published-video",
       "other",
     ]);
   });
@@ -565,10 +554,10 @@ describe("job store", () => {
     const store = createJobStore();
     store.create({ id: "job-test", request, outputRoot: "/tmp/job-test", now: "2026-06-11T00:00:00.000Z" });
     store.appendProgress("job-test", runningEvent);
-    store.complete("job-test", playwrightApiResult(), "2026-06-11T00:00:02.000Z");
+    store.complete("job-test", testreelApiResult(), "2026-06-11T00:00:02.000Z");
     const completed = store.getSnapshot("job-test");
     expect(completed?.status).toBe("completed");
-    expect(completed?.result?.method).toBe("playwright");
+    expect(completed?.result?.method).toBe("testreel");
     expect(completed?.error).toBeUndefined();
   });
 
@@ -623,20 +612,21 @@ describe("job queue", () => {
 });
 
 describe("generation worker", () => {
-  it("completes Playwright jobs with a parsed DemoProject", async () => {
-    const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-playwright-"));
+  it("completes Testreel jobs with published-video artifacts", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-testreel-"));
     const outputRoot = join(repoRoot, "generated", "local-job", "job-test");
     const store = createJobStore();
     store.create({ id: "job-test", request, outputRoot, now: "2026-06-11T00:00:00.000Z" });
     const runner: GenerationRunner = async (_rawRequest, options) => {
       options?.onProgress?.(runningEvent);
-      return playwrightManualResult("job-test", outputRoot, await writePlaywrightArtifacts(outputRoot));
+      return testreelManualResult("job-test", outputRoot, await writeTestreelArtifacts(outputRoot));
     };
     await createGenerationWorker({ store, runner, now: () => "2026-06-11T00:00:02.000Z" })("job-test");
     const completed = store.getSnapshot("job-test");
     expect(completed?.status).toBe("completed");
     expect(completed?.progressEvents.map((event) => event.message)).toEqual(["AI URL analysis started"]);
-    expect(completed?.result?.method === "playwright" ? completed.result.project.id : undefined).toBe(goldenProject.id);
+    expect(completed?.result?.method).toBe("testreel");
+    expect(completed?.result?.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "testreel-recording-plan", relativePath: "testreel/recording-plan.json" })]));
   });
 
   it("ignores progress events for a different job id", async () => {
@@ -645,7 +635,7 @@ describe("generation worker", () => {
     store.create({ id: "job-test", request, outputRoot, now: "2026-06-11T00:00:00.000Z" });
     const runner: GenerationRunner = async (_rawRequest, options) => {
       options?.onProgress?.({ ...runningEvent, jobId: "other-job" });
-      return playwrightManualResult("job-test", outputRoot, await writePlaywrightArtifacts(outputRoot));
+      return testreelManualResult("job-test", outputRoot, await writeTestreelArtifacts(outputRoot));
     };
     await createGenerationWorker({ store, runner, now: () => "2026-06-11T00:00:02.000Z" })("job-test");
     expect(store.getSnapshot("job-test")?.progressEvents).toEqual([]);

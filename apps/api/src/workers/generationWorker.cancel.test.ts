@@ -2,14 +2,11 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import goldenProjectInput from "../../../../packages/project-schema/fixtures/person-a-generated-project.sample.json" with { type: "json" };
-import { DemoProjectSchema } from "@tinker/project-schema";
 import type { ApiGenerationResult, ManualFixtureGenerationResult } from "@tinker/generation-contract";
 import { createJobStore } from "../jobs/jobStore.js";
 
 const buildStarted = deferred<void>();
 const buildRelease = deferred<ApiGenerationResult>();
-const goldenProject = DemoProjectSchema.parse(goldenProjectInput);
 
 vi.mock("./apiGenerationResult.js", () => ({
   buildApiGenerationResult: vi.fn(async () => {
@@ -33,12 +30,17 @@ function deferred<T>() {
 describe("generation worker cancellation", () => {
   it("does not complete a job cancelled while API result indexing is pending", async () => {
     const outputRoot = await mkdtemp(join(tmpdir(), "tinker-api-worker-late-cancel-"));
-    await mkdir(join(outputRoot, "playwright"), { recursive: true });
-    const projectPath = join(outputRoot, "playwright", "demo-project.json");
-    const captureResultPath = join(outputRoot, "playwright", "capture-result.json");
-    const finalVideoPath = join(outputRoot, "playwright", "final.mp4");
-    await writeFile(projectPath, `${JSON.stringify(goldenProject, null, 2)}\n`);
-    await writeFile(captureResultPath, "{}");
+    const outputDirectory = join(outputRoot, "testreel", "output");
+    await mkdir(outputDirectory, { recursive: true });
+    const recordingPlanPath = join(outputRoot, "testreel", "recording-plan.json");
+    const recordingPath = join(outputRoot, "testreel", "recording.json");
+    const manifestPath = join(outputDirectory, "output.json");
+    const screenshotPath = join(outputDirectory, "final.png");
+    const finalVideoPath = join(outputRoot, "testreel", "final.mp4");
+    await writeFile(recordingPlanPath, JSON.stringify({ engine: "testreel" }));
+    await writeFile(recordingPath, JSON.stringify({ url: "https://example.com", steps: [{ action: "wait", ms: 1 }] }));
+    await writeFile(manifestPath, "{}\n");
+    await writeFile(screenshotPath, "png");
     await writeFile(finalVideoPath, "video");
 
     const store = createJobStore();
@@ -58,19 +60,18 @@ describe("generation worker cancellation", () => {
     const generationResult: ManualFixtureGenerationResult = {
       jobId: "job-late-cancel",
       status: "completed",
-      projectPath,
-      captureResultPath,
+      publishedVideoPath: finalVideoPath,
       outputDirectory: outputRoot,
-      artifactPaths: [projectPath, captureResultPath, finalVideoPath],
-      renderer: "playwright",
-      rendererResults: { playwright: { projectPath, captureResultPath } },
+      artifactPaths: [recordingPlanPath, recordingPath, manifestPath, screenshotPath, finalVideoPath],
+      renderer: "testreel",
+      rendererResults: { testreel: { recordingPlanPath, recordingPath, outputDirectory, finalVideoPath, manifestPath, screenshotPaths: [screenshotPath] } },
     };
     const worker = createGenerationWorker({ store, runner: async () => generationResult, now: () => "2026-06-11T00:00:02.000Z" });
 
     const running = worker("job-late-cancel");
     await buildStarted.promise;
     expect(worker.cancel("job-late-cancel")).toBe(true);
-    buildRelease.resolve({ method: "playwright", project: goldenProject, artifacts: [], warnings: [] });
+    buildRelease.resolve({ method: "testreel", artifacts: [{ kind: "published-video", relativePath: "testreel/final.mp4", url: "/api/jobs/job-late-cancel/artifacts/testreel/final.mp4", mediaType: "video/mp4" }], warnings: [] });
     await running;
 
     expect(store.getSnapshot("job-late-cancel")).toMatchObject({
