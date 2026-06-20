@@ -2,6 +2,13 @@
 
 > **For agentic workers:** this is the source-of-truth task board for Person B. Keep checkbox syntax intact. Do not start implementation from stale branches. Treat every unchecked ticket as a product-quality task, not a prototype task.
 
+> **Current generated-video contract:** Person B editor-flow references to generated `DemoProject`
+> output are legacy pre-Testreel handoff notes. Current generated videos complete through the
+> Testreel `ApiGenerationResult` contract with `method: "testreel"` and a primary
+> `published-video` artifact at `testreel/final.mp4`; see
+> [`docs/person-a-handoff-contract.md`](./person-a-handoff-contract.md) and
+> [`docs/demo-pipeline.md`](./demo-pipeline.md).
+
 ## Mission
 
 Person B owns the end-to-end editable demo product loop:
@@ -49,7 +56,7 @@ packages/capture
 
 ## Non-Negotiable Product Rules
 
-- [x] `DemoProject` is the source of truth.
+- [x] `DemoProject` is the source of truth for editable editor projects; generated-video output now uses the Testreel `published-video` contract.
 - [x] MP4 files are export artifacts, not editable product state.
 - [x] AI edits return structured operations; AI does not directly mutate video files.
 - [x] V1 is web-first. Desktop stays placeholder-only until the web loop is excellent.

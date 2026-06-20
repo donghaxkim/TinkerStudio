@@ -1,21 +1,30 @@
 # Person A → Person B Handoff Contract (PB-002)
 
-This document is the contract Person A's generation pipeline (Samuel) must satisfy so its
-output opens, edits, and exports cleanly in Person B's editor. The canonical example of a
-valid handoff is the golden fixture:
+This document is the active contract Person A's generated-video pipeline (Samuel) must satisfy
+so Person B's UI can track a job and preview the published video. The current generated-video
+contract is the API job contract, not the legacy assisted `DemoProject` editor handoff.
+
+The active success shape is an `ApiGenerationResult` with `method: "testreel"` and a primary
+`published-video` artifact at `testreel/final.mp4`. See [`docs/demo-pipeline.md`](./demo-pipeline.md)
+for the current Testreel pipeline.
+
+Legacy assisted/editor fixtures still exist for historical Person B validation. The canonical
+example of that old assisted handoff is the golden fixture:
 
 > `packages/project-schema/fixtures/person-a-generated-project.sample.json`
 
 It is a schema-valid `DemoProject` (schema `0.1.0`) that matches the editor design
-reference (driftboard demo — 4 named clips + 2 named zoom moves, 24s @ 60fps, 16:9). The
-web app loads it as both the "Use sample project" content and the mock generation success
-result. **If Person A's generator emits projects shaped like this fixture, they will open
-and export in the editor with zero further changes.**
+reference (driftboard demo — 4 named clips + 2 named zoom moves, 24s @ 60fps, 16:9). This
+fixture documents the removed/legacy assisted editor seam only; it is not the current
+generated-video success payload.
 
 ## 1. Request: what the UI sends
 
-Contract source: `packages/generation-contract/src/createDemoRequest.ts`
-(`CreateDemoRequestSchema` accepts AI URL planning requests and the legacy assisted shape).
+Contract sources:
+
+- Current API jobs: `packages/generation-contract/src/apiJob.ts`.
+- Request parser compatibility: `packages/generation-contract/src/createDemoRequest.ts`
+  (`CreateDemoRequestSchema` accepts AI URL planning requests and the legacy assisted shape).
 
 | Mode | Schema | Required fields | Notes |
 | --- | --- | --- | --- |
@@ -28,14 +37,15 @@ Parse with `parseCreateDemoRequest` / `safeParseCreateDemoRequest` before acting
 
 ## 2. Job lifecycle the UI expects
 
-Contract source: `packages/generation-contract/src/generationJob.ts` (`GenerationJobSchema`).
+Contract source: `packages/generation-contract/src/apiJob.ts` (`ApiGenerationJobSchema`).
 
-`GenerationStatus` ∈ `queued → running → capturing → assembling → completed → succeeded → failed → canceled`.
+`ApiGenerationJobStatus` ∈ `queued → running → capturing → assembling → completed → failed`.
 
 The UI specifically branches on terminal states:
 
-- **`succeeded`** — `job.result` is **required** (schema-enforced). The UI reads
-  `job.result.project` to open the editor and `job.result.warnings` to surface non-fatal notes.
+- **`completed`** — `job.result` is **required** (schema-enforced). The UI reads
+  `job.result.artifacts` and opens the primary `published-video` artifact, normally
+  `testreel/final.mp4`; it also reads `job.result.warnings` to surface non-fatal notes.
 - **`failed`** — `job.error` is **required** (`{ code, message, retryable }`). The UI shows
   `error.message` in the chat thread and preserves the user's repo + prompt for retry.
 
@@ -63,29 +73,40 @@ field rendered through `GENERATION_PHASE_LABELS`:
 (There is also a runner progress event schema with a `status` field for local/API jobs;
 the assisted phases above are what the legacy in-app mock flow renders.)
 
-## 4. The exact success payload
+## 4. The exact current success payload
 
-For the assisted/in-app path, a succeeded job's result is an `AssistedGenerationResult`
-(`packages/generation-contract/src/generationResult.ts`, `.strict()`):
+For the current Testreel path, a completed job's result is an `ApiGenerationResult`
+(`packages/generation-contract/src/apiJob.ts`, `.strict()`):
 
 ```jsonc
 job.result = {
-  project: <valid DemoProject, schemaVersion "0.1.0">,  // REQUIRED
-  artifacts?: {                                          // optional
-    storyboardAssetId?, captureTraceAssetId?, previewVideoAssetId?
-  },
-  warnings: string[]                                     // non-empty strings; [] when clean
+  method: "testreel",                                    // REQUIRED
+  artifacts: [                                           // REQUIRED
+    {
+      kind: "published-video",                          // REQUIRED for completed jobs
+      relativePath: "testreel/final.mp4",
+      url: "/api/jobs/<job-id>/artifacts/testreel/final.mp4",
+      mediaType: "video/mp4"
+    }
+  ],
+  warnings: string[]                                     // [] when clean
 }
 ```
 
-`project` must validate against `DemoProjectSchema` (`@tinker/project-schema`). The golden
-fixture is exactly such a `project`.
+`ApiGenerationResultSchema` requires `method: "testreel"` and rejects completed results that
+do not include a `published-video` artifact. The primary generated-video artifact is
+`testreel/final.mp4`.
 
-## 5. What a valid `DemoProject` must satisfy
+## 5. Legacy assisted `DemoProject` fixture requirements
+
+This section is historical/legacy-assisted only. It describes the old editor fixture seam and
+does not describe the current Testreel generated-video contract. Current generated videos use
+the `ApiGenerationResult` contract in §4 and the Testreel pipeline in
+[`docs/demo-pipeline.md`](./demo-pipeline.md).
 
 Schema source: `packages/project-schema/src/validators.ts` (`DemoProjectSchema`, `.strict()`).
-Person A's generated `project` MUST honor every rule below — these are enforced and the
-editor relies on them:
+Legacy assisted `project` fixtures had to honor every rule below; the editor relies on them
+when loading those old/sample projects:
 
 - `schemaVersion` is the literal `"0.1.0"`. `duration` > 0, `fps` > 0, `aspectRatio` valid.
 - **Asset refs resolve.** Every `clip.assetId` references an `asset.id` present in `assets`.
@@ -115,7 +136,7 @@ editor relies on them:
 - The optional `cursor` display block (PB-006) may be omitted; defaults apply
   (cursor shown, "ring" click effect, 500ms). Do not make it required.
 
-## 6. Guarantees about the golden fixture
+## 6. Legacy guarantees about the golden fixture
 
 - It validates with `DemoProjectSchema` — proven by
   `packages/project-schema/src/goldenFixture.test.ts` and `pnpm validate:schema` (which now
@@ -127,9 +148,9 @@ editor relies on them:
 - It **export-preflights** in the editor — the same test asserts a succeeded export job with
   a `24s @ 60fps` artifact summary. The real MP4 is produced by running
   `pnpm --filter @tinker/rendering render:sample`.
-- The mock generation client returns it as `job.result.project` — proven by
+- The legacy mock generation client returned it as `job.result.project` — proven by
   `apps/web/src/lib/mockGenerationClient.test.ts`.
 
-When Person A's real generator is ready, swap the mock client (`apps/web/src/lib/
-mockGenerationClient.ts`) for the live `GenerationClient`. As long as the live client returns
-a `succeeded` job whose `result.project` satisfies §5, the editor seam needs no changes.
+Do not use the legacy `job.result.project` fixture seam for current generated-video jobs.
+Current live jobs complete with the `ApiGenerationResult` shape in §4 and expose the primary
+Testreel `published-video` artifact.

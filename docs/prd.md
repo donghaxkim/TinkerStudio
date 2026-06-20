@@ -2,26 +2,27 @@
 
 ## Summary
 
-Tinker helps builders turn a product repo and running product URL into an editable demo video project. The product state is a `DemoProject`; MP4 files are export artifacts generated from that state.
+Tinker helps builders turn a product repo and running product URL into a published demo video. Current generated-video jobs use the Testreel pipeline and complete with an `ApiGenerationResult` whose primary `published-video` artifact is `testreel/final.mp4`. `DemoProject` remains the editable project state for loaded/sample editor projects and manual export flows.
 
 ## Users
 
 - Founders and product engineers who need polished product demos quickly.
 - Agent-assisted builders who want a deterministic capture and editing loop.
-- Teams that want reusable demo project state rather than one-off screen recordings.
+- Teams that want repo-grounded demo videos with reusable editor project state where applicable.
 
 ## MVP Workflow
 
 1. User enters a repo URL, product/local app URL, prompt, duration, and aspect ratio.
-2. Tinker generates or loads a valid `DemoProject`.
-3. User reviews the project in the editor.
-4. User adjusts trims, zoom/camera motion, cursor/click effects, and AI edit proposals.
-5. User saves the edited `DemoProject`.
-6. User exports an MP4 artifact from the current project state.
+2. Tinker generates a Testreel `published-video` artifact or loads a valid `DemoProject`.
+3. User reviews the generated video preview or loaded project in the editor.
+4. For editable projects, user adjusts trims, zoom/camera motion, cursor/click effects, and AI edit proposals.
+5. User saves the edited `DemoProject` when working in the editor flow.
+6. User exports or downloads the MP4 artifact from the current flow.
 
 ## MVP Requirements
 
-- Load and validate `DemoProject` JSON.
+- Generate and serve completed Testreel jobs with a primary `published-video` artifact.
+- Load and validate `DemoProject` JSON for editor/sample project flows.
 - Display preview, timeline, overlays, selected range, and project metadata.
 - Support manual edits for trims, zoom/camera motion, and cursor/click effects.
 - Support AI edit proposals that can be previewed, accepted, rejected, and undone.
@@ -41,6 +42,7 @@ Tinker helps builders turn a product repo and running product URL into an editab
 ## Acceptance Criteria
 
 - Typecheck and relevant tests pass.
+- A completed generated-video job exposes `method: "testreel"` and a `published-video` artifact at `testreel/final.mp4`.
 - A valid sample `DemoProject` opens in the editor.
 - A user can make at least one manual edit and undo it.
 - Export verification can render and probe an MP4 artifact.
