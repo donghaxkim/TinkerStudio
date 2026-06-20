@@ -87,7 +87,7 @@ It prints the run folder and every artifact path (product-understanding, demo-st
 storyboard, recording-plan, recording, final.mp4, run-summary) plus warnings.
 
 ```bash
-# Deterministic, offline end-to-end smoke (real smooth capture against a local fixture):
+# Deterministic, offline end-to-end smoke (Testreel recording/export against a local fixture):
 pnpm --filter @tinker/demo-assembly smoke:pipeline
 ```
 

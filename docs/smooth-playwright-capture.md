@@ -5,9 +5,9 @@
 Makes Tinker's Playwright demo path feel more Screen Studio-like by baking cinematic
 motion into the capture and emitting a metadata layer for a future post-render camera pass.
 
-> This document covers the **capture layer**. For the end-to-end multi-phase pipeline
-> (Product Understanding → Demo Strategy → Browser Capture) and the full generated
-> artifact layout, see [demo-pipeline.md](./demo-pipeline.md).
+> Legacy scope: this document covered the removed **capture layer** for the historical
+> Product Understanding → Demo Strategy → Browser Capture path. For the current
+> Testreel published-video pipeline and artifact layout, see [demo-pipeline.md](./demo-pipeline.md).
 
 ## What changed
 
