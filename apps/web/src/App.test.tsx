@@ -23,11 +23,11 @@ vi.mock("./lib/httpCompositionPlanningClient.js", () => ({
   }),
 }));
 
-function completedPlaywrightJob(): ApiGenerationJob {
+function completedTestreelJob(): ApiGenerationJob {
   const videoArtifact = {
-    kind: "playwright-video" as const,
-    relativePath: "playwright/final.mp4",
-    url: "/api/jobs/job-mqhatqcm-352035ac/artifacts/playwright/final.mp4",
+    kind: "published-video" as const,
+    relativePath: "testreel/final.mp4",
+    url: "/api/jobs/job-mqhatqcm-352035ac/artifacts/testreel/final.mp4",
     mediaType: "video/mp4",
   };
 
@@ -46,23 +46,7 @@ function completedPlaywrightJob(): ApiGenerationJob {
     updatedAt: "2026-06-17T00:00:00.000Z",
     progressEvents: [],
     result: {
-      method: "playwright",
-      project: {
-        schemaVersion: "0.1.0",
-        id: "job-mqhatqcm-352035ac",
-        title: "PayKit demo",
-        duration: 10,
-        fps: 60,
-        aspectRatio: "16:9",
-        createdAt: "2026-06-17T00:00:00.000Z",
-        updatedAt: "2026-06-17T00:00:00.000Z",
-        assets: [],
-        tracks: [],
-        zooms: [],
-        cursorEvents: [],
-        aiEditHistory: [],
-        metadata: { notes: [] },
-      },
+      method: "testreel",
       artifacts: [videoArtifact],
       warnings: [],
     },
@@ -70,7 +54,7 @@ function completedPlaywrightJob(): ApiGenerationJob {
 }
 
 function queuedJob(): ApiGenerationJob {
-  const job = completedPlaywrightJob();
+  const job = completedTestreelJob();
   return {
     ...job,
     status: "queued",
@@ -79,7 +63,7 @@ function queuedJob(): ApiGenerationJob {
 }
 
 function failedJob(message = "Renderer crashed"): ApiGenerationJob {
-  const job = completedPlaywrightJob();
+  const job = completedTestreelJob();
   return {
     ...job,
     status: "failed",
@@ -122,7 +106,7 @@ describe("App composition product flow", () => {
   });
 
   it("opens a completed job from the jobId query parameter", async () => {
-    const job = completedPlaywrightJob();
+    const job = completedTestreelJob();
     generationClient.getJob.mockResolvedValue(job);
     window.history.replaceState(null, "", "/?jobId=job-mqhatqcm-352035ac");
 
@@ -130,11 +114,11 @@ describe("App composition product flow", () => {
 
     await waitFor(() => expect(generationClient.getJob).toHaveBeenCalledWith("job-mqhatqcm-352035ac"));
     await waitFor(() => expect(screen.getByTestId("composition-standalone-video")).toBeInTheDocument());
-    expect(screen.getByTestId("composition-standalone-video")).toHaveAttribute("src", "/api/jobs/job-mqhatqcm-352035ac/artifacts/playwright/final.mp4");
+    expect(screen.getByTestId("composition-standalone-video")).toHaveAttribute("src", "/api/jobs/job-mqhatqcm-352035ac/artifacts/testreel/final.mp4");
   });
 
   it("waits for a non-terminal jobId query parameter before opening it", async () => {
-    const completed = completedPlaywrightJob();
+    const completed = completedTestreelJob();
     generationClient.getJob.mockResolvedValue(queuedJob());
     generationClient.waitForJob.mockResolvedValue(completed);
     window.history.replaceState(null, "", "/?jobId=job-mqhatqcm-352035ac");
@@ -149,7 +133,7 @@ describe("App composition product flow", () => {
       ),
     );
     await waitFor(() => expect(screen.getByTestId("composition-standalone-video")).toBeInTheDocument());
-    expect(screen.queryByText("Playwright generation completed but returned no preview video artifact.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Generation completed but returned no published video artifact.")).not.toBeInTheDocument();
   });
 
   it("shows a direct error for a failed jobId query parameter", async () => {

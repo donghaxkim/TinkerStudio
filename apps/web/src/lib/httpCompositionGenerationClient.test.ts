@@ -72,33 +72,17 @@ describe("HttpCompositionGenerationClient", () => {
   });
 
   it("waitForJob polls until terminal and reports each update", async () => {
-    const playwrightVideoArtifact = {
-      kind: "playwright-video",
-      relativePath: "playwright/final.mp4",
-      url: "/api/jobs/job-1/artifacts/playwright/final.mp4",
+    const publishedVideoArtifact = {
+      kind: "published-video",
+      relativePath: "testreel/final.mp4",
+      url: "/api/jobs/job-1/artifacts/testreel/final.mp4",
       mediaType: "video/mp4",
     } as const;
     const completed = job({
       status: "completed",
       result: {
-        method: "playwright",
-        project: {
-          schemaVersion: "0.1.0",
-          id: "job-1",
-          title: "Driftboard demo",
-          duration: 10,
-          fps: 60,
-          aspectRatio: "16:9",
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-          assets: [],
-          tracks: [],
-          zooms: [],
-          cursorEvents: [],
-          aiEditHistory: [],
-          metadata: { notes: [] },
-        },
-        artifacts: [playwrightVideoArtifact],
+        method: "testreel",
+        artifacts: [publishedVideoArtifact],
         warnings: [],
       },
     });

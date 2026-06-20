@@ -44,3 +44,7 @@ export function selectArtifact(job: ApiGenerationJob, kind: ApiArtifactKind): Ap
 export function selectArtifactUrl(job: ApiGenerationJob, kind: ApiArtifactKind): string | undefined {
   return selectArtifact(job, kind)?.url;
 }
+
+export function selectPrimaryVideoArtifact(job: ApiGenerationJob): ApiArtifact | undefined {
+  return selectArtifact(job, "published-video");
+}

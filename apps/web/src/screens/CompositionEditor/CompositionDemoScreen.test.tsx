@@ -8,12 +8,12 @@ import { CompositionDemoScreen } from "./CompositionDemoScreen.js";
 const removedAgentLabel = "Hyper" + "frames agent";
 const removedAgentField = "hyper" + "framesAgent";
 
-function completedPlaywrightJob(): ApiGenerationJob {
+function completedTestreelJob(): ApiGenerationJob {
   return {
-    id: "playwright-job-1",
+    id: "testreel-job-1",
     status: "completed",
     request: {
-      id: "playwright-job-1",
+      id: "testreel-job-1",
       mode: "ai-url-planning",
       repoUrl: "https://github.com/acme/driftboard",
       productUrl: "https://driftboard.example.com",
@@ -24,28 +24,12 @@ function completedPlaywrightJob(): ApiGenerationJob {
     updatedAt: "2026-01-01T00:00:00.000Z",
     progressEvents: [],
     result: {
-      method: "playwright",
-      project: {
-        schemaVersion: "0.1.0",
-        id: "playwright-job-1",
-        title: "Driftboard demo",
-        duration: 10,
-        fps: 60,
-        aspectRatio: "16:9",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-        assets: [],
-        tracks: [],
-        zooms: [],
-        cursorEvents: [],
-        aiEditHistory: [],
-        metadata: { notes: [] },
-      },
+      method: "testreel",
       artifacts: [
         {
-          kind: "playwright-video",
-          relativePath: "playwright/final.mp4",
-          url: "/api/jobs/playwright-job-1/artifacts/playwright/final.mp4",
+          kind: "published-video",
+          relativePath: "testreel/final.mp4",
+          url: "/api/jobs/testreel-job-1/artifacts/testreel/final.mp4",
           mediaType: "video/mp4",
         },
       ],
@@ -113,23 +97,42 @@ function createLocalCompositionGenerationClient(): CompositionGenerationClient {
   return {
     createJob: async (request) => queuedJob(request),
     getJob: async () => queuedJob({ mode: "ai-url-planning", repoUrl: "https://github.com/acme/driftboard", durationCapSeconds: 60, aspectRatio: "16:9" }),
-    waitForJob: async () => completedPlaywrightJob(),
+    waitForJob: async () => completedTestreelJob(),
   };
 }
 
 describe("CompositionDemoScreen", () => {
-  it("opens completed Playwright jobs in the editor shell as a video-only preview", () => {
+  it("opens completed Testreel jobs in the editor shell as a video-only preview", () => {
     render(
       <CompositionDemoScreen
         client={createLocalCompositionGenerationClient()}
         planningClient={createPlanningClient()}
-        initialCompletedJob={completedPlaywrightJob()}
+        initialCompletedJob={completedTestreelJob()}
       />,
     );
 
     expect(screen.getByLabelText("Editor status")).toHaveTextContent("Saved");
     expect(screen.getByRole("button", { name: "Export" })).not.toBeDisabled();
-    expect(screen.getByTestId("composition-standalone-video")).toHaveAttribute("src", "/api/jobs/playwright-job-1/artifacts/playwright/final.mp4");
+    expect(screen.getByTestId("composition-standalone-video")).toHaveAttribute("src", "/api/jobs/testreel-job-1/artifacts/testreel/final.mp4");
+  });
+
+  it("shows an error when a completed Testreel job has no published video artifact", () => {
+    render(
+      <CompositionDemoScreen
+        client={createLocalCompositionGenerationClient()}
+        planningClient={createPlanningClient()}
+        initialCompletedJob={{
+          ...completedTestreelJob(),
+          result: {
+            method: "testreel",
+            artifacts: [],
+            warnings: [],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Generation completed but returned no published video artifact.");
   });
 
   it("starts planning from Product URL and GitHub repo URL without renderer/import controls", async () => {
@@ -207,6 +210,15 @@ describe("CompositionDemoScreen", () => {
     expect(removedAgentField in (capturedRequest as object)).toBe(false);
   });
 
+  it("uses video engine copy when Generate now is missing the product URL", () => {
+    render(<CompositionDemoScreen client={createLocalCompositionGenerationClient()} planningClient={createPlanningClient()} />);
+
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate now" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Add your product / website URL - the video engine records it live.");
+  });
+
   it("system prompt is hidden by default; when edited it is sent with Generate now", async () => {
     let capturedRequest: CreateCompositionJobRequest | undefined;
     const wait = deferred<ApiGenerationJob>();
@@ -270,7 +282,7 @@ describe("CompositionDemoScreen", () => {
     expect(await screen.findByText("Updated the outline.")).toBeInTheDocument();
   });
 
-  it("generates a Playwright video from the approved outline without renderer fields", async () => {
+  it("generates a Testreel video from the approved outline without renderer fields", async () => {
     let capturedRequest: CreateCompositionJobRequest | undefined;
     const client = {
       createJob: vi.fn(async (request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => {
@@ -280,7 +292,7 @@ describe("CompositionDemoScreen", () => {
       getJob: async () => {
         throw new Error("not used");
       },
-      waitForJob: async (): Promise<ApiGenerationJob> => completedPlaywrightJob(),
+      waitForJob: async (): Promise<ApiGenerationJob> => completedTestreelJob(),
     } satisfies CompositionGenerationClient;
     render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
 
@@ -303,7 +315,7 @@ describe("CompositionDemoScreen", () => {
     expect("renderer" in (capturedRequest as object)).toBe(false);
     expect(removedAgentField in (capturedRequest as object)).toBe(false);
     expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("Driftboard launch demo") }));
-    expect(await screen.findByTestId("composition-standalone-video")).toHaveAttribute("src", "/api/jobs/playwright-job-1/artifacts/playwright/final.mp4");
+    expect(await screen.findByTestId("composition-standalone-video")).toHaveAttribute("src", "/api/jobs/testreel-job-1/artifacts/testreel/final.mp4");
     const repoLink = screen.getByRole("link", { name: "GitHub repository acme/driftboard" });
     expect(repoLink).toHaveTextContent("github.com/acme/driftboard");
     expect(repoLink).toHaveAttribute("href", "https://github.com/acme/driftboard");

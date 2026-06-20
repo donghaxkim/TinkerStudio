@@ -19,7 +19,7 @@ import type {
   PlanningStage,
 } from "@tinker/generation-contract";
 import { DEFAULT_SYSTEM_PROMPT } from "@tinker/generation-contract";
-import type { CompositionGenerationClient, CreateCompositionJobRequest } from "../../lib/compositionGenerationClient.js";
+import { selectPrimaryVideoArtifact, type CompositionGenerationClient, type CreateCompositionJobRequest } from "../../lib/compositionGenerationClient.js";
 import type { CompositionPlanningClient } from "../../lib/compositionPlanningClient.js";
 import { useCompositionGenerationJob } from "../../lib/useCompositionGenerationJob.js";
 import { useCompositionPlanningSession } from "../../lib/useCompositionPlanningSession.js";
@@ -288,7 +288,7 @@ export function CompositionDemoScreen({ client, planningClient, onBack, initialC
     }
     const productUrl = normalizePublicUrl(productDraft);
     if (productUrl === undefined) {
-      setDirectError("Add your product / website URL - the Playwright capture pipeline records it live.");
+      setDirectError("Add your product / website URL - the video engine records it live.");
       return;
     }
     setDirectError(undefined);
@@ -307,7 +307,7 @@ export function CompositionDemoScreen({ client, planningClient, onBack, initialC
   const completedJob = initialCompletedJob ?? (job.phase === "completed" ? job.job : undefined);
 
   if (completedJob) {
-    const videoArtifact = completedJob.result?.artifacts.find((artifact) => artifact.kind === "playwright-video");
+    const videoArtifact = selectPrimaryVideoArtifact(completedJob);
     const repoUrl = "repoUrl" in completedJob.request ? completedJob.request.repoUrl : undefined;
     const repo = typeof repoUrl === "string" ? parseGithubRepo(repoUrl) : undefined;
     if (videoArtifact) {
@@ -315,7 +315,7 @@ export function CompositionDemoScreen({ client, planningClient, onBack, initialC
     }
     return (
       <div className="tk-porcelain" role="alert" style={{ padding: 24 }}>
-        Playwright generation completed but returned no preview video artifact.
+        Generation completed but returned no published video artifact.
       </div>
     );
   }
