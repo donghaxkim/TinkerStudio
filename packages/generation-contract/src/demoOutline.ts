@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PublicGithubRepoUrlSchema, PublicUrlSchema } from "./createDemoRequest.js";
+import { PublicGithubRepoUrlSchema, PublicUrlSchema } from "./urlSchemas.js";
 
 const nonEmptyString = z.string().trim().min(1);
 const finiteNumber = z.number().finite();
@@ -90,6 +90,8 @@ export const PlanningSessionResponseSchema = z
     status: PlanningSessionStatusSchema,
     messages: z.array(PlanningMessageSchema),
     progress: z.array(PlanningProgressEntrySchema).default([]),
+    // Streamed planning-agent reasoning shown live, then collapsed once an outline is ready.
+    thoughts: z.array(nonEmptyString).optional(),
     outline: DemoOutlineSchema.optional(),
     outlineValid: z.boolean(),
     lastError: nonEmptyString.optional(),

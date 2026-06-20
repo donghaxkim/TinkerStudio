@@ -9,6 +9,7 @@ import {
   type ProductAnalysis,
   type RepoAnalysis,
 } from "@tinker/product-analysis";
+import type { DemoOutline } from "@tinker/generation-contract";
 import { z } from "zod";
 import { runClaudeCodeAgent } from "./claudeCodeAgent.js";
 import type { DemoStrategy, Storyboard } from "./demoStrategy.js";
@@ -34,6 +35,7 @@ const UNSAFE_VISIBLE_CONTROL_LABEL_PATTERN =
 export type AiUrlPlannerInput = {
   productUrl: string;
   prompt: string;
+  approvedOutline?: DemoOutline;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
   analysis: ProductAnalysis;
@@ -507,6 +509,36 @@ const defaultStoryboardNarrativeInstructions = [
   "The recording plan should prioritize product actions that support the use case and reveal the end result, rather than producing a generic homepage tour.",
 ];
 
+function buildApprovedOutlineContext(approvedOutline: DemoOutline | undefined) {
+  if (approvedOutline === undefined) return undefined;
+  return {
+    title: approvedOutline.title,
+    durationCapSeconds: approvedOutline.durationCapSeconds,
+    aspectRatio: approvedOutline.aspectRatio,
+    summary: approvedOutline.summary,
+    scenes: approvedOutline.scenes.map((scene) => ({
+      id: scene.id,
+      goal: scene.goal,
+      visual: scene.visual,
+      narration: scene.narration,
+      startHint: scene.startHint,
+      endHint: scene.endHint,
+      evidence: scene.evidence,
+    })),
+    generationNotes: approvedOutline.generationNotes,
+  };
+}
+
+function approvedOutlinePlannerInstructions(input: AiUrlPlannerInput): string[] {
+  if (input.approvedOutline === undefined) return [];
+  return [
+    "Treat approvedOutline as the primary narrative guide.",
+    "Build the Testreel recording plan to support the approved scenes in order where the live product allows it.",
+    "If an approved scene is unsupported, choose the closest safe same-origin action and reflect the gap in the returned storyboard goal rather than inventing unsupported product behavior.",
+    "Never let approvedOutline override safety rules: no auth, payments, destructive actions, external navigation, or unsafe input.",
+  ];
+}
+
 function buildPlannerPrompt(input: AiUrlPlannerInput) {
   const repoAnalysis = parsePlannerRepoAnalysis(input.repoAnalysis);
   const narrativeExploration = parsePlannerNarrativeExploration(input.narrativeExploration, input.productUrl);
@@ -520,6 +552,9 @@ function buildPlannerPrompt(input: AiUrlPlannerInput) {
         "The recordingPlan.definition must be a native Testreel recording definition using action keys, not Tinker CapturePlan type keys.",
         "Use Testreel actions wait, click, type, fill, keyboard, scroll, hover, zoom, and screenshot.",
         "Click and hover steps must include a CSS selector; do not target click or hover actions by visible text alone.",
+        ...approvedOutlinePlannerInstructions(input),
+        "Include at least one cursor-producing step (click, hover, type, or fill) so Testreel renders a visible cursor path.",
+        "Include at least one zoom-producing step, either a zoom action with scale other than 1 or a click step with zoom greater than 1.",
         "Set recordingPlan.engine to testreel, definition.outputFormat to mp4, cursor enabled, chrome enabled, and background enabled.",
         "Do not use environment-variable substitution such as ${VAR} or $VAR in generated definitions; emit concrete values.",
         "Avoid auth, payments, destructive actions, private data, account creation, downloads, extensions, and external navigation.",
@@ -548,6 +583,7 @@ function buildPlannerPrompt(input: AiUrlPlannerInput) {
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
       strategy: buildStrategyContext(input),
+      approvedOutline: buildApprovedOutlineContext(input.approvedOutline),
       analysis: input.analysis,
       repositoryContext: repoAnalysis
         ? {
@@ -588,11 +624,11 @@ function buildPlannerPrompt(input: AiUrlPlannerInput) {
             background: { enabled: true, gradient: { from: "#0f172a", to: "#38bdf8" }, padding: 60, borderRadius: 18 },
             steps: [
               { action: "wait", ms: "number <= 30000" },
-              { action: "click", selector: "CSS selector", label: "optional visible label" },
+              { action: "click", selector: "CSS selector", zoom: "optional number > 1" },
               { action: "type", selector: "CSS selector", text: "string" },
               { action: "fill", selector: "CSS selector", text: "string" },
               { action: "keyboard", key: "keyboard key such as Enter" },
-              { action: "scroll", x: "optional number", y: "optional number", selector: "optional CSS selector" },
+              { action: "scroll", x: "optional number", y: "optional number" },
               { action: "hover", selector: "CSS selector" },
               { action: "zoom", selector: "optional CSS selector", scale: "positive number", duration: "optional number" },
               { action: "screenshot", name: "optional string" },
@@ -622,6 +658,9 @@ function buildOpencodePlannerPrompt(input: AiUrlPlannerInput) {
         "The recordingPlan.definition must be a native Testreel recording definition using action keys, not Tinker CapturePlan type keys.",
         "Use Testreel actions wait, click, type, fill, keyboard, scroll, hover, zoom, and screenshot.",
         "Click and hover steps must include a CSS selector; do not target click or hover actions by visible text alone.",
+        ...approvedOutlinePlannerInstructions(input),
+        "Include at least one cursor-producing step (click, hover, type, or fill) so Testreel renders a visible cursor path.",
+        "Include at least one zoom-producing step, either a zoom action with scale other than 1 or a click step with zoom greater than 1.",
         "Set recordingPlan.engine to testreel, definition.outputFormat to mp4, cursor enabled, chrome enabled, and background enabled.",
         "Do not use environment-variable substitution such as ${VAR} or $VAR in generated definitions; emit concrete values.",
         "You may use available web research tools to choose safe public sample inputs when the product workflow requires external content, such as a public YouTube URL.",
@@ -651,6 +690,7 @@ function buildOpencodePlannerPrompt(input: AiUrlPlannerInput) {
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
       strategy: buildStrategyContext(input),
+      approvedOutline: buildApprovedOutlineContext(input.approvedOutline),
       websiteAnalysis: input.analysis,
       repositoryContext: repoAnalysis
         ? {
@@ -692,11 +732,11 @@ function buildOpencodePlannerPrompt(input: AiUrlPlannerInput) {
             background: { enabled: true, gradient: { from: "#0f172a", to: "#38bdf8" }, padding: 60, borderRadius: 18 },
             steps: [
               { action: "wait", ms: "number <= 30000" },
-              { action: "click", selector: "CSS selector", label: "optional visible label" },
+              { action: "click", selector: "CSS selector", zoom: "optional number > 1" },
               { action: "type", selector: "CSS selector", text: "safe public sample input or user-provided value" },
               { action: "fill", selector: "CSS selector", text: "safe public sample input or user-provided value" },
               { action: "keyboard", key: "keyboard key such as Enter" },
-              { action: "scroll", x: "optional number", y: "optional number", selector: "optional CSS selector" },
+              { action: "scroll", x: "optional number", y: "optional number" },
               { action: "hover", selector: "CSS selector" },
               { action: "zoom", selector: "optional CSS selector", scale: "positive number", duration: "optional number" },
               { action: "screenshot", name: "optional string" },

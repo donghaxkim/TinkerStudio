@@ -11,6 +11,7 @@ import { z } from "zod";
 import type { Storyboard } from "./demoStrategy.js";
 import type { AspectRatio } from "./types.js";
 import { CoreCoverageItemSchema, type CoreCoverageItem } from "./coreCoverage.js";
+import { DemoOutlineSchema, type DemoOutline } from "@tinker/generation-contract";
 
 const RendererSchema = z.literal("testreel");
 type RunRenderer = z.infer<typeof RendererSchema>;
@@ -42,6 +43,7 @@ export const RunInputSchema = z
     productUrl: z.string().trim().min(1),
     repoUrl: z.string().trim().min(1).optional(),
     prompt: z.string(),
+    approvedOutline: DemoOutlineSchema.optional(),
     durationCapSeconds: z.number().finite().positive(),
     aspectRatio: z.enum(["16:9", "9:16", "1:1"]),
     renderer: RendererSchema,
@@ -80,6 +82,7 @@ export type BuildRunInputArgs = {
   productUrl: string;
   repoUrl?: string;
   prompt: string;
+  approvedOutline?: DemoOutline;
   durationCapSeconds: number;
   aspectRatio: AspectRatio;
   renderer: RunRenderer;
@@ -93,6 +96,7 @@ export function buildRunInput(args: BuildRunInputArgs): RunInput {
     productUrl: args.productUrl,
     ...(args.repoUrl ? { repoUrl: args.repoUrl } : {}),
     prompt: args.prompt,
+    ...(args.approvedOutline === undefined ? {} : { approvedOutline: args.approvedOutline }),
     durationCapSeconds: args.durationCapSeconds,
     aspectRatio: args.aspectRatio,
     renderer: args.renderer,

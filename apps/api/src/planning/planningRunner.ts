@@ -9,6 +9,8 @@ import {
 
 /** Streams a pipeline stage transition to the caller (e.g. to persist for polling). */
 export type PlanningProgressReporter = (stage: PlanningStage, status: PlanningProgressStatus) => void;
+/** Streams high-level planning activity snapshots to the caller for polling UIs. */
+export type PlanningThoughtsReporter = (thoughts: string[]) => void;
 
 export type InitialPlanningAgentTurnInput = {
   kind: "initial";
@@ -18,6 +20,7 @@ export type InitialPlanningAgentTurnInput = {
   workspaceRoot: string;
   outlinePath: string;
   onProgress?: PlanningProgressReporter;
+  onThoughts?: PlanningThoughtsReporter;
 };
 
 export type FollowupPlanningAgentTurnInput = {
@@ -30,6 +33,7 @@ export type FollowupPlanningAgentTurnInput = {
   message: string;
   agentResumeHandle: string;
   onProgress?: PlanningProgressReporter;
+  onThoughts?: PlanningThoughtsReporter;
 };
 
 export type PlanningAgentTurnInput = InitialPlanningAgentTurnInput | FollowupPlanningAgentTurnInput;
@@ -40,6 +44,7 @@ export type PlanningAgentTurnResult = {
   repoCheckoutDirectory?: string;
   websiteAnalysisPath?: string;
   repoAnalysisPath?: string;
+  thoughts?: string[];
 };
 
 export type PlanningAgentRunner = (input: PlanningAgentTurnInput) => Promise<PlanningAgentTurnResult>;

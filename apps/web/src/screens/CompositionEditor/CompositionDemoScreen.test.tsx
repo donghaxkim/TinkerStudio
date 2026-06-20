@@ -58,6 +58,7 @@ function planningSession(overrides: Partial<CompositionPlanningSession> = {}): C
     status: "ready",
     messages: [{ role: "assistant", content: "I drafted a grounded outline." }],
     progress: [],
+    thoughts: ["Mapped the repo structure.", "Drafted the product demo arc."],
     outline: {
       title: "Driftboard launch demo",
       durationCapSeconds: 60,
@@ -91,6 +92,11 @@ function deferred<T>() {
     resolve = promiseResolve;
   });
   return { promise, resolve };
+}
+
+function acceptAndGenerate() {
+  fireEvent.click(screen.getByRole("button", { name: "Accept & generate" }));
+  fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
 }
 
 function createLocalCompositionGenerationClient(): CompositionGenerationClient {
@@ -140,16 +146,19 @@ describe("CompositionDemoScreen", () => {
     render(<CompositionDemoScreen client={createLocalCompositionGenerationClient()} planningClient={planningClient} />);
 
     expect(screen.getByRole("heading", { name: /Tinker Studio/i })).toBeInTheDocument();
+    expect(screen.getByText("Get your demo video instantly.")).toBeInTheDocument();
     expect(screen.getByLabelText("Product URL")).toBeInTheDocument();
     expect(screen.getByLabelText("GitHub repo URL")).toBeInTheDocument();
     expect(screen.getByLabelText("Planning agent")).toHaveValue("opencode");
     expect(screen.queryByLabelText("Renderer")).not.toBeInTheDocument();
     expect(screen.queryByLabelText(removedAgentLabel)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit an existing demo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit system prompt" })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
     await waitFor(() =>
       expect(planningClient.createSession).toHaveBeenCalledWith(
@@ -161,89 +170,27 @@ describe("CompositionDemoScreen", () => {
       ),
     );
     expect(await screen.findByText("I drafted a grounded outline.")).toBeInTheDocument();
+    expect(screen.getByText(/Tinkered for/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Driftboard launch demo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Accept & generate" })).toBeInTheDocument();
   });
 
-  it("keeps planning disabled until both Product URL and GitHub repo URL are valid", () => {
+  it("keeps planning disabled until both Product URL and a github.com repo URL are valid", () => {
     const planningClient = createPlanningClient();
     render(<CompositionDemoScreen client={createLocalCompositionGenerationClient()} planningClient={planningClient} />);
 
-    const planButton = screen.getByRole("button", { name: "Plan" });
+    const planButton = screen.getByRole("button", { name: "Plan demo" });
+    expect(planButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "acme/driftboard" } });
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    expect(planButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/-bad-owner/driftboard" } });
     expect(planButton).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    expect(planButton).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     expect(planButton).not.toBeDisabled();
-  });
-
-  it("Generate now sends repo + URL only, with no prompt or renderer fields", async () => {
-    let capturedRequest: CreateCompositionJobRequest | undefined;
-    const wait = deferred<ApiGenerationJob>();
-    const client: CompositionGenerationClient = {
-      createJob: vi.fn(async (request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => {
-        capturedRequest = request;
-        return queuedJob(request);
-      }),
-      getJob: async () => { throw new Error("not used"); },
-      waitForJob: async () => wait.promise,
-    };
-    render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
-
-    expect(screen.queryByLabelText("Demo prompt")).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate now" }));
-
-    await waitFor(() => expect(client.createJob).toHaveBeenCalled());
-    expect(capturedRequest).toMatchObject({
-      mode: "ai-url-planning",
-      repoUrl: "https://github.com/acme/driftboard",
-      productUrl: "https://driftboard.example.com",
-      durationCapSeconds: 45,
-      aspectRatio: "16:9",
-    });
-    expect("prompt" in (capturedRequest as object)).toBe(false);
-    expect("renderer" in (capturedRequest as object)).toBe(false);
-    expect(removedAgentField in (capturedRequest as object)).toBe(false);
-  });
-
-  it("uses video engine copy when Generate now is missing the product URL", () => {
-    render(<CompositionDemoScreen client={createLocalCompositionGenerationClient()} planningClient={createPlanningClient()} />);
-
-    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate now" }));
-
-    expect(screen.getByRole("alert")).toHaveTextContent("Add your product / website URL - the video engine records it live.");
-  });
-
-  it("system prompt is hidden by default; when edited it is sent with Generate now", async () => {
-    let capturedRequest: CreateCompositionJobRequest | undefined;
-    const wait = deferred<ApiGenerationJob>();
-    const client: CompositionGenerationClient = {
-      createJob: vi.fn(async (request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => {
-        capturedRequest = request;
-        return queuedJob(request);
-      }),
-      getJob: async () => { throw new Error("not used"); },
-      waitForJob: async () => wait.promise,
-    };
-    render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
-
-    expect(screen.queryByLabelText("System prompt")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Edit system prompt" }));
-    const textarea = screen.getByLabelText("System prompt") as HTMLTextAreaElement;
-    expect(textarea.value).toContain("evidence-grounded product demo");
-
-    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
-    fireEvent.change(textarea, { target: { value: "Focus on the onboarding flow only." } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate now" }));
-
-    await waitFor(() => expect(client.createJob).toHaveBeenCalled());
-    expect((capturedRequest as CreateCompositionJobRequest).systemPrompt).toBe("Focus on the onboarding flow only.");
   });
 
   it("can start planning with Claude Code when selected", async () => {
@@ -253,7 +200,7 @@ describe("CompositionDemoScreen", () => {
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
     fireEvent.change(screen.getByLabelText("Planning agent"), { target: { value: "claude" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
     await waitFor(() =>
       expect(planningClient.createSession).toHaveBeenCalledWith(
@@ -272,7 +219,7 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByText("I drafted a grounded outline.");
 
     fireEvent.change(screen.getByLabelText("Planning message"), { target: { value: "Make it more technical." } });
@@ -280,6 +227,30 @@ describe("CompositionDemoScreen", () => {
 
     await waitFor(() => expect(planningClient.sendMessage).toHaveBeenCalledWith("plan-test", "Make it more technical."));
     expect(await screen.findByText("Updated the outline.")).toBeInTheDocument();
+  });
+
+  it("shows stacked planning actions and sends quick follow-up prompts", async () => {
+    const planningClient = createPlanningClient();
+    render(<CompositionDemoScreen client={createLocalCompositionGenerationClient()} planningClient={planningClient} />);
+
+    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
+    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
+    await screen.findByRole("heading", { name: "Driftboard launch demo" });
+
+    expect(screen.getByRole("button", { name: "Accept & generate" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tell me more" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try a different angle" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Let's chat - tell me what to change...")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tell me more" }));
+
+    await waitFor(() =>
+      expect(planningClient.sendMessage).toHaveBeenCalledWith(
+        "plan-test",
+        expect.stringContaining("Tell me more about this plan"),
+      ),
+    );
   });
 
   it("generates a Testreel video from the approved outline without renderer fields", async () => {
@@ -298,12 +269,12 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByRole("heading", { name: "Driftboard launch demo" });
     expect(screen.queryByLabelText("Renderer")).not.toBeInTheDocument();
     expect(screen.queryByLabelText(removedAgentLabel)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit an existing demo" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+    acceptAndGenerate();
 
     await waitFor(() => expect(client.createJob).toHaveBeenCalled());
     expect(capturedRequest).toMatchObject({
@@ -315,6 +286,7 @@ describe("CompositionDemoScreen", () => {
     expect("renderer" in (capturedRequest as object)).toBe(false);
     expect(removedAgentField in (capturedRequest as object)).toBe(false);
     expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("Driftboard launch demo") }));
+    expect(capturedRequest?.approvedOutline).toEqual(planningSession().outline);
     expect(await screen.findByTestId("composition-standalone-video")).toHaveAttribute("src", "/api/jobs/testreel-job-1/artifacts/testreel/final.mp4");
     const repoLink = screen.getByRole("link", { name: "GitHub repository acme/driftboard" });
     expect(repoLink).toHaveTextContent("github.com/acme/driftboard");
@@ -326,10 +298,10 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
     expect(await screen.findByText("The agent has not produced a valid outline yet.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Generate video" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Accept & generate" })).toBeDisabled();
   });
 
   it("shows an error when generation fails", async () => {
@@ -341,9 +313,9 @@ describe("CompositionDemoScreen", () => {
     render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByText("I drafted a grounded outline.");
-    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+    acceptAndGenerate();
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Server error"));
   });
 
@@ -359,11 +331,11 @@ describe("CompositionDemoScreen", () => {
     render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByText("I drafted a grounded outline.");
-    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+    acceptAndGenerate();
     await screen.findByTestId("composition-generating");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Generate video" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept & generate" })).toBeInTheDocument());
   });
 });

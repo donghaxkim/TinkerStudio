@@ -8,25 +8,35 @@ const viewportSchema = z.object({ width: finiteNumber.positive(), height: finite
 const outputFormatSchema = z.enum(["mp4"]);
 
 const clickStepSchema = z
-  .object({ action: z.literal("click"), selector: nonEmptyString, text: optionalNonEmptyString, label: optionalNonEmptyString })
+  .object({ action: z.literal("click"), selector: nonEmptyString, zoom: finiteNumber.gt(1).optional() })
   .strict()
   .refine((step) => step.selector !== undefined, "click step requires selector");
 const typeStepSchema = z.object({ action: z.literal("type"), selector: nonEmptyString, text: nonEmptyString }).strict();
 const fillStepSchema = z.object({ action: z.literal("fill"), selector: nonEmptyString, text: nonEmptyString }).strict();
 const keyboardStepSchema = z.object({ action: z.literal("keyboard"), key: nonEmptyString }).strict();
 const scrollStepSchema = z
-  .object({ action: z.literal("scroll"), x: finiteNumber.optional(), y: finiteNumber.optional(), selector: optionalNonEmptyString })
+  .object({ action: z.literal("scroll"), x: finiteNumber.optional(), y: finiteNumber.optional() })
   .strict()
-  .refine((step) => step.x !== undefined || step.y !== undefined || step.selector !== undefined, "scroll step requires x, y, or selector");
+  .refine((step) => step.x !== undefined || step.y !== undefined, "scroll step requires x or y");
 const hoverStepSchema = z
-  .object({ action: z.literal("hover"), selector: nonEmptyString, text: optionalNonEmptyString })
+  .object({ action: z.literal("hover"), selector: nonEmptyString })
   .strict()
   .refine((step) => step.selector !== undefined, "hover step requires selector");
 const waitStepSchema = z.object({ action: z.literal("wait"), ms: finiteNumber.nonnegative().max(30_000) }).strict();
 const zoomStepSchema = z
-  .object({ action: z.literal("zoom"), selector: optionalNonEmptyString, scale: finiteNumber.positive(), duration: finiteNumber.nonnegative().optional() })
+  .object({ action: z.literal("zoom"), selector: optionalNonEmptyString, scale: finiteNumber.positive().optional(), duration: finiteNumber.nonnegative().optional() })
   .strict();
 const screenshotStepSchema = z.object({ action: z.literal("screenshot"), name: optionalNonEmptyString }).strict();
+
+const CURSOR_PRODUCING_ACTIONS = new Set(["click", "hover", "type", "fill"]);
+
+function isCursorEnabled(cursor: TestreelRecordingDefinition["cursor"]) {
+  return cursor === undefined || cursor === true || (typeof cursor === "object" && cursor.enabled !== false);
+}
+
+function isZoomProducingStep(step: TestreelStep) {
+  return (step.action === "zoom" && (step.scale ?? 2) !== 1) || (step.action === "click" && step.zoom !== undefined);
+}
 
 export const TestreelStepSchema = z.discriminatedUnion("action", [
   clickStepSchema,
@@ -64,7 +74,16 @@ export const TestreelGenerationPlanSchema = z
       .max(20),
     notes: z.array(nonEmptyString).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((plan, context) => {
+    if (isCursorEnabled(plan.definition.cursor) && !plan.definition.steps.some((step) => CURSOR_PRODUCING_ACTIONS.has(step.action))) {
+      context.addIssue({ code: "custom", path: ["definition", "steps"], message: "cursor-enabled Testreel plans require at least one cursor-producing action" });
+    }
+
+    if (!plan.definition.steps.some(isZoomProducingStep)) {
+      context.addIssue({ code: "custom", path: ["definition", "steps"], message: "Testreel plans require at least one zoom-producing step" });
+    }
+  });
 
 export type TestreelStep = z.infer<typeof TestreelStepSchema>;
 export type TestreelRecordingDefinition = z.infer<typeof TestreelRecordingDefinitionSchema>;
@@ -144,9 +163,12 @@ export function createFixtureTestreelGenerationPlan(input: { productUrl: string;
       background: { enabled: true, gradient: { from: "#0f172a", to: "#38bdf8" }, padding: 60, borderRadius: 18 },
       steps: [
         { action: "wait", ms: 500 },
+        { action: "hover", selector: "body" },
         { action: "screenshot", name: "hero" },
         { action: "scroll", y: 720 },
+        { action: "zoom", selector: "body", scale: 1.25, duration: 600 },
         { action: "wait", ms: 300 },
+        { action: "zoom", scale: 1, duration: 400 },
         { action: "screenshot", name: "final" },
       ],
     },

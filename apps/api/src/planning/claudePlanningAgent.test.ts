@@ -371,6 +371,15 @@ describe("createClaudePlanningAgentRunner", () => {
       repoCheckoutDirectory: join(workspaceRoot, "repository"),
       websiteAnalysisPath: join(workspaceRoot, "website-analysis.json"),
       repoAnalysisPath: join(workspaceRoot, "repo-analysis.json"),
+      thoughts: [
+        "Preparing a safe planning workspace.",
+        "Reading repository evidence from https://github.com/example/product.",
+        "Reading product website evidence from https://product.example.com.",
+        "Repository analysis finished; key product signals are ready.",
+        "Website analysis finished; live product context is ready.",
+        "Drafting a structured demo outline from repo and website evidence.",
+        "Validated the planning response and outline handoff.",
+      ],
     });
     expect(analyzeWebsite).toHaveBeenCalledWith("https://product.example.com", {
       outputDirectory: workspaceRoot,
@@ -784,6 +793,12 @@ describe("createClaudePlanningAgentRunner", () => {
       repoCheckoutDirectory: join(workspaceRoot, "repository"),
       websiteAnalysisPath: join(workspaceRoot, "website-analysis.json"),
       repoAnalysisPath: join(workspaceRoot, "repo-analysis.json"),
+      thoughts: [
+        "Preparing a safe planning workspace.",
+        "Reviewing your requested change against the current outline.",
+        "Asking the planning agent to revise outline.json only.",
+        "Validated the revised planning response.",
+      ],
     });
     expect(analyzeWebsite).not.toHaveBeenCalled();
     expect(analyzeRepo).not.toHaveBeenCalled();

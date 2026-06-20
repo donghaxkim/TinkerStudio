@@ -80,6 +80,7 @@ export function registerPlanningSessionsRoutes(server: FastifyInstance, options:
         workspaceRoot,
         outlinePath,
         onProgress: (stage, status) => options.store.setProgress(id, stage, status, options.now()),
+        onThoughts: (thoughts) => options.store.setThoughts(id, thoughts, options.now()),
       });
       const outlineResult = await readValidatedOutline(outlinePath);
       options.store.markReady(id, { ...result, agentResumeHandle: validatedResumeHandle(result.agentResumeHandle), ...outlineResult }, options.now());
@@ -128,6 +129,7 @@ export function registerPlanningSessionsRoutes(server: FastifyInstance, options:
         message: parsed.data.message,
         agentResumeHandle,
         onProgress: (stage, status) => options.store.setProgress(record.id, stage, status, options.now()),
+        onThoughts: (thoughts) => options.store.setThoughts(record.id, thoughts, options.now()),
       });
       const outlineResult = await readValidatedOutline(record.outlinePath);
       options.store.markReady(record.id, { ...result, agentResumeHandle: validatedResumeHandle(result.agentResumeHandle), ...outlineResult }, options.now());

@@ -909,6 +909,19 @@ export function createClaudePlanningAgentRunner(options: ClaudePlanningAgentRunn
       throw new Error(`${input.kind === "initial" ? "Initial" : "Follow-up"} planning requires a product URL.`);
     }
 
+    const thoughts: string[] = [];
+    function reportThought(thought: string) {
+      const trimmed = thought.trim();
+      if (trimmed === "") return;
+      thoughts.push(trimmed);
+      input.onThoughts?.([...thoughts]);
+    }
+
+    function withThoughts<T extends object>(result: T) {
+      return thoughts.length === 0 ? result : { ...result, thoughts };
+    }
+
+    reportThought("Preparing a safe planning workspace.");
     input.onProgress?.("preparing", "active");
     await mkdir(input.workspaceRoot, { recursive: true });
     const paths = pathsForWorkspace(input.workspaceRoot);
@@ -953,25 +966,32 @@ export function createClaudePlanningAgentRunner(options: ClaudePlanningAgentRunn
     const parsePlanningOutput = input.agent === "opencode" ? parseOpenCodePlanningOutput : parseClaudePlanningOutput;
 
     if (input.kind === "followup") {
+      reportThought("Reviewing your requested change against the current outline.");
       input.onProgress?.("drafting", "active");
       const prompt = buildFollowupPrompt(input);
+      reportThought("Asking the planning agent to revise outline.json only.");
       const result = await runAgentWithBoundary(prompt, input.agentResumeHandle);
       const parsed = parsePlanningOutput(result.stdout);
       input.onProgress?.("drafting", "done");
-      return { ...parsed, ...paths };
+      reportThought("Validated the revised planning response.");
+      return withThoughts({ ...parsed, ...paths });
     }
 
     // Clone + read the repo, and analyze the live site for every initial planning run.
     // Each analysis reports `done` as it resolves so the frontend checklist reflects real progress.
     input.onProgress?.("analyzing-repo", "active");
     input.onProgress?.("analyzing-website", "active");
+    reportThought(`Reading repository evidence from ${input.repoUrl}.`);
+    reportThought(`Reading product website evidence from ${input.productUrl}.`);
 
     const repoAnalysisPromise = runRepoAnalysis(input.repoUrl, { checkoutDirectory: paths.repoCheckoutDirectory }).then((analysis) => {
       input.onProgress?.("analyzing-repo", "done");
+      reportThought("Repository analysis finished; key product signals are ready.");
       return analysis;
     });
     const websiteAnalysisPromise = runWebsiteAnalysis(input.productUrl, { outputDirectory: input.workspaceRoot, screenshotFileName: "website.png" }).then((analysis) => {
       input.onProgress?.("analyzing-website", "done");
+      reportThought("Website analysis finished; live product context is ready.");
       return analysis;
     });
 
@@ -984,9 +1004,11 @@ export function createClaudePlanningAgentRunner(options: ClaudePlanningAgentRunn
 
     input.onProgress?.("drafting", "active");
     const prompt = buildInitialPrompt(input, websiteAnalysis, repoAnalysis);
+    reportThought("Drafting a structured demo outline from repo and website evidence.");
     const result = await runAgentWithBoundary(prompt);
     const parsed = parsePlanningOutput(result.stdout);
     input.onProgress?.("drafting", "done");
-    return { ...parsed, ...paths };
+    reportThought("Validated the planning response and outline handoff.");
+    return withThoughts({ ...parsed, ...paths });
   };
 }

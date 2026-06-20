@@ -25,7 +25,7 @@ import { createClaudeStrategyAgent, createOpencodeStrategyAgent, STRATEGY_FALLBA
 import { buildCoreCoverage } from "./coreCoverage.js";
 import type { RunExecution } from "./runSummary.js";
 import { buildRunInput, buildRunSummary } from "./runSummary.js";
-import { DEFAULT_SYSTEM_PROMPT } from "@tinker/generation-contract";
+import { DEFAULT_SYSTEM_PROMPT, type DemoOutline } from "@tinker/generation-contract";
 import { runTestreelRecording, type RunTestreelRecordingResult } from "./testreelRunner.js";
 import type { AspectRatio } from "./types.js";
 
@@ -71,6 +71,8 @@ export type RunAiUrlDemoInput = {
   createdAt: string;
   productUrl: string;
   prompt?: string;
+  /** Optional approved planning outline used as strong structured guidance. */
+  approvedOutline?: DemoOutline;
   /** Optional user-edited directive for the LLM Understanding + Strategy agents. */
   systemPrompt?: string;
   durationCapSeconds: number;
@@ -233,6 +235,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     productUrl: input.productUrl,
     ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
     prompt: prompt,
+    ...(input.approvedOutline === undefined ? {} : { approvedOutline: input.approvedOutline }),
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,
     renderer: "testreel",
@@ -329,6 +332,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
   const { strategy, storyboard: strategyStoryboard } = await strategize({
     understanding,
     prompt: prompt,
+    ...(input.approvedOutline === undefined ? {} : { approvedOutline: input.approvedOutline }),
     systemPrompt,
     durationCapSeconds: input.durationCapSeconds,
     aspectRatio: input.aspectRatio,
@@ -350,6 +354,7 @@ export async function runAiUrlDemo(input: RunAiUrlDemoInput): Promise<RunAiUrlDe
     const plannerResult: AiUrlPlannerResult = await planner({
       productUrl: analysis.url,
       prompt,
+      ...(input.approvedOutline === undefined ? {} : { approvedOutline: input.approvedOutline }),
       durationCapSeconds: input.durationCapSeconds,
       aspectRatio: input.aspectRatio,
       analysis,

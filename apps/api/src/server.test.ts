@@ -174,6 +174,17 @@ describe("job routes", () => {
     durationCapSeconds: 12,
     aspectRatio: "16:9",
   } as const;
+  const approvedOutline = {
+    title: "Example product launch demo",
+    durationCapSeconds: 12,
+    aspectRatio: "16:9",
+    summary: "Show the approved plan through live product evidence.",
+    scenes: [
+      { id: "scene-1", goal: "Open with the problem", visual: "Show the homepage hero.", evidence: ["website"] },
+      { id: "scene-2", goal: "Show the core workflow", visual: "Use repository-backed UI details.", evidence: ["repo", "website"] },
+    ],
+    generationNotes: ["Prefer the approved order."],
+  } as const;
   const removedCompositionRenderer = "hyper" + "frames";
   const removedCombinedRenderer = "bo" + "th";
   const removedAgentField = "hyper" + "framesAgent";
@@ -231,7 +242,7 @@ describe("job routes", () => {
       config: testConfig(repoRoot),
       idGenerator: () => "job-test",
       runner: async (rawRequest, options): Promise<ManualFixtureGenerationResult> => {
-        expect(rawRequest).toEqual({ ...validBody, id: "job-test" });
+        expect(rawRequest).toEqual({ ...validBody, approvedOutline, id: "job-test" });
         expect(rawRequest).not.toMatchObject({ id: "client-id" });
         options?.onProgress?.(runningEvent);
         const testreel = await writeTestreelArtifacts(outputRoot);
@@ -241,9 +252,9 @@ describe("job routes", () => {
       now: () => "2026-06-11T00:00:00.000Z",
     });
     try {
-      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: { ...validBody, id: "client-id" } });
+      const postResponse = await server.inject({ method: "POST", url: "/api/jobs", payload: { ...validBody, approvedOutline, id: "client-id" } });
       expect(postResponse.statusCode).toBe(202);
-      expect(JSON.parse(postResponse.body)).toMatchObject({ id: "job-test", status: "queued", request: { id: "job-test" } });
+      expect(JSON.parse(postResponse.body)).toMatchObject({ id: "job-test", status: "queued", request: { id: "job-test", approvedOutline } });
       await completed.promise;
       await waitForJobStatus(server, "job-test", "completed");
 
@@ -264,6 +275,36 @@ describe("job routes", () => {
           ],
         },
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects malformed approved outlines before enqueueing", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-api-routes-invalid-approved-outline-${randomUUID()}-`));
+    let runnerCalled = false;
+    const server = await buildServer({
+      config: testConfig(repoRoot),
+      runner: async (): Promise<ManualFixtureGenerationResult> => {
+        runnerCalled = true;
+        throw new Error("runner should not be called for invalid approvedOutline");
+      },
+      now: () => "2026-06-11T00:00:00.000Z",
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/jobs",
+        payload: {
+          ...validBody,
+          approvedOutline: { ...approvedOutline, scenes: [] },
+        },
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body).message).toMatch(/approvedOutline\.scenes/i);
+      expect(runnerCalled).toBe(false);
     } finally {
       await server.close();
     }

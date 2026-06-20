@@ -14,6 +14,7 @@
 // artifact contract.
 
 import { z } from "zod";
+import type { DemoOutline, DemoOutlineScene } from "@tinker/generation-contract";
 import type { ProductUnderstanding } from "./productUnderstanding.js";
 import type { AspectRatio } from "./types.js";
 
@@ -78,6 +79,7 @@ export type Storyboard = z.infer<typeof StoryboardSchema>;
 export type DeriveDemoStrategyInput = {
   understanding: ProductUnderstanding;
   prompt?: string;
+  approvedOutline?: DemoOutline;
   /** Optional user-edited directive for the LLM strategy agent (ignored by the deterministic path). */
   systemPrompt?: string;
   durationCapSeconds: number;
@@ -114,6 +116,35 @@ function overlapCount(a: Set<string>, b: Set<string>): number {
     }
   }
   return count;
+}
+
+const SCENE_SUPPORT_STOPWORDS = new Set([
+  "and",
+  "with",
+  "the",
+  "for",
+  "from",
+  "that",
+  "this",
+  "user",
+  "users",
+  "show",
+  "open",
+  "close",
+  "closing",
+  "cta",
+  "demo",
+  "workflow",
+  "screen",
+  "safe",
+  "confirm",
+  "visual",
+  "output",
+  "result",
+]);
+
+function contentTokens(text: string): Set<string> {
+  return new Set([...tokenize(text)].filter((token) => !SCENE_SUPPORT_STOPWORDS.has(token)));
 }
 
 /**
@@ -179,7 +210,143 @@ function withTiming(beats: TimedBeat[], durationTargetSeconds: number): Storyboa
   });
 }
 
+function outlineSceneType(scene: DemoOutlineScene, index: number, total: number): NonNullable<StoryboardBeat["type"]> {
+  if (index === 0) return "hook";
+  if (index === total - 1) return "cta";
+  const text = `${scene.goal} ${scene.visual}`.toLowerCase();
+  if (scene.evidence.includes("website") || /\b(click|type|enter|paste|scroll|select|open|show|workflow|walkthrough|homepage|screen|ui|button|form|dashboard|route)\b/.test(text)) {
+    return "screen_capture";
+  }
+  if (/\b(proof|result|outcome|evidence|metric|export|finished|success)\b/.test(text)) {
+    return "proof";
+  }
+  return "feature";
+}
+
+function approvedTiming(scene: DemoOutlineScene, fallback: StoryboardBeat, durationCapSeconds: number): Pick<StoryboardBeat, "startHint" | "endHint"> {
+  if (scene.startHint !== undefined && scene.endHint !== undefined && scene.endHint > scene.startHint) {
+    const startHint = Math.min(scene.startHint, durationCapSeconds);
+    const endHint = Math.min(scene.endHint, durationCapSeconds);
+    if (endHint > startHint) {
+      return { startHint, endHint };
+    }
+  }
+  return {
+    ...(fallback.startHint === undefined ? {} : { startHint: fallback.startHint }),
+    ...(fallback.endHint === undefined ? {} : { endHint: fallback.endHint }),
+  };
+}
+
+function supportCorpusTokens(understanding: ProductUnderstanding): Set<string> {
+  return contentTokens(
+    [
+      understanding.product.name,
+      understanding.product.category,
+      understanding.product.oneLine,
+      understanding.product.primaryProblem,
+      understanding.product.primaryValueProposition,
+      ...understanding.product.targetUsers,
+      understanding.valueNarrative.problem,
+      understanding.valueNarrative.audience,
+      understanding.valueNarrative.howItSolves,
+      understanding.valueNarrative.whyItMatters,
+      understanding.valueNarrative.viewerTakeaway,
+      ...understanding.capabilities.flatMap((capability) => [capability.name, capability.description]),
+      ...understanding.demoableFlows.flatMap((flow) => [flow.name, flow.whyItMatters, ...flow.requiredInputs, flow.expectedOutcome, flow.proves, flow.viewerTakeaway]),
+      ...understanding.evidence.flatMap((evidence) => [evidence.claim, evidence.quoteOrReference]),
+    ].join(" "),
+  );
+}
+
+function unsupportedOutlineWarnings(understanding: ProductUnderstanding, outline: DemoOutline): string[] {
+  const availableSources = new Set(understanding.evidence.map((evidence) => evidence.sourceType));
+  const supportedTokens = supportCorpusTokens(understanding);
+  return outline.scenes.flatMap((scene) => {
+    const evidenceWarnings = scene.evidence
+      .filter((source) => !availableSources.has(source))
+      .map((source) => `Approved scene ${scene.id} requests ${source} evidence, but the current understanding has no ${source} evidence.`);
+    const sceneTokens = contentTokens(`${scene.goal} ${scene.visual}`);
+    if (sceneTokens.size > 0 && overlapCount(sceneTokens, supportedTokens) === 0) {
+      return [
+        ...evidenceWarnings,
+        `Approved scene ${scene.id} is unsupported: cannot match its goal or visual to available demoable flows, capabilities, evidence, or product text.`,
+      ];
+    }
+    return evidenceWarnings;
+  });
+}
+
+function deriveApprovedOutlineStrategy(input: DeriveDemoStrategyInput & { approvedOutline: DemoOutline }): DemoStrategyResult {
+  const { understanding, approvedOutline, durationCapSeconds, aspectRatio } = input;
+  const { product } = understanding;
+  const flow = understanding.demoableFlows[0];
+  if (flow === undefined) {
+    throw new Error("deriveDemoStrategy requires at least one demoable flow");
+  }
+  const proofPointId = findBackingCapability(understanding, flow);
+  const messageHierarchy = approvedOutline.scenes
+    .map((scene) => scene.goal.trim())
+    .filter((message, index, all) => message.length > 0 && all.indexOf(message) === index);
+  const messageId = (index: number): string => `message-${Math.min(index, messageHierarchy.length - 1) + 1}`;
+
+  const strategy: DemoStrategy = DemoStrategySchema.parse({
+    version: 1,
+    selectedAngle: {
+      title: approvedOutline.title,
+      whyThisAngle: `User approved this outline: ${approvedOutline.summary}`,
+      targetAudience: firstNonEmpty(understanding.valueNarrative.audience, product.targetUsers[0], `prospective ${product.name} users`),
+      primaryProof: firstNonEmpty(flow.proves, flow.expectedOutcome, understanding.valueNarrative.whyItMatters),
+    },
+    selectedFlow: {
+      sourceFlowId: flow.id,
+      name: flow.name,
+      reason: `Selected to support the approved outline. ${approvedOutline.generationNotes.join(" ")}`.trim(),
+    },
+    messageHierarchy: messageHierarchy.length > 0 ? messageHierarchy : [approvedOutline.summary],
+    successCriteria: [
+      `Storyboard preserves ${approvedOutline.scenes.length} approved scenes in order.`,
+      `Total runtime stays at or under ${durationCapSeconds}s.`,
+    ],
+    risks: [...understanding.unknowns.slice(0, 2)],
+    warnings: [...understanding.warnings, ...unsupportedOutlineWarnings(understanding, approvedOutline)],
+  });
+
+  const untimedBeats: TimedBeat[] = approvedOutline.scenes.map((scene, index) => {
+    const type = outlineSceneType(scene, index, approvedOutline.scenes.length);
+    return {
+      id: scene.id,
+      type,
+      goal: scene.goal,
+      visual: scene.visual,
+      narrative: scene.narration ?? scene.goal,
+      strategyMessageId: messageId(index),
+      proofPointId,
+      expectedUserAction: type === "screen_capture" ? scene.goal : null,
+      importance: index === approvedOutline.scenes.length - 1 ? "medium" : "high",
+    };
+  });
+  const fallbackTimed = withTiming(untimedBeats, durationCapSeconds);
+  const beats = fallbackTimed.map((beat, index) => ({
+    ...beat,
+    ...approvedTiming(approvedOutline.scenes[index]!, beat, durationCapSeconds),
+  }));
+
+  const storyboard: Storyboard = StoryboardSchema.parse({
+    version: 1,
+    title: approvedOutline.title,
+    durationTargetSeconds: durationCapSeconds,
+    aspectRatio,
+    beats,
+  });
+
+  return { strategy, storyboard };
+}
+
 export function deriveDemoStrategy(input: DeriveDemoStrategyInput): DemoStrategyResult {
+  if (input.approvedOutline !== undefined) {
+    return deriveApprovedOutlineStrategy({ ...input, approvedOutline: input.approvedOutline });
+  }
+
   const { understanding, prompt = "", durationCapSeconds, aspectRatio } = input;
   const { product } = understanding;
   const flow = selectFlow(understanding.demoableFlows, prompt);

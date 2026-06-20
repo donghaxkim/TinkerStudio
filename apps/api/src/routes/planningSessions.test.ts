@@ -72,6 +72,56 @@ describe("planning session routes", () => {
     }
   });
 
+  it("streams and returns planning thoughts snapshots", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-thoughts-${randomUUID()}-`));
+    let releaseRunner: (() => void) | undefined;
+    let resolveRunnerStarted: (() => void) | undefined;
+    const runnerStarted = new Promise<void>((resolve) => {
+      resolveRunnerStarted = resolve;
+    });
+    const runner: PlanningAgentRunner = async (input) => {
+      await writeFile(input.outlinePath, `${JSON.stringify(outline, null, 2)}\n`);
+      input.onThoughts?.(["Mapped the repository structure.", "Drafting a repo-backed demo arc."]);
+      resolveRunnerStarted?.();
+      await new Promise<void>((resolve) => {
+        releaseRunner = resolve;
+      });
+      return {
+        assistantMessage: "I drafted a one-scene outline.",
+        agentResumeHandle: "session-with-thoughts",
+        thoughts: ["Mapped the repository structure.", "Drafting a repo-backed demo arc.", "Outline JSON validated."],
+      };
+    };
+    const server = await buildServer({ config: testConfig(repoRoot), idGenerator: () => "plan-test", planningRunner: runner });
+
+    try {
+      const creating = server.inject({
+        method: "POST",
+        url: "/api/planning-sessions",
+        payload: { productUrl: "https://product.example.com", repoUrl: "https://github.com/example/product", agent: "opencode" },
+      });
+      await runnerStarted;
+
+      const running = await server.inject({ method: "GET", url: "/api/planning-sessions/plan-test" });
+      expect(running.statusCode).toBe(200);
+      expect(JSON.parse(running.body)).toMatchObject({
+        status: "running",
+        thoughts: ["Mapped the repository structure.", "Drafting a repo-backed demo arc."],
+      });
+
+      releaseRunner?.();
+      const created = await creating;
+      expect(created.statusCode).toBe(201);
+      expect(JSON.parse(created.body)).toMatchObject({
+        status: "ready",
+        thoughts: ["Mapped the repository structure.", "Drafting a repo-backed demo arc.", "Outline JSON validated."],
+      });
+    } finally {
+      releaseRunner?.();
+      await server.close();
+    }
+  });
+
   it("continues a session with the stored resume handle", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), `tinker-planning-continue-${randomUUID()}-`));
     const calls: Array<{ kind: string; agent: string; productUrl: string; resumeHandle?: string }> = [];

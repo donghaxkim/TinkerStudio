@@ -18,6 +18,7 @@ export type PlanningSessionRecord = {
   status: PlanningSessionStatus;
   messages: PlanningMessage[];
   progress: PlanningProgressEntry[];
+  thoughts?: string[];
   outline?: DemoOutline;
   outlineValid: boolean;
   agentResumeHandle?: string;
@@ -49,6 +50,7 @@ export type MarkPlanningSessionReadyInput = {
   repoAnalysisPath?: string;
   outline?: DemoOutline;
   outlineValid: boolean;
+  thoughts?: string[];
 };
 
 export type PlanningSessionStore = ReturnType<typeof createPlanningSessionStore>;
@@ -62,6 +64,7 @@ function snapshot(record: PlanningSessionRecord): PlanningSessionResponse {
     status: record.status,
     messages: record.messages,
     progress: record.progress,
+    ...(record.thoughts === undefined ? {} : { thoughts: record.thoughts }),
     outlineValid: record.outlineValid,
     ...(record.outline === undefined ? {} : { outline: record.outline }),
     ...(record.lastError === undefined ? {} : { lastError: record.lastError }),
@@ -105,6 +108,7 @@ export function createPlanningSessionStore() {
       if (record === undefined) return;
       record.status = "running";
       record.progress = [];
+      delete record.thoughts;
       delete record.lastError;
       record.updatedAt = now;
     },
@@ -121,6 +125,18 @@ export function createPlanningSessionStore() {
       record.updatedAt = now;
     },
 
+    setThoughts(id: string, thoughts: string[], now: string) {
+      const record = records.get(id);
+      if (record === undefined) return;
+      const cleanThoughts = thoughts.map((thought) => thought.trim()).filter((thought) => thought !== "");
+      if (cleanThoughts.length === 0) {
+        delete record.thoughts;
+      } else {
+        record.thoughts = cleanThoughts;
+      }
+      record.updatedAt = now;
+    },
+
     markReady(id: string, input: MarkPlanningSessionReadyInput, now: string) {
       const record = records.get(id);
       if (record === undefined) return;
@@ -132,6 +148,12 @@ export function createPlanningSessionStore() {
         outlineValid: input.outlineValid,
         updatedAt: now,
       };
+      const cleanThoughts = input.thoughts?.map((thought) => thought.trim()).filter((thought) => thought !== "");
+      if (cleanThoughts === undefined || cleanThoughts.length === 0) {
+        delete nextRecord.thoughts;
+      } else {
+        nextRecord.thoughts = cleanThoughts;
+      }
       if (input.outline === undefined) {
         delete nextRecord.outline;
       } else {

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import type { DemoOutline } from "@tinker/generation-contract";
 import type { NarrativeExploration, ProductAnalysis, RepoAnalysis } from "@tinker/product-analysis";
 import { runAiUrlDemo, type AiUrlDemoPhase } from "./runAiUrlDemo.js";
 import { deriveProductUnderstanding } from "./productUnderstanding.js";
@@ -63,6 +64,18 @@ const narrativeExploration: NarrativeExploration = {
   explorationNotes: ["Only same-origin UI was observed."],
 };
 
+const approvedOutline: DemoOutline = {
+  title: "Fixture approved demo",
+  durationCapSeconds: 10,
+  aspectRatio: "16:9",
+  summary: "Use the approved outline as strong guidance.",
+  scenes: [
+    { id: "scene-1", goal: "Open with the product promise", visual: "Show the hero.", evidence: ["website"] },
+    { id: "scene-2", goal: "Show the workflow", visual: "Click through the main product flow.", evidence: ["repo", "website"] },
+  ],
+  generationNotes: ["Report gaps rather than failing."],
+};
+
 const recordingPlan: TestreelGenerationPlan = {
   engine: "testreel",
   definition: {
@@ -73,7 +86,13 @@ const recordingPlan: TestreelGenerationPlan = {
     cursor: { enabled: true },
     chrome: { enabled: true, url: true },
     background: { enabled: true, gradient: { from: "#0f172a", to: "#38bdf8" } },
-    steps: [{ action: "wait", ms: 500 }, { action: "screenshot", name: "final" }],
+    steps: [
+      { action: "wait", ms: 500 },
+      { action: "hover", selector: "body" },
+      { action: "zoom", selector: "body", scale: 1.25, duration: 600 },
+      { action: "zoom", scale: 1, duration: 400 },
+      { action: "screenshot", name: "final" },
+    ],
   },
   expectedCheckpoints: [{ id: "hero", label: "Hero", selector: "[data-testid='hero']" }],
 };
@@ -117,6 +136,7 @@ await runAiUrlDemo({
   productUrl,
   repoUrl,
   prompt,
+  approvedOutline,
   durationCapSeconds: 10,
   aspectRatio: "16:9",
   signal: agentSignalController.signal,
@@ -190,6 +210,7 @@ const analysisAbortRun = runAiUrlDemo({
   productUrl,
   repoUrl,
   prompt,
+  approvedOutline,
   durationCapSeconds: 10,
   aspectRatio: "16:9",
   signal: analysisAbortController.signal,
@@ -373,6 +394,7 @@ const result = await runAiUrlDemo({
   productUrl,
   repoUrl,
   prompt,
+  approvedOutline,
   durationCapSeconds: 10,
   aspectRatio: "16:9",
   onPhase: (phase) => phases.push(phase),
@@ -395,6 +417,7 @@ const result = await runAiUrlDemo({
   planner: async (input) => {
     assert.equal(input.productUrl, canonicalProductUrl);
     assert.equal(input.prompt, prompt);
+    assert.deepEqual(input.approvedOutline, approvedOutline);
     assert.equal(input.durationCapSeconds, 10);
     assert.equal(input.aspectRatio, "16:9");
     assert.deepEqual(input.analysis, productAnalysis);
@@ -482,6 +505,11 @@ const storyboardJson = JSON.parse(await readFile(join(outputRoot, "storyboard.js
 const runSummaryJson = JSON.parse(await readFile(join(outputRoot, "run-summary.json"), "utf8"));
 assert.equal(runSummaryJson.version, 1);
 assert.equal(runSummaryJson.storyboardCoverage.length, storyboardJson.beats.length);
+
+const runInputJson = JSON.parse(await readFile(join(outputRoot, "input.json"), "utf8"));
+assert.deepEqual(runInputJson.approvedOutline, approvedOutline);
+assert.equal(storyboardJson.title, approvedOutline.title);
+assert.deepEqual(storyboardJson.beats.map((beat: { id: string }) => beat.id), ["scene-1", "scene-2"]);
 
 assert.ok(runSummaryJson.execution, "run-summary has an execution block");
 // backend is OFF in tests (no TINKER_AGENT_BACKEND) → deterministic modes.

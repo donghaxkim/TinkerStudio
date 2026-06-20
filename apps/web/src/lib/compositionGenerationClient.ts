@@ -3,6 +3,7 @@ import type {
   ApiArtifactKind,
   ApiGenerationJob,
   ApiGenerationJobStatus,
+  DemoOutline,
 } from "@tinker/generation-contract";
 
 /** The POST /api/jobs body: an ai-url-planning request minus server-derived fields. */
@@ -13,6 +14,8 @@ export type CreateCompositionJobRequest = {
   durationCapSeconds: number;
   aspectRatio: "16:9" | "9:16" | "1:1";
   prompt?: string;
+  /** Optional approved planning outline used as strong structured guidance. */
+  approvedOutline?: DemoOutline;
   /** Optional user-edited directive for the generation agents (defaults server-side). */
   systemPrompt?: string;
 };

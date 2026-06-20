@@ -2,10 +2,14 @@ import { useEffect, useState } from "react";
 import type { ApiGenerationJob } from "@tinker/generation-contract";
 import { createHttpCompositionGenerationClient } from "./lib/httpCompositionGenerationClient.js";
 import { createHttpCompositionPlanningClient } from "./lib/httpCompositionPlanningClient.js";
+import { createMockCompositionPlanningClient } from "./lib/mockCompositionPlanningClient.js";
 import { CompositionDemoScreen } from "./screens/CompositionEditor/CompositionDemoScreen.js";
 
 const compositionClient = createHttpCompositionGenerationClient();
-const compositionPlanningClient = createHttpCompositionPlanningClient();
+// ?mock=planning previews the planning/chat UI without the API or planning agent running.
+const compositionPlanningClient = new URLSearchParams(window.location.search).get("mock") === "planning"
+  ? createMockCompositionPlanningClient()
+  : createHttpCompositionPlanningClient();
 
 function failedJobMessage(job: ApiGenerationJob): string {
   return job.error?.message ?? "Generation failed.";

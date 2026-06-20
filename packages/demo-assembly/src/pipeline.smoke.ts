@@ -134,8 +134,10 @@ try {
       steps: [
         { action: "wait", ms: 500 },
         { action: "scroll", y: 400 },
-        { action: "click", selector: "[data-testid='cta']", label: "Get started" },
+        { action: "click", selector: "[data-testid='cta']", zoom: 2 },
         { action: "type", selector: "[data-testid='email']", text: "demo@tinker.dev" },
+        { action: "zoom", selector: "[data-testid='email']", scale: 1.5, duration: 600 },
+        { action: "zoom", scale: 1, duration: 400 },
         { action: "wait", ms: 200 },
         { action: "screenshot", name: "final" },
       ],
