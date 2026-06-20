@@ -670,7 +670,14 @@ export function CompositionDemoScreen({
         <button type="button" className="tk-btn" aria-busy="true" disabled>
           Generating...
         </button>
-        <button type="button" className="tk-btn" onClick={() => job.cancel()}>
+        <button
+          type="button"
+          className="tk-btn"
+          onClick={() => {
+            job.cancel();
+            setFooterMode("actions");
+          }}
+        >
           Cancel
         </button>
       </div>
