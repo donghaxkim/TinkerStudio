@@ -4,6 +4,7 @@ import { createHttpCompositionGenerationClient } from "./lib/httpCompositionGene
 import { createHttpCompositionEditClient } from "./lib/httpCompositionEditClient.js";
 import { createHttpCompositionPlanningClient } from "./lib/httpCompositionPlanningClient.js";
 import { createHttpCompositionImportClient } from "./lib/httpCompositionImportClient.js";
+import { createMockCompositionPlanningClient } from "./lib/mockCompositionPlanningClient.js";
 import { CompositionDemoScreen } from "./screens/CompositionEditor/CompositionDemoScreen.js";
 
 // The composition flow runs against the real generation API (same-origin via the Vite
@@ -11,7 +12,11 @@ import { CompositionDemoScreen } from "./screens/CompositionEditor/CompositionDe
 // /api/jobs/import and opens it in the editor.
 const compositionClient = createHttpCompositionGenerationClient();
 const compositionEditClient = createHttpCompositionEditClient();
-const compositionPlanningClient = createHttpCompositionPlanningClient();
+// ?mock=planning swaps in a backend-free planning client so the planning/chat UI
+// can be previewed and styled without opencode/claude or the API running.
+const compositionPlanningClient = new URLSearchParams(window.location.search).get("mock") === "planning"
+  ? createMockCompositionPlanningClient()
+  : createHttpCompositionPlanningClient();
 const compositionImportClient = createHttpCompositionImportClient();
 
 function failedJobMessage(job: ApiGenerationJob): string {

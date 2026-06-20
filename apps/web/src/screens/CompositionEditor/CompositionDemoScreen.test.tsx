@@ -4,7 +4,6 @@ import type { TimelineRegistryWindow, CompositionTimelineHandle } from "@tinker/
 import type { ApiGenerationJob } from "@tinker/generation-contract";
 import type { CompositionGenerationClient, CreateCompositionJobRequest } from "../../lib/compositionGenerationClient.js";
 import type { CompositionPlanningClient, CompositionPlanningSession } from "../../lib/compositionPlanningClient.js";
-import type { CompositionImportClient } from "../../lib/compositionImportClient.js";
 import { CompositionDemoScreen } from "./CompositionDemoScreen.js";
 
 function completedCompositionJob(): ApiGenerationJob {
@@ -220,10 +219,10 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function fileWithPath(name: string, relativePath: string): File {
-  const file = new File(["x"], name, { type: "application/octet-stream" });
-  Object.defineProperty(file, "webkitRelativePath", { value: relativePath });
-  return file;
+// Post-plan flow: "Accept & generate" opens the confirm step, then "Generate video" runs it.
+function acceptAndGenerate() {
+  fireEvent.click(screen.getByRole("button", { name: "Accept & generate" }));
+  fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
 }
 
 describe("CompositionDemoScreen", () => {
@@ -332,7 +331,7 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
     await waitFor(() => expect(planningClient.createSession).toHaveBeenCalled());
     // The paste box has become the chat: the start-only escape hatch is gone, and the
@@ -357,7 +356,7 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
     await waitFor(() => expect(planningClient.createSession).toHaveBeenCalled());
     const topLevelBack = screen.getByRole("button", { name: "Back" });
@@ -420,7 +419,7 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
     await waitFor(() =>
       expect(planningClient.createSession).toHaveBeenCalledWith(
@@ -442,7 +441,7 @@ describe("CompositionDemoScreen", () => {
     const planningClient = createPlanningClient();
     render(<CompositionDemoScreen client={client} planningClient={planningClient} />);
 
-    const planButton = screen.getByRole("button", { name: "Plan" });
+    const planButton = screen.getByRole("button", { name: "Plan demo" });
     expect(planButton).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
@@ -455,99 +454,6 @@ describe("CompositionDemoScreen", () => {
     expect(planButton).not.toBeDisabled();
   });
 
-  it("Generate now sends repo + URL only — no prompt key", async () => {
-    let capturedRequest: CreateCompositionJobRequest | undefined;
-    const client: CompositionGenerationClient = {
-      createJob: vi.fn(async (request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => {
-        capturedRequest = request;
-        return {
-          id: "direct-job-1",
-          status: "queued",
-          request: {
-            id: "direct-job-1",
-            mode: "ai-url-planning",
-            repoUrl: "https://github.com/acme/driftboard",
-            productUrl: "https://driftboard.example.com",
-            durationCapSeconds: 45,
-            aspectRatio: "16:9",
-            renderer: "playwright",
-            hyperframesAgent: "opencode",
-          },
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-          progressEvents: [],
-        };
-      }),
-      getJob: async () => { throw new Error("not used"); },
-      waitForJob: (_id: string, opts?: { signal?: AbortSignal }) =>
-        new Promise((_resolve, reject) => {
-          opts?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-        }),
-    };
-    render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
-
-    // The "Demo prompt" textarea must not exist at all.
-    expect(screen.queryByLabelText("Demo prompt")).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate now" }));
-
-    await waitFor(() => expect(client.createJob).toHaveBeenCalled());
-    expect(capturedRequest).toBeDefined();
-    expect("prompt" in (capturedRequest as CreateCompositionJobRequest)).toBe(false);
-    expect("approvedOutline" in (capturedRequest as CreateCompositionJobRequest)).toBe(false);
-  });
-
-  it("system prompt is hidden by default; when edited it is sent with Generate now", async () => {
-    let capturedRequest: CreateCompositionJobRequest | undefined;
-    const client: CompositionGenerationClient = {
-      createJob: vi.fn(async (request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => {
-        capturedRequest = request;
-        return {
-          id: "direct-job-2",
-          status: "queued",
-          request: {
-            id: "direct-job-2",
-            mode: "ai-url-planning",
-            repoUrl: "https://github.com/acme/driftboard",
-            productUrl: "https://driftboard.example.com",
-            durationCapSeconds: 45,
-            aspectRatio: "16:9",
-            renderer: "playwright",
-            hyperframesAgent: "opencode",
-          },
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-          progressEvents: [],
-        };
-      }),
-      getJob: async () => { throw new Error("not used"); },
-      waitForJob: (_id: string, opts?: { signal?: AbortSignal }) =>
-        new Promise((_resolve, reject) => {
-          opts?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-        }),
-    };
-    render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
-
-    // Hidden by default — no system-prompt textarea until revealed.
-    expect(screen.queryByLabelText("System prompt")).not.toBeInTheDocument();
-
-    // Click reveals it, prefilled with the default directive.
-    fireEvent.click(screen.getByRole("button", { name: "Edit system prompt" }));
-    const textarea = screen.getByLabelText("System prompt") as HTMLTextAreaElement;
-    expect(textarea.value).toContain("evidence-grounded product demo");
-
-    // Edit it, then generate → the request carries the edited systemPrompt.
-    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
-    fireEvent.change(textarea, { target: { value: "Focus on the onboarding flow only." } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate now" }));
-
-    await waitFor(() => expect(client.createJob).toHaveBeenCalled());
-    expect((capturedRequest as CreateCompositionJobRequest).systemPrompt).toBe("Focus on the onboarding flow only.");
-  });
-
   it("can start planning with Claude Code when selected", async () => {
     const client = createLocalCompositionGenerationClient();
     const planningClient = createPlanningClient();
@@ -556,7 +462,7 @@ describe("CompositionDemoScreen", () => {
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
     fireEvent.change(screen.getByLabelText("Planning agent"), { target: { value: "claude" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
     await waitFor(() =>
       expect(planningClient.createSession).toHaveBeenCalledWith(
@@ -576,7 +482,7 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByText("I drafted a grounded outline.");
 
     fireEvent.change(screen.getByLabelText("Planning message"), { target: { value: "Make it more technical." } });
@@ -592,7 +498,7 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
     const transcript = await screen.findByRole("log", { name: "Planning transcript" });
     expect(transcript).toHaveTextContent("I drafted a grounded outline.");
@@ -610,129 +516,20 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByRole("heading", { name: "Driftboard launch demo" });
 
     fireEvent.change(screen.getByLabelText("Planning message"), { target: { value: "Make it more technical." } });
     fireEvent.click(screen.getByRole("button", { name: "Send planning message" }));
 
     await waitFor(() => expect(planningClient.sendMessage).toHaveBeenCalledWith("plan-test", "Make it more technical."));
-    expect(screen.getByRole("button", { name: "Generate video" })).toBeDisabled();
+    // While the follow-up is in flight the action list (and its Accept button) is gone,
+    // and back navigation is locked.
+    expect(screen.queryByRole("button", { name: "Accept & generate" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Back to URLs" })).toBeDisabled();
 
     send.resolve(planningSession({ messages: [...planningSession().messages, { role: "assistant", content: "Updated the outline." }] }));
     expect(await screen.findByText("Updated the outline.")).toBeInTheDocument();
-  });
-
-  it("generates Hyperframes with OpenCode by default from the approved outline", async () => {
-    const client = {
-      createJob: vi.fn(async (_request: CreateCompositionJobRequest): Promise<ApiGenerationJob> => ({
-        id: "job-1",
-        status: "queued",
-        request: {
-          id: "job-1",
-          mode: "ai-url-planning",
-          repoUrl: "https://github.com/acme/driftboard",
-          productUrl: "https://driftboard.example.com",
-          durationCapSeconds: 60,
-          aspectRatio: "16:9",
-          renderer: "hyperframes",
-          hyperframesAgent: "opencode",
-        },
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-        progressEvents: [],
-      })),
-      getJob: async () => {
-        throw new Error("not used");
-      },
-      waitForJob: async (): Promise<ApiGenerationJob> => ({
-        id: "job-1",
-        status: "completed",
-        request: {
-          id: "job-1",
-          mode: "ai-url-planning",
-          repoUrl: "https://github.com/acme/driftboard",
-          productUrl: "https://driftboard.example.com",
-          durationCapSeconds: 60,
-          aspectRatio: "16:9",
-          renderer: "hyperframes",
-          hyperframesAgent: "opencode",
-        },
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-        progressEvents: [],
-        result: {
-          method: "hyperframes",
-          composition: {
-            indexArtifact: {
-              kind: "composition-index",
-              relativePath: "hyperframes/index.html",
-              url: "/api/jobs/job-1/artifacts/hyperframes/index.html",
-              mediaType: "text/html",
-            },
-            outputVideoArtifact: {
-              kind: "output-video",
-              relativePath: "hyperframes/output.mp4",
-              url: "/api/jobs/job-1/artifacts/hyperframes/output.mp4",
-              mediaType: "video/mp4",
-            },
-          },
-          artifacts: [
-            {
-              kind: "composition-index",
-              relativePath: "hyperframes/index.html",
-              url: "/api/jobs/job-1/artifacts/hyperframes/index.html",
-              mediaType: "text/html",
-            },
-            {
-              kind: "output-video",
-              relativePath: "hyperframes/output.mp4",
-              url: "/api/jobs/job-1/artifacts/hyperframes/output.mp4",
-              mediaType: "video/mp4",
-            },
-          ],
-          warnings: [],
-        },
-      }),
-    } satisfies CompositionGenerationClient;
-    render(
-      <CompositionDemoScreen
-        client={client}
-        planningClient={createPlanningClient()}
-        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
-    fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
-    await screen.findByRole("heading", { name: "Driftboard launch demo" });
-    expect(screen.getByLabelText("Renderer")).toHaveValue("hyperframes");
-    expect(screen.getByLabelText("Hyperframes agent")).toHaveValue("opencode");
-    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
-
-    await waitFor(() =>
-      expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({
-        mode: "ai-url-planning",
-        repoUrl: "https://github.com/acme/driftboard",
-        productUrl: "https://driftboard.example.com",
-        durationCapSeconds: 60,
-        aspectRatio: "16:9",
-        prompt: expect.stringContaining("Use this approved video outline as the product demo brief:"),
-        approvedOutline: planningSession().outline,
-        renderer: "hyperframes",
-        hyperframesAgent: "opencode",
-      })),
-    );
-    expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("Driftboard launch demo") }));
-    await waitFor(() => expect(screen.getByTestId("composition-frame")).toBeInTheDocument());
-    fireEvent.load(screen.getByTestId("composition-frame"));
-    await waitFor(() => expect(screen.getByTestId("composition-timeline")).toBeInTheDocument());
-    // The editor app bar shows the pasted repo as a link to the GitHub repository.
-    const repoLink = screen.getByRole("link", { name: "GitHub repository acme/driftboard" });
-    expect(repoLink).toHaveTextContent("github.com/acme/driftboard");
-    expect(repoLink).toHaveAttribute("href", "https://github.com/acme/driftboard");
   });
 
   it("can generate a Playwright demo from the approved outline", async () => {
@@ -763,11 +560,9 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByRole("heading", { name: "Driftboard launch demo" });
-    fireEvent.change(screen.getByLabelText("Renderer"), { target: { value: "playwright" } });
-    expect(screen.queryByLabelText("Hyperframes agent")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+    acceptAndGenerate();
 
     await waitFor(() =>
       expect(client.createJob).toHaveBeenCalledWith(expect.objectContaining({
@@ -790,10 +585,10 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
     expect(await screen.findByText("The agent has not produced a valid outline yet.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Generate video" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Accept & generate" })).toBeDisabled();
   });
 
   it("keeps the post-plan generation action outside the scrollable planning transcript", async () => {
@@ -802,12 +597,12 @@ describe("CompositionDemoScreen", () => {
 
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/acme/driftboard" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
 
     const transcript = await screen.findByRole("log", { name: "Planning transcript" });
-    const generateButton = await screen.findByRole("button", { name: "Generate video" });
+    const generateAction = await screen.findByRole("button", { name: "Accept & generate" });
 
-    expect(transcript).not.toContainElement(generateButton);
+    expect(transcript).not.toContainElement(generateAction);
   });
 
   it("shows an error when generation fails", async () => {
@@ -819,9 +614,9 @@ describe("CompositionDemoScreen", () => {
     render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByText("I drafted a grounded outline.");
-    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+    acceptAndGenerate();
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Server error"));
   });
 
@@ -837,12 +632,12 @@ describe("CompositionDemoScreen", () => {
     render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByText("I drafted a grounded outline.");
-    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+    acceptAndGenerate();
     await screen.findByTestId("composition-generating");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Generate video" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept & generate" })).toBeInTheDocument());
   });
 
   it("keeps the cancel affordance visible and disables back navigation while generation is running", async () => {
@@ -857,9 +652,9 @@ describe("CompositionDemoScreen", () => {
     render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} />);
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByText("I drafted a grounded outline.");
-    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+    acceptAndGenerate();
 
     await screen.findByTestId("composition-generating");
     expect(screen.getByRole("button", { name: "Generating..." })).toHaveAttribute("aria-busy", "true");
@@ -881,9 +676,9 @@ describe("CompositionDemoScreen", () => {
     render(<CompositionDemoScreen client={client} planningClient={createPlanningClient()} onBack={onBack} />);
     fireEvent.change(screen.getByLabelText("Product URL"), { target: { value: "https://driftboard.example.com" } });
     fireEvent.change(screen.getByLabelText("GitHub repo URL"), { target: { value: "https://github.com/x/y" } });
-    fireEvent.click(screen.getByRole("button", { name: "Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan demo" }));
     await screen.findByText("I drafted a grounded outline.");
-    fireEvent.click(screen.getByRole("button", { name: "Generate video" }));
+    acceptAndGenerate();
 
     await screen.findByTestId("composition-generating");
     const topLevelBack = screen.getByRole("button", { name: "Back" });
@@ -893,48 +688,4 @@ describe("CompositionDemoScreen", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
   });
 
-  it("imports an existing demo folder and opens the editor", async () => {
-    const importClient: CompositionImportClient = { importComposition: vi.fn(async () => completedCompositionJob()) };
-    render(
-      <CompositionDemoScreen
-        client={createLocalCompositionGenerationClient()}
-        planningClient={createPlanningClient()}
-        importClient={importClient}
-        resolveWindow={(): TimelineRegistryWindow => ({ __timelines: { only: fakeHandle() } })}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit an existing demo" }));
-    const input = screen.getByLabelText("Choose demo folder");
-    fireEvent.change(input, {
-      target: {
-        files: [
-          fileWithPath("index.html", "demo/hyperframes/index.html"),
-          fileWithPath("output.mp4", "demo/hyperframes/output.mp4"),
-        ],
-      },
-    });
-
-    // The dropzone (in the preview/video stage) is replaced by the loaded editor once the import
-    // resolves: the folder picker is gone and Export is now enabled against the imported video.
-    await waitFor(() => expect(screen.queryByLabelText("Choose demo folder")).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Export" })).toBeEnabled();
-    expect(importClient.importComposition).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows an error when the dropped folder has no index.html", async () => {
-    const importClient: CompositionImportClient = { importComposition: vi.fn(async () => completedCompositionJob()) };
-    render(
-      <CompositionDemoScreen
-        client={createLocalCompositionGenerationClient()}
-        planningClient={createPlanningClient()}
-        importClient={importClient}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Edit an existing demo" }));
-    const input = screen.getByLabelText("Choose demo folder");
-    fireEvent.change(input, { target: { files: [fileWithPath("output.mp4", "demo/output.mp4")] } });
-    expect(await screen.findByRole("alert")).toHaveTextContent(/index\.html/);
-    expect(importClient.importComposition).not.toHaveBeenCalled();
-  });
 });
