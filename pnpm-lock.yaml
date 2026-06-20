@@ -144,24 +144,15 @@ importers:
 
   packages/demo-assembly:
     dependencies:
-      '@tinker/browser-capture':
-        specifier: workspace:*
-        version: link:../browser-capture
       '@tinker/generation-contract':
         specifier: workspace:*
         version: link:../generation-contract
-      '@tinker/motion':
-        specifier: workspace:*
-        version: link:../motion
       '@tinker/product-analysis':
         specifier: workspace:*
         version: link:../product-analysis
       '@tinker/project-schema':
         specifier: workspace:*
         version: link:../project-schema
-      '@tinker/rendering':
-        specifier: workspace:*
-        version: link:../rendering
       playwright-core:
         specifier: ^1.58.2
         version: 1.60.0

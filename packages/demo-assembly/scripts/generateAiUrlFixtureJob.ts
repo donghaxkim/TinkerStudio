@@ -1,11 +1,45 @@
-import { startFixtureServer } from "@tinker/browser-capture";
+import { createServer } from "node:http";
 import type { CreateDemoRequest } from "@tinker/generation-contract";
 import type { RepoAnalysis } from "@tinker/product-analysis";
 import { createFixtureAiUrlPlanner, runAiUrlDemo } from "../src/index.js";
 import { LocalGenerationJobError, runLocalGenerationJob } from "../src/localGenerationJob.js";
 
-const fixtureUrl = new URL("../../browser-capture/fixtures/manual-demo.html", import.meta.url);
-const server = await startFixtureServer(fixtureUrl);
+const fixtureHtml = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Tinker Fixture</title></head>
+  <body>
+    <main>
+      <h1>Tinker Fixture</h1>
+      <p>Local fixture page for deterministic AI URL generation.</p>
+      <input aria-label="URL" data-testid="url" value="https://example.com" />
+      <button>Start</button>
+    </main>
+  </body>
+</html>`;
+
+async function startFixtureServer() {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(fixtureHtml);
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Fixture server did not bind to a TCP port");
+  }
+
+  return {
+    url: `http://127.0.0.1:${address.port}/`,
+    close: () => new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
+  };
+}
+
+const server = await startFixtureServer();
 
 function createFixtureRepoAnalysis(repoUrl: string): RepoAnalysis {
   return {

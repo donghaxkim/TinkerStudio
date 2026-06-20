@@ -1,5 +1,7 @@
 # Smooth Playwright capture (first pass)
 
+> Legacy note: this describes the removed Playwright capture polish path. New AI URL published videos are produced by Testreel under `generated/<run>/testreel/`.
+
 Makes Tinker's Playwright demo path feel more Screen Studio-like by baking cinematic
 motion into the capture and emitting a metadata layer for a future post-render camera pass.
 

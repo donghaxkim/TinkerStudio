@@ -7,23 +7,22 @@ No phase is an autonomous system: each is a function (deterministic by default, 
 to LLM) over the previous phase's artifact.
 
 ```text
-product URL + repo URL + prompt
-  → Analysis            (analyze the live site + the repo)
-  → Product Understanding   → product-understanding.json
-  → Demo Strategy / Story   → demo-strategy.json + storyboard.json
-  → Playwright Capture Planning
-  → Smooth Playwright Capture → playwright/demo-project.json + playwright/final.mp4
-  → run-summary.json
+POST /api/jobs
+  -> runLocalGenerationJob
+  -> runAiUrlDemo
+     -> analysis
+     -> understanding
+     -> strategy + storyboard
+     -> planner emits TestreelGenerationPlan
+     -> Testreel CLI records and exports MP4
+     -> testreel/final.mp4 + run-summary.json
 ```
 
 Tinker generates repo-grounded product demos through one pipeline: analysis, understanding,
-strategy, Playwright capture planning, smooth Playwright capture, `DemoProject`, and
-`playwright/final.mp4`.
+strategy, Testreel planning, Testreel recording/export, and `testreel/final.mp4`.
 
-The pipeline lives in `packages/demo-assembly` (`runAiUrlDemo`). The browser-capture phase
-reuses `@tinker/browser-capture` (smooth synthetic cursor / ripple / eased scroll — see
-[smooth-playwright-capture.md](./smooth-playwright-capture.md)). The Understanding and
-Strategy phases feed the single Playwright capture path.
+The pipeline lives in `packages/demo-assembly` (`runAiUrlDemo`). The Understanding and
+Strategy phases feed the Testreel planner, and the published MP4 comes from the Testreel CLI.
 
 ## Generated artifact layout
 
@@ -37,28 +36,14 @@ generated/<run>/
   demo-strategy.json             # Demo Strategy phase
   storyboard.json                # strategic storyboard (beats carry lineage)
 
-  playwright/
-    storyboard.json              # planner's capture storyboard (existing; see note)
-    capture-plan.json            # deterministic Playwright actions (strict schema, as executed)
-    capture-result.json          # capture output
-    action-trace.json            # per-action trace + best-effort beat lineage
-    capture-lineage.json         # capture-step -> storyboard-beat map (derived, non-mutating)
-    render-plan.json             # zoom/hold/click segments
-    director-plan.json           # Director Mode: shot list (hero/code/terminal/result/cta) + cursor + dead-time
-    edit-decision-list.json      # Director Mode: timeline-compression cuts for >0.8s dead gaps
-    final.mp4                    # smooth recording transcode (when ffmpeg present)
-    capture/
-      videos/ screenshots/
-    demo-project.json            # editable DemoProject (existing)
+  testreel/
+    recording-plan.json          # native Testreel generation plan
+    recording.json               # Testreel recording result
+    final.mp4                    # published video output
+    output/                      # Testreel export manifest and assets
 
   run-summary.json               # status + artifacts + per-beat coverage + warnings
 ```
-
-> **Two storyboards, mapped clearly.** `storyboard.json` (run root) is the *strategic*
-> story — the one source of truth for the narrative, with beats linked back to strategy
-> messages and capabilities. `playwright/storyboard.json` is the planner's
-> capture-oriented storyboard (kept for backward compatibility). `run-summary.json` lists
-> both.
 
 ## Phase contracts
 
@@ -87,10 +72,10 @@ criteria and risks, plus a 4-beat storyboard (Hook → Demo → Proof → CTA) w
 This is the seam a future chat UX will use to let the user tweak the suggested story — the
 artifact contract does not change.
 
-### Browser Capture — playwright artifacts
-The strategy + storyboard are passed to the planner so the capture plan realizes the
-*selected flow* rather than a generic homepage tour. Capture runs in smooth mode; the
-action trace is stamped with best-effort storyboard-beat lineage (`beatId` / `intent`).
+### Published Video — Testreel artifacts
+The strategy + storyboard are passed to the planner so the Testreel recording plan realizes
+the *selected flow* rather than a generic homepage tour. Testreel records and exports the
+published MP4 under `testreel/final.mp4`.
 
 ## Running it
 
@@ -99,7 +84,7 @@ pnpm --filter @tinker/demo-assembly generate:ai-url-job -- --repo https://github
 ```
 
 It prints the run folder and every artifact path (product-understanding, demo-strategy,
-storyboard, capture-plan, action-trace, render-plan, final.mp4, run-summary) plus warnings.
+storyboard, recording-plan, recording, final.mp4, run-summary) plus warnings.
 
 ```bash
 # Deterministic, offline end-to-end smoke (real smooth capture against a local fixture):
@@ -111,7 +96,7 @@ If Chromium isn't found, prefix with
 
 ## Local agent backend (opencode vs Claude Code)
 
-The Playwright **capture planner** is the only step that needs an LLM (website analysis is
+The Testreel **recording planner** is the only step that needs an LLM (website analysis is
 Chromium; repo analysis is a deterministic README/package.json scan; understanding +
 strategy are deterministic). It defaults to **opencode**. To run the whole pipeline with the
 locally-installed **Claude Code CLI** instead — no opencode required — set:
@@ -131,7 +116,7 @@ pnpm --filter @tinker/demo-assembly smoke:pipeline:claude   # real `claude -p` -
 **Running it from the web UI with Claude Code:** start the API with the env var
 (`TINKER_AGENT_BACKEND=claude-code pnpm --filter @tinker/api dev`) + the web dev server, then
 in the create-demo screen set **Planning agent → Claude**. Generation always uses the
-Playwright pipeline.
+Testreel published-video pipeline.
 
 ## Known limitations (first pass)
 
@@ -140,9 +125,5 @@ Playwright pipeline.
 - **Understanding/strategy are deterministic.** They map structured analysis into the
   contract — accurate and non-generic, but not yet LLM-deepened. The seams accept an LLM
   implementation without touching the artifact shapes.
-- **`final.mp4` is still an honest transcode** of the (already smooth) recording; true
-  post-render camera zoom/holds from `render-plan.json` are deferred.
-- **Beat lineage is derived, not planner-emitted.** `capture-lineage.json` and the
-  `action-trace.json` `beatId`/`intent` stamps map steps to beats *proportionally* (the
-  capture plan's strict schema can't carry per-step beat ids, so lineage is a separate
-  artifact rather than inline). `run-summary` coverage is per-run, not per-beat-verified.
+- **Beat lineage is planner-level.** `run-summary` coverage is based on storyboard and
+  published-video presence, not per-beat pixel verification.

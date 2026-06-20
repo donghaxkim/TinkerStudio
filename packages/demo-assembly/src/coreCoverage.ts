@@ -1,13 +1,11 @@
 // Core-concept coverage for the Testreel path (heuristic, additive run-summary input).
 //
 // Canonical source: strategy.messageHierarchy + strategy.selectedFlow. Each concept maps to
-// storyboard beats, then to captured evidence via action-trace (beatId + type). Coverage is
-// heuristic — proportional capture-lineage, not verified pixels — and says so in warnings.
+// storyboard beats, then to Testreel published-video evidence when available. Coverage is
+// heuristic — based on planned storyboard coverage, not verified pixels — and says so in warnings.
 
 import { z } from "zod";
 import type { DemoStrategy, Storyboard } from "./demoStrategy.js";
-
-export const MEANINGFUL_ACTION_TYPES: readonly string[] = ["click", "type", "press"];
 
 export const CoreCoverageItemSchema = z
   .object({
@@ -26,14 +24,9 @@ export const CoreCoverageItemSchema = z
 
 export type CoreCoverageItem = z.infer<typeof CoreCoverageItemSchema>;
 
-export type CoreActionTrace = { actions: Array<{ type: string; beatId?: string }> };
-export type CoreCaptureLineage = { steps: Array<{ beatId?: string }> };
-
 export type BuildCoreCoverageInput = {
   strategy: DemoStrategy;
   storyboard: Storyboard;
-  actionTrace?: CoreActionTrace;
-  captureLineage?: CoreCaptureLineage;
   finalVideoProduced: boolean;
   finalVideoRef?: string;
 };
@@ -45,22 +38,12 @@ function isStaticBeat(beat: Beat): boolean {
 }
 
 export function buildCoreCoverage(input: BuildCoreCoverageInput): { items: CoreCoverageItem[]; warnings: string[] } {
-  const { strategy, storyboard, actionTrace, captureLineage, finalVideoProduced } = input;
+  const { strategy, storyboard, finalVideoProduced } = input;
   const finalVideoRef = input.finalVideoRef ?? "testreel/final.mp4";
   const beats = storyboard.beats;
-  const hasTrace = actionTrace !== undefined && actionTrace.actions.length > 0;
 
-  const meaningfulBeatIds = new Set<string>(
-    (actionTrace?.actions ?? [])
-      .filter((a) => a.beatId !== undefined && MEANINGFUL_ACTION_TYPES.includes(a.type))
-      .map((a) => a.beatId as string),
-  );
-  const hasMeaningful = (beatIds: string[]) => beatIds.some((id) => meaningfulBeatIds.has(id));
-
-  function refsFor(beatIds: string[], meaningful: boolean, includeFinalVideo: boolean): string[] {
+  function refsFor(beatIds: string[], includeFinalVideo: boolean): string[] {
     const refs = beatIds.map((id) => `storyboard.json#${id}`);
-    if (meaningful && actionTrace) refs.push(...beatIds.filter((id) => meaningfulBeatIds.has(id)).map((id) => `testreel/action-trace.json#${id}`));
-    if (meaningful && captureLineage) refs.push("testreel/capture-lineage.json");
     if (includeFinalVideo) refs.push(finalVideoRef);
     return refs;
   }
@@ -76,8 +59,6 @@ export function buildCoreCoverage(input: BuildCoreCoverageInput): { items: CoreC
     let status: CoreCoverageItem["status"];
     if (mapped.length === 0) {
       status = "missing";
-    } else if (hasMeaningful(beatIds)) {
-      status = "captured";
     } else if (mapped.every(isStaticBeat) && finalVideoProduced) {
       status = "captured";
       itemWarnings.push("Static beat — storyboard/final-video evidence, not pixel verification.");
@@ -92,7 +73,7 @@ export function buildCoreCoverage(input: BuildCoreCoverageInput): { items: CoreC
       required: false,
       status,
       beatIds,
-      artifactRefs: refsFor(beatIds, status === "captured" && hasMeaningful(beatIds), finalVideoProduced && status === "captured"),
+      artifactRefs: refsFor(beatIds, finalVideoProduced && status === "captured"),
       warnings: itemWarnings,
     });
   });
@@ -107,13 +88,11 @@ export function buildCoreCoverage(input: BuildCoreCoverageInput): { items: CoreC
   let flowStatus: CoreCoverageItem["status"];
   if (flowBeatIds.length === 0) {
     flowStatus = "missing";
-  } else if (hasMeaningful(flowBeatIds)) {
-    flowStatus = "captured";
   } else {
     flowStatus = "planned";
     flowWarnings.push(
       finalVideoProduced
-        ? "Selected flow not demonstrated by a captured interaction (final.mp4 exists but no click/type/press maps to it)."
+        ? "Selected flow is not per-beat verified (final.mp4 exists but no interaction evidence maps to it)."
         : "Selected flow not captured.",
     );
   }
@@ -125,13 +104,12 @@ export function buildCoreCoverage(input: BuildCoreCoverageInput): { items: CoreC
     required: true,
     status: flowStatus,
     beatIds: flowBeatIds,
-    artifactRefs: refsFor(flowBeatIds, flowStatus === "captured", finalVideoProduced && flowStatus === "captured"),
+    artifactRefs: refsFor(flowBeatIds, false),
     warnings: flowWarnings,
   });
 
   // Top-level warnings.
-  const warnings: string[] = ["Core coverage is heuristic — derived from proportional capture lineage, not verified video pixels."];
-  if (!hasTrace) warnings.push("No capture-lineage/action-trace evidence available; core coverage is storyboard-only.");
+  const warnings: string[] = ["Core coverage is heuristic — derived from storyboard and published-video presence, not verified video pixels."];
   const gaps = items.filter((i) => i.status !== "captured");
   if (gaps.length > 0) {
     const requiredGaps = gaps.filter((i) => i.required).map((i) => i.id);
