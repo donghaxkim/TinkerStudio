@@ -90,6 +90,9 @@ export const PlanningSessionResponseSchema = z
     status: PlanningSessionStatusSchema,
     messages: z.array(PlanningMessageSchema),
     progress: z.array(PlanningProgressEntrySchema).default([]),
+    // Streamed agent reasoning lines, shown live while the planner thinks and then
+    // collapsed into a "Tinkered for Xs" disclosure once the outline is ready.
+    thoughts: z.array(nonEmptyString).optional(),
     outline: DemoOutlineSchema.optional(),
     outlineValid: z.boolean(),
     lastError: nonEmptyString.optional(),

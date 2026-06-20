@@ -1,29 +1,31 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import {
   LuArrowUp,
+  LuChevronDown,
   LuChevronLeft,
+  LuChevronRight,
   LuCircle,
   LuCircleCheck,
   LuGithub,
   LuGlobe,
   LuListVideo,
   LuLoaderCircle,
+  LuMessageSquare,
+  LuRefreshCw,
   LuSparkles,
   LuUpload,
 } from "react-icons/lu";
 import type {
   ApiGenerationJob,
   DemoOutline,
-  HyperframesAgent,
   PlanningAgent,
   PlanningProgressEntry,
   PlanningProgressStatus,
   PlanningStage,
 } from "@tinker/generation-contract";
-import { DEFAULT_SYSTEM_PROMPT } from "@tinker/generation-contract";
 import type { TimelineRegistryWindow } from "@tinker/editor";
 import type { CompositionEditClient } from "../../lib/compositionEditClient.js";
-import type { CompositionGenerationClient, CreateCompositionJobRequest } from "../../lib/compositionGenerationClient.js";
+import type { CompositionGenerationClient } from "../../lib/compositionGenerationClient.js";
 import type { CompositionImportClient } from "../../lib/compositionImportClient.js";
 import type { CompositionPlanningClient } from "../../lib/compositionPlanningClient.js";
 import { selectCanonicalBundleFiles } from "../../lib/bundleFiles.js";
@@ -32,7 +34,6 @@ import { useCompositionPlanningSession } from "../../lib/useCompositionPlanningS
 import { CompositionEditorScreen } from "./CompositionEditorScreen.js";
 
 const PREVIEW_COMPOSITION_URL = "/demo-composition/index.html";
-type GenerationRenderer = "hyperframes" | "playwright";
 
 export type CompositionDemoScreenProps = {
   client: CompositionGenerationClient;
@@ -51,15 +52,17 @@ function parseGithubRepo(raw: string): string | undefined {
   const trimmed = raw.trim();
   if (trimmed === "") return undefined;
 
-  let path = trimmed;
-  if (/^https?:\/\//i.test(trimmed) || /^(www\.)?github\.com\//i.test(trimmed)) {
-    try {
-      const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
-      if (url.hostname !== "github.com" && url.hostname !== "www.github.com") return undefined;
-      path = url.pathname;
-    } catch {
-      return undefined;
-    }
+  // Require an explicit github.com link — shorthand like "owner/repo" no longer counts,
+  // so the field only validates (blue icon + checkmark) once github.com is in the link.
+  if (!/^(https?:\/\/)?(www\.)?github\.com\//i.test(trimmed)) return undefined;
+
+  let path: string;
+  try {
+    const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    if (url.hostname !== "github.com" && url.hostname !== "www.github.com") return undefined;
+    path = url.pathname;
+  } catch {
+    return undefined;
   }
 
   const [owner, repoWithGit] = path.replace(/^\/+/, "").split("/").filter(Boolean);
@@ -181,6 +184,74 @@ function StageChecklist({
   );
 }
 
+// Live agent thought-stream shown while the planner is thinking: scripted reasoning
+// lines stream in one at a time, with a running timer, until the outline is ready.
+function ThoughtStream({ thoughts }: { thoughts: string[] }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setElapsed((value) => value + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="tk-cd-assistant tk-cd-msg">
+      <div className="tk-cd-avatar" aria-hidden="true">
+        <LuSparkles size={14} className="tk-spin-slow" />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="tk-cd-author">
+          Tinkering<span className="tk-cd-think-timer">{elapsed}s</span>
+        </div>
+        <div className="tk-cd-thoughts" aria-live="polite">
+          {thoughts.map((thought, index) => (
+            <div key={`t-${index}`} className="tk-cd-thought">
+              {thought}
+            </div>
+          ))}
+          <div className="tk-cd-thought tk-cd-thought-live" aria-hidden="true">
+            <span className="tk-dot" style={{ background: "var(--tk-accent)" }} />
+            <span className="tk-dot" style={{ background: "var(--tk-accent)", animationDelay: "0.16s" }} />
+            <span className="tk-dot" style={{ background: "var(--tk-accent)", animationDelay: "0.32s" }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Collapsed "Tinkered for Xs" disclosure shown once the outline is ready; clicking it
+// reveals the full reasoning history the planner streamed while thinking.
+function TinkeredSummary({ seconds, thoughts }: { seconds: number | undefined; thoughts: string[] }) {
+  const [open, setOpen] = useState(false);
+  if (thoughts.length === 0) return null;
+
+  const label = seconds === undefined ? "Tinkered for a few seconds" : `Tinkered for ${seconds}s`;
+
+  return (
+    <div className={`tk-cd-tinkered${open ? " is-open" : ""}`}>
+      <button
+        type="button"
+        className="tk-cd-tinkered-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <LuSparkles size={13} aria-hidden="true" />
+        <span className="tk-cd-tinkered-label">{label}</span>
+        <LuChevronDown size={14} className="tk-cd-tinkered-chevron" aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="tk-cd-tinkered-log">
+          {thoughts.map((thought, index) => (
+            <div key={`th-${index}`} className="tk-cd-thought">
+              {thought}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function OutlineStoryboard({ outline }: { outline: DemoOutline }) {
   return (
     <>
@@ -239,12 +310,11 @@ export function CompositionDemoScreen({
   const [repoDraft, setRepoDraft] = useState("");
   const [productDraft, setProductDraft] = useState("");
   const [directError, setDirectError] = useState<string | undefined>(undefined);
-  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
-  const [systemPromptDraft, setSystemPromptDraft] = useState(DEFAULT_SYSTEM_PROMPT);
   const [planningMessage, setPlanningMessage] = useState("");
+  // Drives the planning footer once a plan is ready: the stacked action list (which
+  // includes the inline "let's chat" input), or the final "ready to generate?" confirm.
+  const [footerMode, setFooterMode] = useState<"actions" | "confirm">("actions");
   const [repoShake, setRepoShake] = useState(false);
-  const [renderer, setRenderer] = useState<GenerationRenderer>("hyperframes");
-  const [hyperframesAgent, setHyperframesAgent] = useState<HyperframesAgent>("opencode");
   const [planningAgent, setPlanningAgent] = useState<PlanningAgent>("opencode");
 
   const repoInputRef = useRef<HTMLInputElement>(null);
@@ -262,10 +332,23 @@ export function CompositionDemoScreen({
   const normalizedRepo = parseGithubRepo(repoDraft);
   const outline = session?.outline;
   const outlineValid = session?.outlineValid === true && outline !== undefined;
+  const thoughts = session?.thoughts ?? [];
+
+  // Track how long the planner "tinkered" so the collapsed summary can report it.
+  const thinkStartRef = useRef<number | undefined>(undefined);
+  const [tinkerSeconds, setTinkerSeconds] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (planningBusy && !showOutline && thinkStartRef.current === undefined) {
+      thinkStartRef.current = Date.now();
+    }
+    if (showOutline && thinkStartRef.current !== undefined) {
+      setTinkerSeconds(Math.max(1, Math.round((Date.now() - thinkStartRef.current) / 1000)));
+      thinkStartRef.current = undefined;
+    }
+  }, [planningBusy, showOutline]);
 
   const canPlan = !planningBusy && normalizedRepo !== undefined && normalizedProductUrl !== undefined;
   const canGenerate = !planningBusy && !jobRunning && outlineValid;
-  const canGenerateDirect = !planningBusy && !jobRunning && normalizedRepo !== undefined;
   const canUseGlobalNavigation = !planningBusy && !jobRunning;
 
   const repoLabel = parseGithubRepo(session?.repoUrl ?? "") ?? normalizedRepo;
@@ -317,6 +400,19 @@ export function CompositionDemoScreen({
     setPlanningMessage("");
   }, [planning, planningBusy, planningMessage]);
 
+  // Fires a canned suggestion (Tell me more / Try a different angle) as the user's turn.
+  const sendQuick = useCallback(
+    (text: string) => {
+      if (!planningBusy) planning.sendMessage(text);
+    },
+    [planning, planningBusy],
+  );
+
+  // Each new agent turn returns the footer to the stacked action list.
+  useEffect(() => {
+    if (planningBusy) setFooterMode("actions");
+  }, [planningBusy]);
+
   const backToUrls = useCallback(() => {
     if (!canUseGlobalNavigation) return;
     planning.reset();
@@ -334,40 +430,11 @@ export function CompositionDemoScreen({
       aspectRatio: session.outline.aspectRatio,
       prompt: outlinePrompt(session.outline),
       approvedOutline: session.outline,
-      renderer,
-      ...(renderer === "hyperframes" ? { hyperframesAgent } : {}),
+      renderer: "playwright",
     } as const;
 
     void job.start(request);
-  }, [hyperframesAgent, job, planningBusy, renderer, session]);
-
-  // Direct generation: skip the planning chat entirely. Build the job straight from the
-  // typed repo + product URL + optional prompt and render with Playwright (the smooth-video
-  // pipeline runs its own internal understanding -> strategy -> capture phases).
-  const startDirectGeneration = useCallback(() => {
-    const repo = parseGithubRepo(repoDraft);
-    if (repo === undefined) {
-      requireRepo();
-      return;
-    }
-    const productUrl = normalizePublicUrl(productDraft);
-    if (productUrl === undefined) {
-      setDirectError("Add your product / website URL — the Playwright renderer captures it live.");
-      return;
-    }
-    setDirectError(undefined);
-    const trimmedSystemPrompt = systemPromptDraft.trim();
-    const request: CreateCompositionJobRequest = {
-      mode: "ai-url-planning",
-      repoUrl: `https://github.com/${repo}`,
-      productUrl,
-      durationCapSeconds: 45,
-      aspectRatio: "16:9",
-      renderer: "playwright",
-      ...(trimmedSystemPrompt === "" ? {} : { systemPrompt: trimmedSystemPrompt }),
-    };
-    void job.start(request);
-  }, [job, productDraft, repoDraft, requireRepo, systemPromptDraft]);
+  }, [job, planningBusy, session]);
 
   const startImport = useCallback(
     (collected: Array<{ relativePath: string; file: File }>) => {
@@ -593,7 +660,7 @@ export function CompositionDemoScreen({
   }
 
   const messages = session?.messages ?? [];
-  const generationControls = jobRunning ? (
+  const generatingBar = (
     <div data-testid="composition-generating">
       <div className="tk-cd-bar">
         <i />
@@ -607,53 +674,6 @@ export function CompositionDemoScreen({
           Cancel
         </button>
       </div>
-    </div>
-  ) : (
-    <div className="tk-cd-gen-row">
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--tk-text-sec)" }}>
-        Renderer
-        <select
-          aria-label="Renderer"
-          value={renderer}
-          onChange={(event) => setRenderer(event.currentTarget.value as GenerationRenderer)}
-          disabled={jobRunning}
-          style={{
-            border: "1px solid var(--tk-border-soft)",
-            borderRadius: "var(--tk-radius-sm)",
-            background: "var(--tk-raised)",
-            color: "var(--tk-text)",
-            padding: "6px 8px",
-          }}
-        >
-          <option value="hyperframes">Hyperframes</option>
-          <option value="playwright">Playwright</option>
-        </select>
-      </label>
-      {renderer === "hyperframes" ? (
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--tk-text-sec)" }}>
-          Hyperframes agent
-          <select
-            aria-label="Hyperframes agent"
-            value={hyperframesAgent}
-            onChange={(event) => setHyperframesAgent(event.currentTarget.value as HyperframesAgent)}
-            disabled={jobRunning}
-            style={{
-              border: "1px solid var(--tk-border-soft)",
-              borderRadius: "var(--tk-radius-sm)",
-              background: "var(--tk-raised)",
-              color: "var(--tk-text)",
-              padding: "6px 8px",
-            }}
-          >
-            <option value="opencode">OpenCode</option>
-            <option value="claude">Claude Code</option>
-          </select>
-        </label>
-      ) : null}
-      <button type="button" className="tk-btn tk-btn-accent" onClick={startGeneration} disabled={!canGenerate} aria-busy={false}>
-        Generate video
-      </button>
-      <span className="tk-cd-gen-hint">{outlineValid ? "Outline approved, ready to render." : "Keep refining the outline in chat."}</span>
     </div>
   );
 
@@ -670,9 +690,10 @@ export function CompositionDemoScreen({
       <div className={`tk-cd-stage${isOpen ? " is-open" : ""}`}>
         <div className={`tk-cd-hero${isOpen ? " is-tucked" : ""}`} aria-hidden={isOpen}>
           <h1>
+            <LuSparkles className="tk-cd-spark" size={22} aria-hidden="true" />
             Tinker <span>Studio</span>
           </h1>
-          <p>Drop in your repo. We plan the demo together, then make the video.</p>
+          <p>Get your demo video instantly.</p>
         </div>
 
         <div className={`tk-cd-box${isOpen ? " is-open" : ""}`}>
@@ -695,12 +716,11 @@ export function CompositionDemoScreen({
                     {siteLabel}
                   </span>
                 ) : null}
-                <span className={`tk-cd-status${planningBusy ? " is-working" : ""}`}>
-                  {planningBusy ? "Planner working" : "Planner ready"}
-                </span>
               </div>
 
               <div className="tk-cd-body" role="log" aria-label="Planning transcript" aria-live="polite">
+                {showOutline ? <TinkeredSummary seconds={tinkerSeconds} thoughts={thoughts} /> : null}
+
                 {messages.map((message, index) =>
                   message.role === "user" ? (
                     <div key={`m-${index}`} className="tk-cd-user tk-cd-msg">
@@ -720,7 +740,11 @@ export function CompositionDemoScreen({
                 )}
 
                 {planningBusy && isInitialWork ? (
-                  <StageChecklist progress={session?.progress ?? []} includeWebsite={includeWebsite} repo={repoLabel} site={siteLabel} />
+                  thoughts.length > 0 ? (
+                    <ThoughtStream thoughts={thoughts} />
+                  ) : (
+                    <StageChecklist progress={session?.progress ?? []} includeWebsite={includeWebsite} repo={repoLabel} site={siteLabel} />
+                  )
                 ) : null}
 
                 {planningBusy && !isInitialWork ? (
@@ -757,37 +781,95 @@ export function CompositionDemoScreen({
                 ) : null}
               </div>
 
-              {showOutline ? <div className="tk-cd-outline-foot tk-cd-generation-bar">{generationControls}</div> : null}
-
-              <div className="tk-cd-foot">
-                <div className="tk-cd-composer">
-                  <textarea
-                    ref={composerRef}
-                    className="tk-cd-composer-input"
-                    aria-label="Planning message"
-                    rows={1}
-                    value={planningMessage}
-                    disabled={planningBusy}
-                    placeholder="Ask for a change, e.g. make the hook punchier"
-                    onChange={(event) => setPlanningMessage(event.currentTarget.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        submitMessage();
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="tk-cd-send"
-                    aria-label="Send planning message"
-                    onClick={submitMessage}
-                    disabled={planningBusy || planningMessage.trim() === ""}
-                  >
-                    <LuArrowUp size={16} aria-hidden="true" />
-                  </button>
+              {jobRunning ? (
+                <div className="tk-cd-foot tk-cd-generation-bar">{generatingBar}</div>
+              ) : showOutline && !planningBusy ? (
+                <div className="tk-cd-foot">
+                  {footerMode === "confirm" ? (
+                    <div className="tk-cd-confirm">
+                      <div className="tk-cd-confirm-copy">
+                        <span className="tk-cd-confirm-title">Generate this demo video?</span>
+                        <span className="tk-cd-confirm-sub">
+                          This runs the full capture + render and usually takes a few minutes.
+                        </span>
+                      </div>
+                      <div className="tk-cd-confirm-actions">
+                        <button type="button" className="tk-btn" onClick={() => setFooterMode("actions")}>
+                          Not yet
+                        </button>
+                        <button
+                          type="button"
+                          className="tk-btn tk-btn-accent"
+                          onClick={startGeneration}
+                          disabled={!canGenerate}
+                        >
+                          <LuSparkles size={15} aria-hidden="true" />
+                          Generate video
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="tk-cd-stack">
+                      <button
+                        type="button"
+                        className="tk-cd-stack-row tk-cd-stack-row-primary"
+                        onClick={() => setFooterMode("confirm")}
+                        disabled={!canGenerate}
+                      >
+                        <LuCircleCheck size={16} aria-hidden="true" />
+                        <span className="tk-cd-stack-label">Accept &amp; generate</span>
+                        <LuChevronRight size={16} className="tk-cd-stack-arrow" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="tk-cd-stack-row"
+                        onClick={() =>
+                          sendQuick("Tell me more about this plan — walk me through why you structured the scenes this way.")
+                        }
+                      >
+                        <LuMessageSquare size={16} aria-hidden="true" />
+                        <span className="tk-cd-stack-label">Tell me more</span>
+                        <LuChevronRight size={16} className="tk-cd-stack-arrow" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="tk-cd-stack-row"
+                        onClick={() => sendQuick("Try a completely different angle for this demo.")}
+                      >
+                        <LuRefreshCw size={16} aria-hidden="true" />
+                        <span className="tk-cd-stack-label">Try a different angle</span>
+                        <LuChevronRight size={16} className="tk-cd-stack-arrow" aria-hidden="true" />
+                      </button>
+                      <div className="tk-cd-chatrow">
+                        <textarea
+                          ref={composerRef}
+                          className="tk-cd-composer-input"
+                          aria-label="Planning message"
+                          rows={1}
+                          value={planningMessage}
+                          placeholder="Let's chat — tell me what to change…"
+                          onChange={(event) => setPlanningMessage(event.currentTarget.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              submitMessage();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="tk-cd-send"
+                          aria-label="Send planning message"
+                          onClick={submitMessage}
+                          disabled={planningMessage.trim() === ""}
+                        >
+                          <LuArrowUp size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              ) : null}
             </>
           ) : (
             <div className={`tk-cd-form${repoShake ? " tk-shake" : ""}`}>
@@ -807,7 +889,7 @@ export function CompositionDemoScreen({
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
-                        startDirectGeneration();
+                        startPlanning();
                       }
                     }}
                   />
@@ -821,7 +903,7 @@ export function CompositionDemoScreen({
 
               <div className="tk-cd-field">
                 <span className="tk-cd-field-icon" aria-hidden="true">
-                  <LuGlobe size={16} style={{ color: "var(--tk-text-sec)" }} />
+                  <LuGlobe size={16} style={{ color: normalizedProductUrl ? "var(--tk-accent)" : "var(--tk-text-sec)" }} />
                 </span>
                 <div className="tk-cd-input-wrap">
                   <input
@@ -834,32 +916,17 @@ export function CompositionDemoScreen({
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
-                        startDirectGeneration();
+                        startPlanning();
                       }
                     }}
                   />
                 </div>
+                {normalizedProductUrl ? (
+                  <span className="tk-cd-check" aria-label="valid product URL">
+                    <LuCircleCheck size={16} />
+                  </span>
+                ) : null}
               </div>
-
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--tk-text-sec)", padding: "0 2px" }}>
-                Planning agent
-                <select
-                  aria-label="Planning agent"
-                  value={planningAgent}
-                  onChange={(event) => setPlanningAgent(event.currentTarget.value as PlanningAgent)}
-                  disabled={planningBusy}
-                  style={{
-                    border: "1px solid var(--tk-border-soft)",
-                    borderRadius: "var(--tk-radius-sm)",
-                    background: "var(--tk-raised)",
-                    color: "var(--tk-text)",
-                    padding: "6px 8px",
-                  }}
-                >
-                  <option value="opencode">OpenCode</option>
-                  <option value="claude">Claude Code</option>
-                </select>
-              </label>
 
               <div className="tk-cd-actions">
                 {jobRunning ? (
@@ -876,38 +943,30 @@ export function CompositionDemoScreen({
                   </>
                 ) : (
                   <>
-                    <span className="tk-cd-actions-hint">Paste repo + product URL, then Generate.</span>
-                    <button type="button" className="tk-btn" onClick={startPlanning} disabled={!canPlan}>
-                      <LuSparkles size={14} aria-hidden="true" />
-                      Plan
-                    </button>
-                    <button type="button" className="tk-btn tk-btn-accent" onClick={startDirectGeneration} disabled={!canGenerateDirect}>
-                      Generate now
+                    <label className="tk-cd-agent">
+                      Planning agent
+                      <select
+                        aria-label="Planning agent"
+                        value={planningAgent}
+                        onChange={(event) => setPlanningAgent(event.currentTarget.value as PlanningAgent)}
+                        disabled={planningBusy}
+                      >
+                        <option value="opencode">OpenCode</option>
+                        <option value="claude">Claude Code</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="tk-cd-submit"
+                      onClick={startPlanning}
+                      disabled={!canPlan}
+                      aria-label="Plan demo"
+                      title="Plan demo"
+                    >
+                      <LuArrowUp size={16} aria-hidden="true" />
                     </button>
                   </>
                 )}
-              </div>
-
-              <div className="tk-cd-sysprompt" style={{ marginTop: 10 }}>
-                <button
-                  type="button"
-                  className="tk-cd-shell-link"
-                  aria-expanded={showSystemPrompt}
-                  onClick={() => setShowSystemPrompt((value) => !value)}
-                >
-                  {showSystemPrompt ? "Hide system prompt" : "Edit system prompt"}
-                </button>
-                {showSystemPrompt ? (
-                  <textarea
-                    className="tk-cd-input"
-                    aria-label="System prompt"
-                    rows={4}
-                    spellCheck={false}
-                    value={systemPromptDraft}
-                    onChange={(event) => setSystemPromptDraft(event.currentTarget.value)}
-                    style={{ resize: "vertical", minHeight: 84, fontFamily: "inherit", marginTop: 8, width: "100%" }}
-                  />
-                ) : null}
               </div>
 
               {directError ? (
@@ -936,19 +995,6 @@ export function CompositionDemoScreen({
             <button type="button" className="tk-cd-shell-link" onClick={() => setShowEmptyEditor(true)}>
               Open empty editor shell
             </button>
-            {importClient ? (
-              <button
-                type="button"
-                className="tk-cd-shell-link"
-                style={{ marginTop: 0 }}
-                onClick={() => {
-                  setImportError(undefined);
-                  setShowUpload(true);
-                }}
-              >
-                Edit an existing demo
-              </button>
-            ) : null}
           </div>
         ) : null}
       </div>
