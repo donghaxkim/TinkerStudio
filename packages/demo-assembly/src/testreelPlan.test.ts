@@ -38,6 +38,20 @@ assert.throws(
   () =>
     parseTestreelGenerationPlanJson(
       JSON.stringify({
+        ...plan,
+        definition: {
+          ...plan.definition,
+          steps: [{ action: "click", text: "Start demo" }],
+        },
+      }),
+    ),
+  /selector/,
+);
+
+assert.throws(
+  () =>
+    parseTestreelGenerationPlanJson(
+      JSON.stringify({
         targetUrl: "https://example.com/app",
         viewport: { width: 1280, height: 720 },
         steps: [{ type: "goto", url: "https://example.com/app" }],

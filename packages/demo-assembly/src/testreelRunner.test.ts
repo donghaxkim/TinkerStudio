@@ -49,6 +49,31 @@ assert.ok(result.artifactPaths.includes(join(outputRoot, "recording-plan.json"))
 assert.ok(result.artifactPaths.includes(join(outputRoot, "recording.json")));
 assert.ok(result.artifactPaths.includes(join(outputRoot, "final.mp4")));
 
+const webmOutputRoot = await mkdtemp(join(tmpdir(), "tinker-testreel-runner-webm-"));
+const ffmpegCalls: string[][] = [];
+const webmResult = await runTestreelRecording({
+  testreelRoot: webmOutputRoot,
+  plan,
+  runCli: async (args) => {
+    if (args[0] === "validate") return { stdout: "validated", stderr: "" };
+    const outputDir = args[args.indexOf("--output") + 1];
+    if (outputDir === undefined) throw new Error("missing output dir");
+    await mkdir(outputDir, { recursive: true });
+    await writeFile(join(outputDir, "output.json"), JSON.stringify({ video: "recording.webm", screenshots: [] }));
+    await writeFile(join(outputDir, "recording.webm"), "webm");
+    return { stdout: "recorded", stderr: "" };
+  },
+  runFfmpeg: async (args) => {
+    ffmpegCalls.push(args);
+    await writeFile(args.at(-1)!, "mp4");
+    return { stdout: "", stderr: "" };
+  },
+});
+assert.equal(webmResult.finalVideoPath, join(webmOutputRoot, "final.mp4"));
+assert.equal(existsSync(webmResult.finalVideoPath), true);
+assert.ok(ffmpegCalls[0]?.includes(join(webmOutputRoot, "output", "recording.webm")));
+assert.equal(ffmpegCalls[0]?.at(-1), join(webmOutputRoot, "final.mp4"));
+
 await assert.rejects(
   async () =>
     runTestreelRecording({

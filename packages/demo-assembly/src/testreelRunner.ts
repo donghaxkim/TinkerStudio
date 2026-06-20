@@ -1,16 +1,18 @@
 import { spawn } from "node:child_process";
-import { copyFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import type { TestreelGenerationPlan } from "./testreelPlan.js";
 
 export type RunTestreelCli = (args: string[], options?: { signal?: AbortSignal }) => Promise<{ stdout: string; stderr: string }>;
+export type RunFfmpegCli = (args: string[], options?: { signal?: AbortSignal }) => Promise<{ stdout: string; stderr: string }>;
 export type SpawnedTestreelCliCommand = { command: string; argsPrefix: string[]; cwd: string };
 export type RunTestreelRecordingInput = {
   testreelRoot: string;
   plan: TestreelGenerationPlan;
   signal?: AbortSignal;
   runCli?: RunTestreelCli;
+  runFfmpeg?: RunFfmpegCli;
   onPhase?: (phase: "verification" | "capture" | "assembly") => void;
 };
 export type RunTestreelRecordingResult = {
@@ -36,6 +38,10 @@ function resolveTestreelCliPath() {
 
 function defaultTestreelCli(): RunTestreelCli {
   return createSpawnedTestreelCliRunner({ command: process.execPath, argsPrefix: [resolveTestreelCliPath()], cwd: process.cwd() });
+}
+
+function defaultFfmpegCli(): RunFfmpegCli {
+  return createSpawnedFfmpegRunner(process.env.FFMPEG_PATH ?? "ffmpeg");
 }
 
 function abortError() {
@@ -116,6 +122,57 @@ export function createSpawnedTestreelCliRunner(command: SpawnedTestreelCliComman
     });
 }
 
+function createSpawnedFfmpegRunner(command: string): RunFfmpegCli {
+  return (args, options) =>
+    new Promise((resolve, reject) => {
+      if (options?.signal?.aborted) {
+        reject(abortError());
+        return;
+      }
+
+      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
+      let aborted = false;
+
+      function abort() {
+        aborted = true;
+        child.kill("SIGTERM");
+      }
+      options?.signal?.addEventListener("abort", abort, { once: true });
+
+      child.stdout?.setEncoding("utf8");
+      child.stderr?.setEncoding("utf8");
+      child.stdout?.on("data", (chunk: string) => {
+        stdout += chunk;
+      });
+      child.stderr?.on("data", (chunk: string) => {
+        stderr += chunk;
+      });
+      child.on("error", (error) => {
+        if (settled) return;
+        settled = true;
+        options?.signal?.removeEventListener("abort", abort);
+        reject(error);
+      });
+      child.on("close", (code) => {
+        if (settled) return;
+        settled = true;
+        options?.signal?.removeEventListener("abort", abort);
+        if (aborted) {
+          reject(abortError());
+          return;
+        }
+        if (code !== 0) {
+          reject(new Error(`ffmpeg failed with exit code ${code}: ${trimProcessError(stderr)}`));
+          return;
+        }
+        resolve({ stdout, stderr });
+      });
+    });
+}
+
 async function listFiles(root: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
   const files: string[] = [];
@@ -127,17 +184,42 @@ async function listFiles(root: string): Promise<string[]> {
   return files;
 }
 
-async function selectMp4(outputDirectory: string) {
+async function readManifestVideo(outputDirectory: string) {
+  const manifestPath = join(outputDirectory, "output.json");
+  try {
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { video?: unknown };
+    return typeof manifest.video === "string" && manifest.video.trim() !== "" ? join(outputDirectory, manifest.video) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function selectVideo(outputDirectory: string) {
   const files = await listFiles(outputDirectory);
   const mp4s = files.filter((file) => file.toLowerCase().endsWith(".mp4"));
-  if (mp4s.length === 0) throw new Error("Testreel completed without producing an MP4");
+  const manifestVideo = await readManifestVideo(outputDirectory);
+  if (mp4s.length === 0 && manifestVideo !== undefined) return manifestVideo;
+  if (mp4s.length === 0) throw new Error("Testreel completed without producing an MP4 or convertible video");
   const withStats = await Promise.all(mp4s.map(async (path) => ({ path, stat: await stat(path) })));
   withStats.sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs || a.path.localeCompare(b.path));
   return withStats[0]!.path;
 }
 
+async function ensureFinalMp4(input: { sourceVideoPath: string; finalVideoPath: string; runFfmpeg: RunFfmpegCli; signal?: AbortSignal }) {
+  if (input.sourceVideoPath.toLowerCase().endsWith(".mp4")) {
+    if (input.sourceVideoPath !== input.finalVideoPath) await copyFile(input.sourceVideoPath, input.finalVideoPath);
+    return { stdout: "", stderr: "" };
+  }
+
+  return input.runFfmpeg(
+    ["-y", "-loglevel", "error", "-i", input.sourceVideoPath, "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", input.finalVideoPath],
+    { signal: input.signal },
+  );
+}
+
 export async function runTestreelRecording(input: RunTestreelRecordingInput): Promise<RunTestreelRecordingResult> {
   const runCli = input.runCli ?? defaultTestreelCli();
+  const runFfmpeg = input.runFfmpeg ?? defaultFfmpegCli();
   const recordingPlanPath = join(input.testreelRoot, "recording-plan.json");
   const recordingPath = join(input.testreelRoot, "recording.json");
   const outputDirectory = join(input.testreelRoot, "output");
@@ -153,8 +235,8 @@ export async function runTestreelRecording(input: RunTestreelRecordingInput): Pr
   const recording = await runCli([recordingPath, "--output", outputDirectory, "--format", "mp4", "--clean", "--quiet"], { signal: input.signal });
 
   input.onPhase?.("assembly");
-  const selectedMp4 = await selectMp4(outputDirectory);
-  if (selectedMp4 !== finalVideoPath) await copyFile(selectedMp4, finalVideoPath);
+  const selectedVideo = await selectVideo(outputDirectory);
+  const finalization = await ensureFinalMp4({ sourceVideoPath: selectedVideo, finalVideoPath, runFfmpeg, signal: input.signal });
   const files = await listFiles(outputDirectory);
   const manifestPath = files.find((file) => file.endsWith("output.json"));
   const screenshotPaths = files.filter((file) => file.toLowerCase().endsWith(".png"));
@@ -168,7 +250,7 @@ export async function runTestreelRecording(input: RunTestreelRecordingInput): Pr
     ...(manifestPath ? { manifestPath } : {}),
     screenshotPaths,
     artifactPaths,
-    stdout: [validation.stdout, recording.stdout].filter(Boolean).join("\n"),
-    stderr: [validation.stderr, recording.stderr].filter(Boolean).join("\n"),
+    stdout: [validation.stdout, recording.stdout, finalization.stdout].filter(Boolean).join("\n"),
+    stderr: [validation.stderr, recording.stderr, finalization.stderr].filter(Boolean).join("\n"),
   };
 }

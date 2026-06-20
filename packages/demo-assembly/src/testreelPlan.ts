@@ -8,9 +8,9 @@ const viewportSchema = z.object({ width: finiteNumber.positive(), height: finite
 const outputFormatSchema = z.enum(["mp4"]);
 
 const clickStepSchema = z
-  .object({ action: z.literal("click"), selector: optionalNonEmptyString, text: optionalNonEmptyString, label: optionalNonEmptyString })
+  .object({ action: z.literal("click"), selector: nonEmptyString, text: optionalNonEmptyString, label: optionalNonEmptyString })
   .strict()
-  .refine((step) => step.selector !== undefined || step.text !== undefined, "click step requires selector or text");
+  .refine((step) => step.selector !== undefined, "click step requires selector");
 const typeStepSchema = z.object({ action: z.literal("type"), selector: nonEmptyString, text: nonEmptyString }).strict();
 const fillStepSchema = z.object({ action: z.literal("fill"), selector: nonEmptyString, text: nonEmptyString }).strict();
 const keyboardStepSchema = z.object({ action: z.literal("keyboard"), key: nonEmptyString }).strict();
@@ -19,9 +19,9 @@ const scrollStepSchema = z
   .strict()
   .refine((step) => step.x !== undefined || step.y !== undefined || step.selector !== undefined, "scroll step requires x, y, or selector");
 const hoverStepSchema = z
-  .object({ action: z.literal("hover"), selector: optionalNonEmptyString, text: optionalNonEmptyString })
+  .object({ action: z.literal("hover"), selector: nonEmptyString, text: optionalNonEmptyString })
   .strict()
-  .refine((step) => step.selector !== undefined || step.text !== undefined, "hover step requires selector or text");
+  .refine((step) => step.selector !== undefined, "hover step requires selector");
 const waitStepSchema = z.object({ action: z.literal("wait"), ms: finiteNumber.nonnegative().max(30_000) }).strict();
 const zoomStepSchema = z
   .object({ action: z.literal("zoom"), selector: optionalNonEmptyString, scale: finiteNumber.positive(), duration: finiteNumber.nonnegative().optional() })
