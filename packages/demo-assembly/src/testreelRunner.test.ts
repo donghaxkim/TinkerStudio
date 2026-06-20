@@ -117,6 +117,22 @@ assert.equal(existsSync(webmResult.finalVideoPath), true);
 assert.ok(ffmpegCalls[0]?.includes(join(webmOutputRoot, "output", "recording.webm")));
 assert.equal(ffmpegCalls[0]?.at(-1), join(webmOutputRoot, "final.mp4"));
 
+const envRoot = await mkdtemp(join(tmpdir(), "tinker-testreel-runner-env-"));
+const envCliPath = join(envRoot, "fake-testreel-env.cjs");
+const envOutputPath = join(envRoot, "ffmpeg-path.txt");
+await writeFile(envCliPath, ["#!/usr/bin/env node", "const { writeFileSync } = require('node:fs');", `writeFileSync(${JSON.stringify(envOutputPath)}, process.env.FFMPEG_PATH || '');`].join("\n"));
+await chmod(envCliPath, 0o755);
+const previousFfmpegPathForTestreel = process.env.FFMPEG_PATH;
+try {
+  delete process.env.FFMPEG_PATH;
+  const runEnvCli = createSpawnedTestreelCliRunner({ command: process.execPath, argsPrefix: [envCliPath], cwd: envRoot });
+  await runEnvCli(["recording.json"]);
+  assert.equal(await readFile(envOutputPath, "utf8"), "ffmpeg");
+} finally {
+  if (previousFfmpegPathForTestreel === undefined) delete process.env.FFMPEG_PATH;
+  else process.env.FFMPEG_PATH = previousFfmpegPathForTestreel;
+}
+
 await assert.rejects(
   async () =>
     runTestreelRecording({

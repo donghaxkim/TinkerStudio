@@ -6,7 +6,7 @@ import type { TestreelGenerationPlan } from "./testreelPlan.js";
 
 export type RunTestreelCli = (args: string[], options?: { signal?: AbortSignal }) => Promise<{ stdout: string; stderr: string }>;
 export type RunFfmpegCli = (args: string[], options?: { signal?: AbortSignal }) => Promise<{ stdout: string; stderr: string }>;
-export type SpawnedTestreelCliCommand = { command: string; argsPrefix: string[]; cwd: string };
+export type SpawnedTestreelCliCommand = { command: string; argsPrefix: string[]; cwd: string; env?: NodeJS.ProcessEnv };
 export type RunTestreelRecordingInput = {
   testreelRoot: string;
   plan: TestreelGenerationPlan;
@@ -60,6 +60,7 @@ export function createSpawnedTestreelCliRunner(command: SpawnedTestreelCliComman
       command: command.command,
       args: [...command.argsPrefix, ...args],
       cwd: command.cwd,
+      env: { ...process.env, FFMPEG_PATH: process.env.FFMPEG_PATH ?? "ffmpeg", ...command.env },
       failureLabel: "Testreel",
       signal: options?.signal,
     });
@@ -69,7 +70,7 @@ function createSpawnedFfmpegRunner(command: string): RunFfmpegCli {
   return (args, options) => runSpawnedCli({ command, args, failureLabel: "ffmpeg", signal: options?.signal });
 }
 
-function runSpawnedCli(input: { command: string; args: string[]; cwd?: string; failureLabel: string; signal?: AbortSignal }) {
+function runSpawnedCli(input: { command: string; args: string[]; cwd?: string; env?: NodeJS.ProcessEnv; failureLabel: string; signal?: AbortSignal }) {
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     if (input.signal?.aborted) {
       reject(abortError());
@@ -77,7 +78,7 @@ function runSpawnedCli(input: { command: string; args: string[]; cwd?: string; f
     }
 
     const detached = process.platform !== "win32";
-    const child = spawn(input.command, input.args, { cwd: input.cwd, detached, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(input.command, input.args, { cwd: input.cwd, env: input.env, detached, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     let settled = false;
