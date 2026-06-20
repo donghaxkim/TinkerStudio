@@ -206,15 +206,21 @@ async function selectVideo(outputDirectory: string) {
 }
 
 async function ensureFinalMp4(input: { sourceVideoPath: string; finalVideoPath: string; runFfmpeg: RunFfmpegCli; signal?: AbortSignal }) {
+  let result = { stdout: "", stderr: "" };
   if (input.sourceVideoPath.toLowerCase().endsWith(".mp4")) {
     if (input.sourceVideoPath !== input.finalVideoPath) await copyFile(input.sourceVideoPath, input.finalVideoPath);
-    return { stdout: "", stderr: "" };
+  } else {
+    result = await input.runFfmpeg(
+      ["-y", "-loglevel", "error", "-i", input.sourceVideoPath, "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", input.finalVideoPath],
+      { signal: input.signal },
+    );
   }
 
-  return input.runFfmpeg(
-    ["-y", "-loglevel", "error", "-i", input.sourceVideoPath, "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", input.finalVideoPath],
-    { signal: input.signal },
-  );
+  const finalVideo = await stat(input.finalVideoPath).catch(() => undefined);
+  if (finalVideo === undefined || finalVideo.size === 0) {
+    throw new Error(`Testreel assembly failed to create non-empty final.mp4 at ${input.finalVideoPath}`);
+  }
+  return result;
 }
 
 export async function runTestreelRecording(input: RunTestreelRecordingInput): Promise<RunTestreelRecordingResult> {

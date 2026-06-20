@@ -77,6 +77,25 @@ assert.equal(ffmpegCalls[0]?.at(-1), join(webmOutputRoot, "final.mp4"));
 await assert.rejects(
   async () =>
     runTestreelRecording({
+      testreelRoot: await mkdtemp(join(tmpdir(), "tinker-testreel-runner-missing-final-")),
+      plan,
+      runCli: async (args) => {
+        if (args[0] === "validate") return { stdout: "validated", stderr: "" };
+        const outputDir = args[args.indexOf("--output") + 1];
+        if (outputDir === undefined) throw new Error("missing output dir");
+        await mkdir(outputDir, { recursive: true });
+        await writeFile(join(outputDir, "output.json"), JSON.stringify({ video: "recording.webm", screenshots: [] }));
+        await writeFile(join(outputDir, "recording.webm"), "webm");
+        return { stdout: "recorded", stderr: "" };
+      },
+      runFfmpeg: async () => ({ stdout: "", stderr: "" }),
+    }),
+  /Testreel assembly failed to create non-empty final\.mp4/,
+);
+
+await assert.rejects(
+  async () =>
+    runTestreelRecording({
       testreelRoot: await mkdtemp(join(tmpdir(), "tinker-testreel-runner-missing-mp4-")),
       plan,
       runCli: async (args) => {
