@@ -7,7 +7,7 @@
   "types": "./dist/main.d.ts",
   "scripts": {
     "build": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/demo-assembly build && tsc -p tsconfig.json",
-    "dev": "tsx src/main.ts",
+    "dev": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/demo-assembly build && tsx src/main.ts",
     "test": "vitest run",
     "typecheck": "pnpm --filter @tinker/generation-contract build && pnpm --filter @tinker/product-analysis build && pnpm --filter @tinker/demo-assembly build && tsc -p tsconfig.json --noEmit"
   },
