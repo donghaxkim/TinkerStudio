@@ -159,7 +159,7 @@ function selectedAgentBackend(): AgentBackend {
 }
 
 /**
- * Choose the agent backend for the Playwright planner. opencode by default; the local
+ * Choose the agent backend for the Testreel recording planner. opencode by default; the local
  * Claude Code CLI when TINKER_AGENT_BACKEND=claude-code (so the full pipeline can run
  * without opencode installed). The planner contract is identical for both backends.
  */

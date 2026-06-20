@@ -2,7 +2,8 @@
 
 ## Status
 
-Draft architecture for the first version of the product.
+Historical draft architecture for the first version of the product. The active generated-video
+pipeline is Testreel-based; see `docs/demo-pipeline.md` for the current `published-video` contract.
 
 This document defines the product shape, system boundaries, ownership split, and core data contract. It is intentionally not an implementation task list.
 
@@ -34,7 +35,7 @@ The generated output must not be only an MP4.
 The system should generate an **editable project timeline** as the source of truth:
 
 ```ts
-type DemoProject = {
+type EditableProject = {
   id: string;
   title: string;
   duration: number;
@@ -100,9 +101,9 @@ CapturePlan
   -> CaptureResult
 
 ProductAnalysis + Storyboard + CaptureResult
-  -> DemoProject
+  -> editable project model
 
-DemoProject
+editable project model
   -> Editor
   -> AI Edit Operations
   -> Exported MP4
@@ -213,7 +214,7 @@ type CaptureEvent =
 
 Structured events matter because they let the editor add Screen Studio-style zooms, click effects, cursor paths, and camera motion after recording.
 
-### 6. DemoProject
+### 6. Editable Project Model
 
 The compiler turns analysis, storyboard, capture output, cursor/click events, zoom suggestions, and assets into the initial editable project.
 
@@ -242,18 +243,20 @@ The editor, renderer, and capture pipeline should reference assets by `id`, not 
 
 ## Generation Method
 
-Tinker generates repo-grounded product demos through one pipeline: analysis, understanding,
-strategy, Playwright capture planning, smooth Playwright capture, `DemoProject`, and
-`playwright/final.mp4`.
+Current repo-grounded generation uses the Testreel published-video pipeline: analysis,
+understanding, strategy, Testreel recording planning, local Testreel execution/finalization,
+and a primary `published-video` artifact at `testreel/final.mp4`.
 
-Playwright recording produces a validated `DemoProject` and opens the existing project
-editor/export loop. Completed jobs include the project and Playwright artifacts; clients open
-the `playwright-video` artifact for the generated video.
+Generated jobs do not use the old Playwright artifact kind or path as the active output contract.
+See `docs/demo-pipeline.md` for the current pipeline details.
 
 ## AI Editing Contract
 
-For Playwright jobs, AI editing should work like Cursor for a selected
-`DemoProject` timeline range.
+This section describes the legacy editable-timeline direction from the original architecture
+draft. It is not the active generated-video contract.
+
+For legacy editable project jobs, AI editing should work like Cursor for a selected
+editable project timeline range.
 
 Playwright flow:
 
@@ -264,7 +267,7 @@ User selects 50s-56s on timeline
   -> AI returns structured edit operations
   -> editor previews changes
   -> user accepts/rejects
-  -> accepted operations mutate DemoProject
+  -> accepted operations mutate the editable project model
 ```
 
 For Playwright jobs, AI must output operations, not directly modify video files.
@@ -287,7 +290,7 @@ Example:
 }
 ```
 
-All Playwright `DemoProject` AI edit operations should be validated before
+All legacy Playwright editable-project AI edit operations should be validated before
 application and should be undoable.
 
 ## Two-Person Ownership Split
@@ -302,7 +305,7 @@ Create and stabilize the shared schema early:
 
 This package defines:
 
-- `DemoProject`
+- editable project model
 - `Asset`
 - `Track`
 - `Clip`
@@ -358,7 +361,7 @@ It may expose routes, job status, and worker entrypoints, but core generation lo
 Person A owns everything before the editor opens:
 
 ```text
-Product input -> ProductAnalysis -> Storyboard -> CapturePlan -> CaptureResult -> initial DemoProject
+Product input -> ProductAnalysis -> Storyboard -> CapturePlan -> CaptureResult -> initial editable project
 ```
 
 Owned areas:
@@ -377,7 +380,7 @@ Responsibilities:
 - fake demo data/state generation
 - Playwright/Webreel-style capture planning
 - capture execution and event collection
-- compile initial `DemoProject`
+- compile initial editable project
 
 Person A should avoid touching editor internals except through the shared project schema.
 
@@ -386,7 +389,7 @@ Person A should avoid touching editor internals except through the shared projec
 Person B owns the app shell and editing experience:
 
 ```text
-DemoProject -> editor -> manual edits -> AI edit operations -> export
+editable project -> editor -> manual edits -> AI edit operations -> export
 ```
 
 Owned areas:
@@ -549,7 +552,7 @@ Purpose: prove the project model and editor/export loop.
 
 Input: hand-written storyboard/capture plan.
 
-Output: Playwright/Webreel-style capture produces assets/events and compiles a `DemoProject` that opens in the editor.
+Output: Playwright/Webreel-style capture produces assets/events and compiles an editable project that opens in the editor.
 
 Purpose: prove deterministic recording and project compilation.
 
@@ -615,7 +618,7 @@ Treat schema as the shared contract. Change it deliberately and review it togeth
 
 The architecture is working when:
 
-- a `DemoProject` can be generated, loaded, edited, saved, and exported
+- an editable project can be generated, loaded, edited, saved, and exported
 - capture produces structured events, not only video
 - AI edit requests produce validated operations, not direct file mutations
 - the generated first draft is editable rather than disposable

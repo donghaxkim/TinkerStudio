@@ -1,13 +1,13 @@
-# Playwright-Only Product Flow
+# Testreel Published-Video Product Flow
 
 ## Context
 
-This document replaces an older composition-only product-flow note. The current product flow
-is Playwright-only.
+This document replaces an older composition-only product-flow note. The current generated-video
+flow is Testreel-based. For the complete active contract, see `../demo-pipeline.md`.
 
 Tinker generates repo-grounded product demos through one pipeline: analysis, understanding,
-strategy, Playwright capture planning, smooth Playwright capture, `DemoProject`, and
-`playwright/final.mp4`.
+strategy, Testreel recording planning, local Testreel execution/finalization, and a primary
+`published-video` artifact at `testreel/final.mp4`.
 
 ## Product URL Derivation
 
@@ -20,14 +20,14 @@ repository:
   needs a public homepage/deployment URL.
 
 The accepted job stored by the API always includes the derived `productUrl`, so
-`runLocalGenerationJob` receives the explicit URL required for analysis and Playwright
-capture.
+`runLocalGenerationJob` receives the explicit URL required for analysis and Testreel
+recording.
 
 ## App Shape
 
-`App.tsx` mounts `CompositionDemoScreen` as the product entry point, but generation now opens
-a Playwright video preview shell backed by the completed job's `playwright-video` artifact.
-The screen sends Playwright-compatible `ai-url-planning` requests only.
+`App.tsx` mounts `CompositionDemoScreen` as the product entry point, and generation opens
+a video preview shell backed by the completed job's `published-video` artifact. The screen
+sends `ai-url-planning` requests for the Testreel published-video pipeline.
 
 The form contains:
 
@@ -37,14 +37,14 @@ The form contains:
 - Generate controls
 
 On successful generation, the screen opens `CompositionEditorScreen` with the generated
-Playwright video artifact and repo context.
+Testreel video artifact and repo context.
 
 ## Testing
 
-Coverage focuses on the Playwright workflow boundary:
+Coverage focuses on the Testreel workflow boundary:
 
 - API accepts repo+URL generation requests and stores the resolved product URL on the job.
 - API returns a validation error when no product URL can be derived.
 - Web HTTP client submits `ai-url-planning` requests without renderer fields.
 - Create Demo UI does not expose removed renderer/import controls.
-- Completed Playwright jobs open the standalone video preview shell.
+- Completed Testreel jobs open the standalone video preview shell through `published-video`.

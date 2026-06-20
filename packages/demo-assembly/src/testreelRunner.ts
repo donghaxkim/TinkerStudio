@@ -27,6 +27,8 @@ export type RunTestreelRecordingResult = {
   stderr: string;
 };
 
+const ABORT_KILL_GRACE_MS = 500;
+
 function toPrettyJson(value: unknown) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -54,123 +56,107 @@ function trimProcessError(stderr: string) {
 
 export function createSpawnedTestreelCliRunner(command: SpawnedTestreelCliCommand): RunTestreelCli {
   return (args, options) =>
-    new Promise((resolve, reject) => {
-      if (options?.signal?.aborted) {
-        reject(abortError());
-        return;
-      }
-
-      const child = spawn(command.command, [...command.argsPrefix, ...args], {
-        cwd: command.cwd,
-        detached: process.platform !== "win32",
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      let stdout = "";
-      let stderr = "";
-      let settled = false;
-      let aborted = false;
-
-      function settle(error?: unknown) {
-        if (settled) return;
-        settled = true;
-        options?.signal?.removeEventListener("abort", abort);
-        if (error !== undefined) reject(error);
-      }
-
-      function killChild(signal: NodeJS.Signals = "SIGTERM") {
-        if (process.platform !== "win32" && child.pid !== undefined) {
-          try {
-            process.kill(-child.pid, signal);
-            return;
-          } catch {
-            child.kill(signal);
-            return;
-          }
-        }
-        child.kill(signal);
-      }
-
-      function abort() {
-        aborted = true;
-        killChild();
-      }
-      options?.signal?.addEventListener("abort", abort, { once: true });
-
-      child.stdout?.setEncoding("utf8");
-      child.stderr?.setEncoding("utf8");
-      child.stdout?.on("data", (chunk: string) => {
-        stdout += chunk;
-      });
-      child.stderr?.on("data", (chunk: string) => {
-        stderr += chunk;
-      });
-      child.on("error", (error) => settle(error));
-      child.on("close", (code) => {
-        if (settled) return;
-        options?.signal?.removeEventListener("abort", abort);
-        if (aborted) {
-          reject(abortError());
-          return;
-        }
-        if (code !== 0) {
-          reject(new Error(`Testreel failed with exit code ${code}: ${trimProcessError(stderr)}`));
-          return;
-        }
-        settled = true;
-        resolve({ stdout, stderr });
-      });
+    runSpawnedCli({
+      command: command.command,
+      args: [...command.argsPrefix, ...args],
+      cwd: command.cwd,
+      failureLabel: "Testreel",
+      signal: options?.signal,
     });
 }
 
 function createSpawnedFfmpegRunner(command: string): RunFfmpegCli {
-  return (args, options) =>
-    new Promise((resolve, reject) => {
-      if (options?.signal?.aborted) {
+  return (args, options) => runSpawnedCli({ command, args, failureLabel: "ffmpeg", signal: options?.signal });
+}
+
+function runSpawnedCli(input: { command: string; args: string[]; cwd?: string; failureLabel: string; signal?: AbortSignal }) {
+  return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+    if (input.signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+
+    const detached = process.platform !== "win32";
+    const child = spawn(input.command, input.args, { cwd: input.cwd, detached, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let aborted = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function killChild(signal: NodeJS.Signals) {
+      if (detached && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, signal);
+          return;
+        } catch {
+          // Fall back to the direct child when process-group kill is unavailable.
+        }
+      }
+
+      try {
+        child.kill(signal);
+      } catch {
+        // The process may have exited between abort callbacks.
+      }
+    }
+
+    function destroyStreams() {
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+    }
+
+    function cleanup() {
+      input.signal?.removeEventListener("abort", abort);
+      if (killTimer !== undefined) {
+        clearTimeout(killTimer);
+        killTimer = undefined;
+      }
+    }
+
+    function abort() {
+      if (aborted) return;
+      aborted = true;
+      destroyStreams();
+      killChild("SIGTERM");
+      killTimer = setTimeout(() => {
+        destroyStreams();
+        killChild("SIGKILL");
+      }, ABORT_KILL_GRACE_MS);
+      killTimer.unref?.();
+    }
+
+    input.signal?.addEventListener("abort", abort, { once: true });
+
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr?.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(aborted ? abortError() : error);
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (aborted) {
         reject(abortError());
         return;
       }
-
-      const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
-      let stdout = "";
-      let stderr = "";
-      let settled = false;
-      let aborted = false;
-
-      function abort() {
-        aborted = true;
-        child.kill("SIGTERM");
+      if (code !== 0) {
+        reject(new Error(`${input.failureLabel} failed with exit code ${code}: ${trimProcessError(stderr)}`));
+        return;
       }
-      options?.signal?.addEventListener("abort", abort, { once: true });
-
-      child.stdout?.setEncoding("utf8");
-      child.stderr?.setEncoding("utf8");
-      child.stdout?.on("data", (chunk: string) => {
-        stdout += chunk;
-      });
-      child.stderr?.on("data", (chunk: string) => {
-        stderr += chunk;
-      });
-      child.on("error", (error) => {
-        if (settled) return;
-        settled = true;
-        options?.signal?.removeEventListener("abort", abort);
-        reject(error);
-      });
-      child.on("close", (code) => {
-        if (settled) return;
-        settled = true;
-        options?.signal?.removeEventListener("abort", abort);
-        if (aborted) {
-          reject(abortError());
-          return;
-        }
-        if (code !== 0) {
-          reject(new Error(`ffmpeg failed with exit code ${code}: ${trimProcessError(stderr)}`));
-          return;
-        }
-        resolve({ stdout, stderr });
-      });
+      resolve({ stdout, stderr });
     });
+  });
 }
 
 async function listFiles(root: string): Promise<string[]> {

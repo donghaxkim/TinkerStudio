@@ -1,8 +1,8 @@
 # Tinker Studio
 
-**Screen Studio for agents** — a local-first editor for product-demo videos. A generated
-`DemoProject` flows through a Porcelain web editor (preview, timeline, manual + AI edits,
-save/load) and exports to MP4. `DemoProject` is the source of truth; MP4 is an export artifact.
+**Screen Studio for agents** — a local-first studio for product-demo videos. Repo-grounded
+generation now produces a Testreel `published-video` artifact at `testreel/final.mp4`, while
+the Porcelain web editor still supports timeline preview, manual edits, AI edits, and export.
 
 ## Run the one-user local demo
 
@@ -21,8 +21,8 @@ tab for AI edit proposals (preview/accept/reject), and open **Export** to valida
 local render command. **Settings** (gear) has diagnostics, the export directory, and a storage reset.
 
 Tinker generates repo-grounded product demos through one pipeline: analysis, understanding,
-strategy, Playwright capture planning, smooth Playwright capture, `DemoProject`, and
-`playwright/final.mp4`.
+strategy, Testreel recording planning, local Testreel capture/finalization, and a primary
+`published-video` artifact at `testreel/final.mp4`. See `docs/demo-pipeline.md`.
 
 ## Render a real MP4
 
@@ -33,7 +33,7 @@ pnpm --filter @tinker/rendering render:sample -- /tmp/tinker-demo.mp4   # H.264 
 ## Verify everything
 
 ```bash
-pnpm validate:schema       # fixtures validate against DemoProjectSchema 0.1.0
+pnpm validate:schema       # project-schema fixtures validate against schema 0.1.0
 pnpm typecheck
 pnpm -r test               # full monorepo test suite
 pnpm --filter @tinker/web build
